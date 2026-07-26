@@ -13,6 +13,11 @@ const sidebarItems = [
     href: "#",
     children: [{ label: "Members", href: "/team/members" }],
   },
+  {
+    label: "Sales",
+    href: "#",
+    children: [{ label: "Sales Records", href: "/sales/records" }],
+  },
   { label: "Training", href: "#" },
   { label: "Settings", href: "#" },
 ];
