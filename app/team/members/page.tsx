@@ -56,6 +56,10 @@ export default function MembersPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<MemberFormState>(initialFormState);
+  const [editingMemberId, setEditingMemberId] = useState<string | number | null>(null);
+useEffect(() => {
+  console.log("editingMemberId changed:", editingMemberId);
+}, [editingMemberId]);
 
   const fetchMembers = async () => {
     try {
@@ -63,12 +67,25 @@ export default function MembersPage() {
       setErrorMessage(null);
       const supabase = createSupabaseClient();
       const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .order("join_date", { ascending: false });
-
-        console.log("FETCH ERROR:", error);
-        console.log("FETCH DATA:", data);
+  .from("users")
+  .select(`
+  id,
+  full_name,
+  chinese_name,
+  phone,
+  email,
+  birthday,
+  join_date,
+  position,
+  employment_type,
+  status,
+  leader_id,
+  avatar_url,
+  created_at,
+  updated_at
+`)
+  .eq("is_deleted", false)
+  .order("join_date", { ascending: false });
 
       if (error) {
         throw error;
@@ -115,15 +132,12 @@ export default function MembersPage() {
   }, [members]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-  event.preventDefault();
-  alert("HANDLE SUBMIT");
-  console.log("1. Start");
+    event.preventDefault();
+
   setIsSubmitting(true);
   setErrorMessage(null);
 
   try {
-    console.log("2. Before payload");
-
     const payload = {
       full_name: formState.full_name.trim(),
       email: formState.email.trim() || null,
@@ -135,40 +149,70 @@ export default function MembersPage() {
       status: formState.status || "Active",
     };
 
-     console.log("3. Payload", payload);
-     console.log("4. Before fetch");
+    const url = editingMemberId
+  ? `/api/members/${editingMemberId}`
+  : "/api/members";
 
-    const response = await fetch("/api/members", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+const method = editingMemberId ? "PATCH" : "POST";
 
-    console.log("5. After fetch", response.status);
+console.log("========== HANDLE SUBMIT ==========");
+console.log("editingMemberId:", editingMemberId);
+console.log("method:", method);
+console.log("url:", url);
+
+const response = await fetch(url, {
+  method,
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(payload),
+});
 
     const result = await response.json();
 
-    console.log("6. Result", result);
-    
     if (!response.ok) {
       throw new Error(result.error || "Unable to create member");
     }
 
-    console.log("7. Success");
     setFormState(initialFormState);
     setIsDrawerOpen(false);
-    await fetchMembers();
 
+    await fetchMembers();
   } catch (error) {
-    console.error("HANDLE SUBMIT ERROR:", error);
     setErrorMessage(
-      error instanceof Error ? error.message : "Unable to create member"
+      error instanceof Error
+        ? error.message
+        : "Unable to create member"
     );
   } finally {
-    console.log("8. Finally");
     setIsSubmitting(false);
+  }
+};
+const handleDelete = async (id: string | number) => {
+  const confirmed = window.confirm(
+    "Are you sure you want to delete this member?"
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch(`/api/members/${id}`, {
+      method: "DELETE",
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to delete member");
+    }
+
+    await fetchMembers();
+  } catch (error) {
+    setErrorMessage(
+      error instanceof Error
+        ? error.message
+        : "Unable to delete member"
+    );
   }
 };
 
@@ -409,9 +453,37 @@ export default function MembersPage() {
                               </span>
                             </td>
                             <td className="px-4 py-4">
-                              <button className="text-sm font-medium text-zinc-700 hover:text-zinc-950">
-                                View
-                              </button>
+                              <div className="flex gap-3">
+  <button
+    type="button"
+    onClick={() => {
+      setEditingMemberId(member.id);
+
+      setFormState({
+        full_name: member.full_name || "",
+        email: member.email || "",
+        phone: member.phone || "",
+        employment_type: member.employment_type || "Core Agent",
+        position: member.position || "Team Leader",
+        leader_id: member.leader_id ? String(member.leader_id) : "",
+        join_date: member.join_date || "",
+        status: member.status || "Active",
+      });
+
+      setIsDrawerOpen(true);
+    }}
+    className="text-sm font-medium text-blue-600 hover:text-blue-800"
+  >
+    EDIT
+  </button>
+  <button
+  type="button"
+  onClick={() => handleDelete(member.id)}
+  className="text-sm font-medium text-red-600 hover:text-red-800"
+>
+  DELETE
+</button>
+</div>
                             </td>
                           </tr>
                         ))
@@ -439,8 +511,13 @@ export default function MembersPage() {
       >
         <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
           <div>
-            <p className="text-sm text-zinc-500">New Member</p>
-            <h2 className="text-xl font-semibold text-zinc-950">Add Member</h2>
+            <p className="text-sm text-zinc-500">
+  {editingMemberId ? "Edit Member" : "New Member"}
+</p>
+
+<h2 className="text-xl font-semibold text-zinc-950">
+  {editingMemberId ? "Edit Member" : "Add Member"}
+</h2>
           </div>
           <button
             type="button"
@@ -451,7 +528,12 @@ export default function MembersPage() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+        <form
+  onSubmit={(e) => {
+    console.log("editingMemberId =", editingMemberId);
+    handleSubmit(e);
+  }}
+>
           <label className="block text-sm text-zinc-600">
             <span className="mb-1 block font-medium text-zinc-900">Full Name</span>
             <input
@@ -577,7 +659,11 @@ export default function MembersPage() {
               disabled={isSubmitting}
               className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isSubmitting ? "Saving..." : "Save Member"}
+              {isSubmitting
+  ? "Saving..."
+  : editingMemberId
+      ? "Save Changes"
+      : "Save Member"}
             </button>
           </div>
         </form>
