@@ -50,14 +50,43 @@ function getInitials(fullName: string | null) {
 }
 
 export default function MembersPage() {
-  const [members, setMembers] = useState<MemberRecord[]>([]);
+const [members, setMembers] = useState<MemberRecord[]>([]);
+const [search, setSearch] = useState("");
+const [positionFilter, setPositionFilter] = useState("All");
+const [employmentFilter, setEmploymentFilter] = useState("All");
+const [leaderFilter, setLeaderFilter] = useState("All");
+const [statusFilter, setStatusFilter] = useState("All");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<MemberFormState>(initialFormState);
   const [editingMemberId, setEditingMemberId] = useState<string | number | null>(null);
-useEffect(() => {
+  const filteredMembers = members.filter((member) => {
+  const matchSearch = (member.full_name ?? "")
+    .toLowerCase()
+    .includes(search.toLowerCase());
+
+  const matchPosition =
+    positionFilter === "All" ||
+    member.position === positionFilter;
+
+  const matchEmployment =
+    employmentFilter === "All" ||
+    member.employment_type === employmentFilter;
+
+  const matchLeader =
+    leaderFilter === "All" ||
+    String(member.leader_id) === leaderFilter;
+
+  const matchStatus =
+    statusFilter === "All" ||
+    member.status === statusFilter;
+
+  return matchSearch && matchPosition && matchEmployment && matchLeader && matchStatus;
+});
+console.log(filteredMembers);
+  useEffect(() => {
   console.log("editingMemberId changed:", editingMemberId);
 }, [editingMemberId]);
 
@@ -331,52 +360,74 @@ const handleDelete = async (id: string | number) => {
                   <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
                     Search Member
                   </span>
-                  <input className="w-full bg-transparent outline-none" placeholder="Search" />
+                  <input className="w-full bg-transparent outline-none" placeholder="Search" value={search}
+  onChange={(event) => setSearch(event.target.value)}
+/>
                 </label>
                 <label className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
                   <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
                     Position
                   </span>
-                  <select className="w-full bg-transparent outline-none">
-                    <option>All</option>
-                    <option>Managing Partner</option>
-                    <option>Project Manager</option>
-                    <option>Group Leader</option>
-                    <option>Senior Team Leader</option>
-                    <option>Team Leader</option>
-                    <option>Senior REN</option>
-                    <option>REN 75</option>
-                    <option>REN 70</option>
+                  <select
+                    className="w-full bg-transparent outline-none"
+                    value={positionFilter}
+                    onChange={(event) => setPositionFilter(event.target.value)}
+                  >
+                    <option value="All">All</option>
+                    <option value="Managing Partner">Managing Partner</option>
+                    <option value="Project Manager">Project Manager</option>
+                    <option value="Group Leader">Group Leader</option>
+                    <option value="Senior Team Leader">Senior Team Leader</option>
+                    <option value="Team Leader">Team Leader</option>
+                    <option value="Senior REN">Senior REN</option>
+                    <option value="REN 75">REN 75</option>
+                    <option value="REN 70">REN 70</option>
                   </select>
                 </label>
                 <label className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
                   <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
                     Employment Type
                   </span>
-                  <select className="w-full bg-transparent outline-none">
-                    <option>All</option>
-                    <option>Core Agent</option>
-                    <option>Part Time Agent</option>
+                  <select
+                    className="w-full bg-transparent outline-none"
+                    value={employmentFilter}
+                    onChange={(event) => setEmploymentFilter(event.target.value)}
+                  >
+                    <option value="All">All</option>
+                    <option value="Core Agent">Core Agent</option>
+                    <option value="Part Time Agent">Part Time Agent</option>
                   </select>
                 </label>
                 <label className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
                   <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
                     Leader
                   </span>
-                  <select className="w-full bg-transparent outline-none">
-                    <option>All</option>
-                    <option>Nicholas Chen</option>
-                    <option>Maya Rivera</option>
+                  <select
+                    className="w-full bg-transparent outline-none"
+                    value={leaderFilter}
+                    onChange={(event) => setLeaderFilter(event.target.value)}
+                  >
+                    <option value="All">All</option>
+                    {members.map((member) => (
+                      <option key={String(member.id)} value={String(member.id)}>
+                        {member.full_name || "Unnamed member"}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
                   <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
                     Status
                   </span>
-                  <select className="w-full bg-transparent outline-none">
-                    <option>All</option>
-                    <option>Active</option>
-                    <option>Review</option>
+                  <select
+                    className="w-full bg-transparent outline-none"
+                    value={statusFilter}
+                    onChange={(event) => setStatusFilter(event.target.value)}
+                  >
+                    <option value="All">All</option>
+                    <option value="Active">Active</option>
+                    <option value="Review">Review</option>
+                    <option value="Pending">Pending</option>
                   </select>
                 </label>
               </div>
@@ -418,14 +469,14 @@ const handleDelete = async (id: string | number) => {
                             Loading members...
                           </td>
                         </tr>
-                      ) : members.length === 0 ? (
+                      ) : filteredMembers.length === 0 ? (
                         <tr>
                           <td colSpan={8} className="px-4 py-10 text-center text-sm text-zinc-600">
                             No members found.
                           </td>
                         </tr>
                       ) : (
-                        members.map((member) => (
+                        filteredMembers.map((member) => (
                           <tr key={String(member.id)} className="text-sm text-zinc-700">
                             <td className="px-4 py-4">
                               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white">

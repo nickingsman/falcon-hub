@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
-export async function GET() {
-  return NextResponse.json({ test: "GET OK" });
-}
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
