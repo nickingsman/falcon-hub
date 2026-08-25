@@ -9,6 +9,7 @@ type AppPermissions = {
   role: UserRole | null;
   isActive: boolean;
   canManageProjects: boolean;
+  canManageUserApprovals: boolean;
 };
 
 const readOnlyPermissions: AppPermissions = {
@@ -17,6 +18,7 @@ const readOnlyPermissions: AppPermissions = {
   role: null,
   isActive: false,
   canManageProjects: false,
+  canManageUserApprovals: false,
 };
 
 const AppPermissionContext = createContext<AppPermissions>(readOnlyPermissions);
@@ -31,6 +33,7 @@ export function AppPermissionProvider({
   const [currentPermissions, setCurrentPermissions] = useState<AppPermissions>({
     ...permissions,
     canManageProjects: false,
+    canManageUserApprovals: false,
   });
 
   useEffect(() => {

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { getRouteForProfileStatus, type UserProfile } from "@/lib/auth";
-import { canManageProjects } from "@/lib/permissions";
+import {
+  canManageProjects,
+  canManageUserApprovals,
+} from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 
 function getMetadataValue(user: User, key: string) {
@@ -63,6 +66,7 @@ export async function GET() {
       statusRoute: getRouteForProfileStatus(userProfile?.status ?? null),
       isActive: userProfile?.status === "active",
       canManageProjects: canManageProjects(userProfile),
+      canManageUserApprovals: canManageUserApprovals(userProfile),
     });
   } catch (error) {
     console.error("GET /api/auth/me error:", error);
@@ -75,6 +79,7 @@ export async function GET() {
       statusRoute: "/account-disabled",
       isActive: false,
       canManageProjects: false,
+      canManageUserApprovals: false,
     });
   }
 }

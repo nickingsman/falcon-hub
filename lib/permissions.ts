@@ -33,6 +33,30 @@ export function canManageUsers(profile: UserProfile | null) {
   return hasRole(profile, ["super_admin"]);
 }
 
+export function canManageUserApprovals(profile: UserProfile | null) {
+  return hasRole(profile, ["super_admin", "admin"]);
+}
+
+export function getAssignableUserRoles(profile: UserProfile | null): UserRole[] {
+  if (!profile || profile.status !== "active") {
+    return [];
+  }
+
+  if (profile.role === "super_admin") {
+    return ["super_admin", "admin", "leader", "agent"];
+  }
+
+  if (profile.role === "admin") {
+    return ["admin", "leader", "agent"];
+  }
+
+  return [];
+}
+
+export function canAssignUserRole(profile: UserProfile | null, role: string) {
+  return getAssignableUserRoles(profile).includes(role as UserRole);
+}
+
 export function canAccessAgentView(profile: UserProfile | null) {
   return hasRole(profile, ["super_admin", "admin", "leader", "agent"]);
 }
@@ -101,6 +125,27 @@ export async function requireProjectApiWriteAccess() {
   }
 
   if (!canManageProjects(authContext.profile)) {
+    return { authorized: false, response: forbiddenJson() } as const;
+  }
+
+  return { authorized: true, ...authContext } as const;
+}
+
+export async function requireUserApprovalAccess() {
+  const authContext = await getAuthenticatedUserProfile();
+
+  if (!authContext) {
+    return { authorized: false, response: unauthorizedJson() } as const;
+  }
+
+  if (!authContext.profile) {
+    return {
+      authorized: false,
+      response: forbiddenJson("User profile is required"),
+    } as const;
+  }
+
+  if (!canManageUserApprovals(authContext.profile)) {
     return { authorized: false, response: forbiddenJson() } as const;
   }
 

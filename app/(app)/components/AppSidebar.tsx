@@ -43,7 +43,7 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 }
 
 function isChildActive(pathname: string, href: string) {
-  return href !== "#" && pathname === href;
+  return href !== "#" && (pathname === href || pathname.startsWith(`${href}/`));
 }
 
 function getRoleLabel(role: ReturnType<typeof useAppPermissions>["role"]) {
@@ -58,7 +58,22 @@ function getRoleLabel(role: ReturnType<typeof useAppPermissions>["role"]) {
 export default function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { displayName, role } = useAppPermissions();
+  const { displayName, role, canManageUserApprovals } = useAppPermissions();
+  const visibleSidebarItems = sidebarItems.map((item) => {
+    if (item.label !== "Team") {
+      return item;
+    }
+
+    return {
+      ...item,
+      children: [
+        ...(item.children ?? []),
+        ...(canManageUserApprovals
+          ? [{ label: "User Approvals", href: "/team/user-approvals" }]
+          : []),
+      ],
+    };
+  });
 
   async function handleLogout() {
     await fetch("/api/auth/logout", {
@@ -83,7 +98,7 @@ export default function AppSidebar() {
         </div>
 
         <nav className="mt-8 space-y-1">
-          {sidebarItems.map((item) => {
+          {visibleSidebarItems.map((item) => {
             const isActive = isItemActive(pathname, item);
 
             return (

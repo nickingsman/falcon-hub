@@ -3,7 +3,10 @@ import {
   getAuthenticatedUserProfile,
   getRouteForProfileStatus,
 } from "@/lib/auth";
-import { canManageProjects } from "@/lib/permissions";
+import {
+  canManageProjects,
+  canManageUserApprovals,
+} from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
 import AppSidebar from "./components/AppSidebar";
@@ -60,6 +63,7 @@ export default async function AppLayout({
     role: profile?.role ?? null,
     isActive: profile?.status === "active",
     canManageProjects: canManageProjects(profile),
+    canManageUserApprovals: canManageUserApprovals(profile),
   };
 
   return (

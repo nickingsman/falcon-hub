@@ -14,6 +14,14 @@ export type UserProfile = {
   member_id: string | null;
   role: UserRole;
   status: UserProfileStatus;
+  approved_position?: string | null;
+  approved_employment_type?: string | null;
+  approved_leader_id?: string | null;
+  approved_join_date?: string | null;
+  approved_at?: string | null;
+  approved_by?: string | null;
+  rejected_at?: string | null;
+  rejected_by?: string | null;
   created_at: string;
   updated_at: string;
 };
