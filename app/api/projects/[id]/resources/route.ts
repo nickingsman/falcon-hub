@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import {
+  requireProjectApiReadAccess,
+  requireProjectApiWriteAccess,
+} from "@/lib/permissions";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -9,6 +13,12 @@ export async function GET(
   _request: Request,
   { params }: RouteContext
 ) {
+  const authorization = await requireProjectApiReadAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
   try {
     const { id } = await params;
     const supabase = createSupabaseAdminClient();
@@ -56,6 +66,12 @@ export async function POST(
   request: Request,
   { params }: RouteContext
 ) {
+  const authorization = await requireProjectApiWriteAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();

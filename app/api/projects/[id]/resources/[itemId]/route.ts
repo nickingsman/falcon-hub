@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { requireProjectApiWriteAccess } from "@/lib/permissions";
 
 type RouteContext = {
   params: Promise<{ id: string; itemId: string }>;
@@ -9,6 +10,12 @@ export async function PATCH(
   request: Request,
   { params }: RouteContext
 ) {
+  const authorization = await requireProjectApiWriteAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
   try {
     const { id, itemId } = await params;
     const body = await request.json();
@@ -54,6 +61,12 @@ export async function DELETE(
   _request: Request,
   { params }: RouteContext
 ) {
+  const authorization = await requireProjectApiWriteAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
   try {
     const { id, itemId } = await params;
     const supabase = createSupabaseAdminClient();

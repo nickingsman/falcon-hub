@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import {
+  requireProjectApiReadAccess,
+  requireProjectApiWriteAccess,
+} from "@/lib/permissions";
 
 export async function GET() {
+  const authorization = await requireProjectApiReadAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
   try {
     const supabase = createSupabaseAdminClient();
 
@@ -47,6 +57,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireProjectApiWriteAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
   try {
     const body = await request.json();
 

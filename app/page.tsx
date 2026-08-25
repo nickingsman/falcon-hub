@@ -2,7 +2,7 @@ import Link from "next/link";
 
 const sidebarItems = [
   { label: "Dashboard", href: "/" },
-  { label: "Projects", href: "#" },
+  { label: "Projects", href: "/projects" },
   { label: "ROI Calculator", href: "#" },
   { label: "DSR Calculator", href: "#" },
   { label: "Proposal Generator", href: "#" },

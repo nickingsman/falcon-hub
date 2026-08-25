@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type Project = {
   id: string;
@@ -49,7 +49,6 @@ const emptyForm: ProjectForm = {
 };
 
 export default function ProjectsPage() {
-  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -378,13 +377,12 @@ if (projectsResponse.ok) {
                     className="border-b border-zinc-100 last:border-0"
                   >
                     <td className="px-6 py-4">
-                      <button
-  type="button"
-  onClick={() => router.push(`/projects/${project.id}`)}
-  className="font-medium text-zinc-900 hover:underline text-left"
->
-  {project.project_name}
-</button>
+                      <Link
+                        href={`/projects/${project.id}`}
+                        className="font-medium text-zinc-900 hover:underline"
+                      >
+                        {project.project_name}
+                      </Link>
 
                       {project.title_type && (
                         <div className="mt-1 text-xs text-zinc-400">

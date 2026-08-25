@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseClient } from "@/lib/supabase";
 
@@ -36,6 +37,28 @@ const initialFormState: MemberFormState = {
   join_date: "",
   status: "Active",
 };
+
+const sidebarItems = [
+  { label: "Dashboard", href: "/" },
+  { label: "Projects", href: "/projects" },
+  { label: "ROI Calculator", href: "#" },
+  { label: "DSR Calculator", href: "#" },
+  { label: "Proposal Generator", href: "#" },
+  { label: "Check In", href: "#" },
+  { label: "DSI", href: "#" },
+  {
+    label: "Team",
+    href: "#",
+    children: [{ label: "Members", href: "/team/members" }],
+  },
+  {
+    label: "Sales",
+    href: "#",
+    children: [{ label: "Sales Records", href: "/sales/records" }],
+  },
+  { label: "Training", href: "#" },
+  { label: "Settings", href: "#" },
+];
 
 function getInitials(fullName: string | null) {
   if (!fullName) return "U";
@@ -260,34 +283,30 @@ const handleDelete = async (id: string | number) => {
           </div>
 
           <nav className="mt-8 space-y-1">
-            {[
-              "Dashboard",
-              "Projects",
-              "ROI Calculator",
-              "DSR Calculator",
-              "Proposal Generator",
-              "Check In",
-              "DSI",
-              "Team",
-              "Training",
-              "Settings",
-            ].map((item) => (
-              <div key={item}>
-                <button
+            {sidebarItems.map((item) => (
+              <div key={item.label}>
+                <Link
+                  href={item.href}
                   className={`flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-medium transition ${
-                    item === "Team"
+                    item.label === "Team"
                       ? "bg-zinc-900 text-white shadow-sm"
                       : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                   }`}
                 >
-                  <span>{item}</span>
-                  {item === "Team" ? <span className="text-xs">●</span> : null}
-                </button>
-                {item === "Team" ? (
+                  <span>{item.label}</span>
+                  {item.label === "Team" ? <span className="text-xs">●</span> : null}
+                </Link>
+                {item.children ? (
                   <div className="ml-4 mt-1 space-y-1">
-                    <button className="flex rounded-xl bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900">
-                      Members
-                    </button>
+                    {item.children.map((child) => (
+                      <Link
+                        key={child.label}
+                        href={child.href}
+                        className="flex rounded-xl bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900"
+                      >
+                        {child.label}
+                      </Link>
+                    ))}
                   </div>
                 ) : null}
               </div>
