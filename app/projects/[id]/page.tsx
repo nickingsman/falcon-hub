@@ -940,13 +940,23 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => router.push(`/projects?edit=${project.id}`)}
-            className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Edit Project
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.push(`/projects/${project.id}/agent-view`)}
+              className="rounded-xl border border-zinc-200 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              Agent View
+            </button>
+
+            <button
+              type="button"
+              onClick={() => router.push(`/projects?edit=${project.id}`)}
+              className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Edit Project
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
