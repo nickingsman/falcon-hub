@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { UserRole } from "@/lib/auth";
+import { employmentTypeOptions } from "@/lib/member-options";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type PendingRegistration = {
@@ -113,6 +114,7 @@ export default function UserApprovalsPage() {
     setApprovalForm({
       ...emptyApprovalForm,
       role: assignableRoles[0] ?? "",
+      employment_type: employmentTypeOptions[0],
     });
     setErrorMessage("");
   }
@@ -390,13 +392,18 @@ export default function UserApprovalsPage() {
                     <span className="mb-2 block font-medium text-zinc-900">
                       Employment Type *
                     </span>
-                    <input
+                    <select
                       required
                       value={approvalForm.employment_type}
                       onChange={(event) => updateApprovalField("employment_type", event.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                      placeholder="e.g. Core Agent"
-                    />
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      {employmentTypeOptions.map((employmentType) => (
+                        <option key={employmentType} value={employmentType}>
+                          {employmentType}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 </div>
 

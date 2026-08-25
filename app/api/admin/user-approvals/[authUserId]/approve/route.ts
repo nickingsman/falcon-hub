@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/lib/auth";
+import { isEmploymentType } from "@/lib/member-options";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import {
   canAssignUserRole,
@@ -68,9 +69,9 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
-    if (!approvedEmploymentType) {
+    if (!approvedEmploymentType || !isEmploymentType(approvedEmploymentType)) {
       return NextResponse.json(
-        { error: "Employment Type is required" },
+        { error: "Employment Type must be Core Agent or Part Time Agent" },
         { status: 400 }
       );
     }
