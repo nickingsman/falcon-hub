@@ -1,27 +1,3 @@
-import Link from "next/link";
-
-const sidebarItems = [
-  { label: "Dashboard", href: "/" },
-  { label: "Projects", href: "/projects" },
-  { label: "ROI Calculator", href: "#" },
-  { label: "DSR Calculator", href: "#" },
-  { label: "Proposal Generator", href: "#" },
-  { label: "Check In", href: "#" },
-  { label: "DSI", href: "#" },
-  {
-    label: "Team",
-    href: "#",
-    children: [{ label: "Members", href: "/team/members" }],
-  },
-  {
-    label: "Sales",
-    href: "#",
-    children: [{ label: "Sales Records", href: "/sales/records" }],
-  },
-  { label: "Training", href: "#" },
-  { label: "Settings", href: "#" },
-];
-
 const stats = [
   { label: "Check In Status", value: "84%", note: "On track" },
   { label: "Today's Calls", value: "26", note: "4 pending" },
@@ -38,66 +14,7 @@ const quickActions = [
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#f7f7f3] text-zinc-900">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
-        <aside className="w-full border-b border-zinc-200 bg-white/80 p-6 backdrop-blur lg:w-72 lg:border-b-0 lg:border-r">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-900 text-sm font-semibold text-white">
-              FH
-            </div>
-            <div>
-              <p className="text-lg font-semibold">Falcon Hub</p>
-              <p className="text-sm text-zinc-500">Operations Center</p>
-            </div>
-          </div>
-
-          <nav className="mt-8 space-y-1">
-            {sidebarItems.map((item) => {
-              const isActive = item.label === "Dashboard";
-
-              return (
-                <div key={item.label}>
-                  <Link
-                    href={item.href}
-                    className={`flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-medium transition ${
-                      isActive
-                        ? "bg-zinc-900 text-white shadow-sm"
-                        : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                    {isActive ? <span className="text-xs">●</span> : null}
-                  </Link>
-                  {item.children ? (
-                    <div className="ml-4 mt-1 space-y-1">
-                      {item.children.map((child) => (
-                        <Link
-                          key={child.label}
-                          href={child.href}
-                          className="flex rounded-xl px-3 py-2 text-sm text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900"
-                        >
-                          {child.label}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </nav>
-
-          <div className="mt-8 rounded-3xl border border-zinc-200 bg-zinc-50 p-4">
-            <p className="text-sm font-semibold">Today’s focus</p>
-            <p className="mt-2 text-sm text-zinc-600">
-              Keep momentum on active projects and follow-up outreach.
-            </p>
-            <button className="mt-4 rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-              View plan
-            </button>
-          </div>
-        </aside>
-
-        <div className="flex-1">
+    <>
           <header className="flex items-center justify-between border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur">
             <div>
               <p className="text-sm text-zinc-500">Monday • July 24</p>
@@ -206,8 +123,6 @@ export default function Home() {
               </div>
             </section>
           </main>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }
