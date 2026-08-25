@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type Project = {
   id: string;
@@ -226,6 +227,7 @@ function getResourceFormFromItem(item: ProjectResource): ProjectResourceForm {
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { canManageProjects } = useAppPermissions();
   const projectId = getProjectId(params.id);
 
   const [project, setProject] = useState<Project | null>(null);
@@ -464,6 +466,8 @@ export default function ProjectDetailPage() {
   }
 
   function openAddResource() {
+    if (!canManageProjects) return;
+
     setEditingResourceId(null);
     setResourceForm(emptyResourceForm);
     setResourcesErrorMessage("");
@@ -471,6 +475,8 @@ export default function ProjectDetailPage() {
   }
 
   function openEditResource(resource: ProjectResource) {
+    if (!canManageProjects) return;
+
     setEditingResourceId(resource.id);
     setResourceForm(getResourceFormFromItem(resource));
     setResourcesErrorMessage("");
@@ -486,6 +492,8 @@ export default function ProjectDetailPage() {
   }
 
   function openAddKnowledgeItem(section: KnowledgeSectionKey) {
+    if (!canManageProjects) return;
+
     setActiveSection(section);
     setEditingKnowledgeItemId(null);
     setKnowledgeForm(emptyKnowledgeForm);
@@ -493,6 +501,8 @@ export default function ProjectDetailPage() {
   }
 
   function openEditKnowledgeItem(section: KnowledgeSectionKey, item: KnowledgeItem) {
+    if (!canManageProjects) return;
+
     setActiveSection(section);
     setEditingKnowledgeItemId(item.id);
     setKnowledgeForm(getFormFromItem(item));
@@ -509,6 +519,8 @@ export default function ProjectDetailPage() {
 
   async function handleKnowledgeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!canManageProjects) return;
 
     if (!activeSection || !projectId) return;
 
@@ -557,6 +569,8 @@ export default function ProjectDetailPage() {
   }
 
   async function handleDeleteKnowledgeItem(section: KnowledgeSectionKey, item: KnowledgeItem) {
+    if (!canManageProjects) return;
+
     if (!projectId) return;
 
     const confirmed = window.confirm(`Are you sure you want to delete "${item.title}"?`);
@@ -592,6 +606,8 @@ export default function ProjectDetailPage() {
 
   async function handleResourceSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!canManageProjects) return;
 
     if (!projectId) return;
 
@@ -640,6 +656,8 @@ export default function ProjectDetailPage() {
   }
 
   async function handleDeleteResource(resource: ProjectResource) {
+    if (!canManageProjects) return;
+
     if (!projectId) return;
 
     const confirmed = window.confirm(`Are you sure you want to delete "${resource.resource_name}"?`);
@@ -684,13 +702,15 @@ export default function ProjectDetailPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={openAddResource}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Add Resource
-          </button>
+          {canManageProjects ? (
+            <button
+              type="button"
+              onClick={openAddResource}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Add Resource
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-5 space-y-4">
@@ -751,21 +771,25 @@ export default function ProjectDetailPage() {
                       </a>
                     ) : null}
 
-                    <button
-                      type="button"
-                      onClick={() => openEditResource(resource)}
-                      className="text-sm font-medium text-zinc-700 hover:text-black"
-                    >
-                      Edit
-                    </button>
+                    {canManageProjects ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEditResource(resource)}
+                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                        >
+                          Edit
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteResource(resource)}
-                      className="text-sm font-medium text-red-500 hover:text-red-700"
-                    >
-                      Delete
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteResource(resource)}
+                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -787,13 +811,15 @@ export default function ProjectDetailPage() {
             <p className="mt-1 text-sm text-zinc-500">{config.description}</p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => openAddKnowledgeItem(section)}
-            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            Add Item
-          </button>
+          {canManageProjects ? (
+            <button
+              type="button"
+              onClick={() => openAddKnowledgeItem(section)}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Add Item
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-5 space-y-4">
@@ -821,23 +847,25 @@ export default function ProjectDetailPage() {
                     </h3>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <button
-                      type="button"
-                      onClick={() => openEditKnowledgeItem(section, item)}
-                      className="text-sm font-medium text-zinc-700 hover:text-black"
-                    >
-                      Edit
-                    </button>
+                  {canManageProjects ? (
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={() => openEditKnowledgeItem(section, item)}
+                        className="text-sm font-medium text-zinc-700 hover:text-black"
+                      >
+                        Edit
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteKnowledgeItem(section, item)}
-                      className="text-sm font-medium text-red-500 hover:text-red-700"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteKnowledgeItem(section, item)}
+                        className="text-sm font-medium text-red-500 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -949,13 +977,15 @@ export default function ProjectDetailPage() {
               Agent View
             </button>
 
-            <button
-              type="button"
-              onClick={() => router.push(`/projects?edit=${project.id}`)}
-              className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
-            >
-              Edit Project
-            </button>
+            {canManageProjects ? (
+              <button
+                type="button"
+                onClick={() => router.push(`/projects?edit=${project.id}`)}
+                className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                Edit Project
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -1051,7 +1081,7 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {activeConfig && activeSection ? (
+      {canManageProjects && activeConfig && activeSection ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
@@ -1147,7 +1177,7 @@ export default function ProjectDetailPage() {
         </div>
       ) : null}
 
-      {isResourceModalOpen ? (
+      {canManageProjects && isResourceModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">

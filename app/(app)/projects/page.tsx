@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useAppPermissions } from "../components/AppPermissionProvider";
 
 type Project = {
   id: string;
@@ -49,6 +50,7 @@ const emptyForm: ProjectForm = {
 };
 
 export default function ProjectsPage() {
+  const { canManageProjects } = useAppPermissions();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,6 +58,36 @@ export default function ProjectsPage() {
   const [form, setForm] = useState<ProjectForm>(emptyForm);
   const [errorMessage, setErrorMessage] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+
+  const openEditProject = useCallback((project: Project) => {
+  if (!canManageProjects) return;
+
+  setEditingProjectId(project.id);
+
+  setForm({
+    project_name: project.project_name || "",
+    developer: project.developer || "",
+    location: project.location || "",
+    property_type: project.property_type || "",
+    tenure: project.tenure || "",
+    title_type: project.title_type || "",
+    starting_price:
+      project.starting_price !== null
+        ? String(project.starting_price)
+        : "",
+    total_units:
+      project.total_units !== null
+        ? String(project.total_units)
+        : "",
+    status: project.status || "Active",
+    launch_date: project.launch_date || "",
+    notes: project.notes || "",
+  });
+
+  setErrorMessage("");
+  setShowModal(true);
+}, [canManageProjects]);
+
   useEffect(() => {
   const editId = new URLSearchParams(window.location.search).get("edit");
 
@@ -63,13 +95,22 @@ export default function ProjectsPage() {
     return;
   }
 
+  if (!canManageProjects) {
+    window.history.replaceState({}, "", "/projects");
+    return;
+  }
+
   const project = projects.find((item) => item.id === editId);
 
   if (project) {
-    openEditProject(project);
-    window.history.replaceState({}, "", "/projects");
+    const timeoutId = window.setTimeout(() => {
+      openEditProject(project);
+      window.history.replaceState({}, "", "/projects");
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }
-}, [projects]);
+}, [canManageProjects, openEditProject, projects]);
 
   async function fetchProjects() {
     try {
@@ -107,38 +148,13 @@ export default function ProjectsPage() {
   }
 
   function openAddProject() {
+  if (!canManageProjects) return;
+
   setEditingProjectId(null);
   setForm(emptyForm);
   setErrorMessage("");
   setShowModal(true);
 }
-function openEditProject(project: Project) {
-  setEditingProjectId(project.id);
-
-  setForm({
-    project_name: project.project_name || "",
-    developer: project.developer || "",
-    location: project.location || "",
-    property_type: project.property_type || "",
-    tenure: project.tenure || "",
-    title_type: project.title_type || "",
-    starting_price:
-      project.starting_price !== null
-        ? String(project.starting_price)
-        : "",
-    total_units:
-      project.total_units !== null
-        ? String(project.total_units)
-        : "",
-    status: project.status || "Active",
-    launch_date: project.launch_date || "",
-    notes: project.notes || "",
-  });
-
-  setErrorMessage("");
-  setShowModal(true);
-}
-
   function closeModal() {
     if (saving) return;
 
@@ -147,6 +163,8 @@ function openEditProject(project: Project) {
   }
   
   async function handleDeleteProject(project: Project) {
+  if (!canManageProjects) return;
+
   const confirmed = window.confirm(
     `Are you sure you want to delete "${project.project_name}"?`
   );
@@ -185,6 +203,8 @@ if (projectsResponse.ok) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!canManageProjects) return;
 
     if (!form.project_name.trim()) {
       setErrorMessage("Project Name is required.");
@@ -262,12 +282,14 @@ if (projectsResponse.ok) {
           </p>
         </div>
 
-        <button
-          onClick={openAddProject}
-          className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
-        >
-          + Add Project
-        </button>
+        {canManageProjects ? (
+          <button
+            onClick={openAddProject}
+            className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
+          >
+            + Add Project
+          </button>
+        ) : null}
       </div>
 
       {/* Summary */}
@@ -325,12 +347,14 @@ if (projectsResponse.ok) {
               Add your first property project to get started.
             </p>
 
-            <button
-              onClick={openAddProject}
-              className="mt-5 rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
-            >
-              + Add Project
-            </button>
+            {canManageProjects ? (
+              <button
+                onClick={openAddProject}
+                className="mt-5 rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
+              >
+                + Add Project
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -364,9 +388,11 @@ if (projectsResponse.ok) {
                   <th className="px-6 py-4 font-medium text-zinc-500">
                     Status
                   </th>
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-  Actions
-</th>
+                  {canManageProjects ? (
+                    <th className="px-6 py-4 font-medium text-zinc-500">
+                      Actions
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
 
@@ -419,25 +445,27 @@ if (projectsResponse.ok) {
                       </span>
                     </td>
 
-                    <td className="px-6 py-4">
-  <div className="flex items-center gap-4">
-    <button
-      type="button"
-      onClick={() => openEditProject(project)}
-      className="text-sm font-medium text-zinc-700 hover:text-black"
-    >
-      Edit
-    </button>
+                    {canManageProjects ? (
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-4">
+                          <button
+                            type="button"
+                            onClick={() => openEditProject(project)}
+                            className="text-sm font-medium text-zinc-700 hover:text-black"
+                          >
+                            Edit
+                          </button>
 
-    <button
-      type="button"
-      onClick={() => handleDeleteProject(project)}
-      className="text-sm font-medium text-red-500 hover:text-red-700"
-    >
-      Delete
-    </button>
-  </div>
-</td>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(project)}
+                            className="text-sm font-medium text-red-500 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -447,7 +475,7 @@ if (projectsResponse.ok) {
       </div>
 
       {/* Add Project Modal */}
-      {showModal && (
+      {canManageProjects && showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
             {/* Modal Header */}

@@ -1,3 +1,7 @@
+"use client";
+
+import { useAppPermissions } from "./components/AppPermissionProvider";
+
 const stats = [
   { label: "Check In Status", value: "84%", note: "On track" },
   { label: "Today's Calls", value: "26", note: "4 pending" },
@@ -13,6 +17,8 @@ const quickActions = [
 ];
 
 export default function Home() {
+  const { displayName } = useAppPermissions();
+
   return (
     <>
           <header className="flex items-center justify-between border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur">
@@ -38,7 +44,7 @@ export default function Home() {
                     Dashboard
                   </p>
                   <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-                    Good Morning, Nicholas
+                    Good Morning, {displayName}
                   </h1>
                   <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-600 sm:text-base">
                     A clean view of today’s activity, outreach signals, and the projects that need your attention.
