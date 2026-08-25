@@ -19,9 +19,10 @@ type Project = {
   notes: string | null;
 };
 
-type KnowledgeSectionKey = "ownStay" | "investment" | "concern";
+type KnowledgeSectionKey = "keySelling" | "ownStay" | "investment" | "concern";
 
 type KnowledgeFieldKey =
+  | "short_explanation"
   | "explanation"
   | "how_to_sell"
   | "investment_logic"
@@ -35,6 +36,7 @@ type KnowledgeItem = {
   id: string;
   project_id: string;
   title: string;
+  short_explanation?: string | null;
   explanation?: string | null;
   how_to_sell?: string | null;
   investment_logic?: string | null;
@@ -50,6 +52,7 @@ type KnowledgeItem = {
 
 type KnowledgeForm = {
   title: string;
+  short_explanation: string;
   explanation: string;
   how_to_sell: string;
   investment_logic: string;
@@ -73,6 +76,7 @@ type SectionConfig = {
 
 const emptyKnowledgeForm: KnowledgeForm = {
   title: "",
+  short_explanation: "",
   explanation: "",
   how_to_sell: "",
   investment_logic: "",
@@ -85,6 +89,16 @@ const emptyKnowledgeForm: KnowledgeForm = {
 };
 
 const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
+  keySelling: {
+    title: "Key Selling Points",
+    description: "Project highlights, sales angles, and proof points for agents.",
+    endpoint: "key-selling-points",
+    fields: [
+      { key: "short_explanation", label: "Short Explanation" },
+      { key: "how_to_sell", label: "How To Sell" },
+      { key: "supporting_data", label: "Supporting Data" },
+    ],
+  },
   ownStay: {
     title: "Own Stay Reasons",
     description: "Reasons agents can use for buyers planning to live in the project.",
@@ -135,6 +149,7 @@ function getKnowledgeEndpoint(projectId: string, section: KnowledgeSectionKey, i
 function getFormFromItem(item: KnowledgeItem): KnowledgeForm {
   return {
     title: item.title || "",
+    short_explanation: item.short_explanation || "",
     explanation: item.explanation || "",
     how_to_sell: item.how_to_sell || "",
     investment_logic: item.investment_logic || "",
@@ -157,6 +172,7 @@ export default function ProjectDetailPage() {
   const [knowledgeLoading, setKnowledgeLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [knowledgeErrorMessage, setKnowledgeErrorMessage] = useState("");
+  const [keySellingPoints, setKeySellingPoints] = useState<KnowledgeItem[]>([]);
   const [ownStayReasons, setOwnStayReasons] = useState<KnowledgeItem[]>([]);
   const [investmentReasons, setInvestmentReasons] = useState<KnowledgeItem[]>([]);
   const [customerConcerns, setCustomerConcerns] = useState<KnowledgeItem[]>([]);
@@ -170,17 +186,23 @@ export default function ProjectDetailPage() {
       setKnowledgeLoading(true);
       setKnowledgeErrorMessage("");
 
-      const [ownStayResponse, investmentResponse, concernResponse] = await Promise.all([
+      const [keySellingResponse, ownStayResponse, investmentResponse, concernResponse] = await Promise.all([
+        fetch(getKnowledgeEndpoint(id, "keySelling")),
         fetch(getKnowledgeEndpoint(id, "ownStay")),
         fetch(getKnowledgeEndpoint(id, "investment")),
         fetch(getKnowledgeEndpoint(id, "concern")),
       ]);
 
-      const [ownStayData, investmentData, concernData] = await Promise.all([
+      const [keySellingData, ownStayData, investmentData, concernData] = await Promise.all([
+        keySellingResponse.json(),
         ownStayResponse.json(),
         investmentResponse.json(),
         concernResponse.json(),
       ]);
+
+      if (!keySellingResponse.ok) {
+        throw new Error(keySellingData.error || "Unable to load key selling points");
+      }
 
       if (!ownStayResponse.ok) {
         throw new Error(ownStayData.error || "Unable to load own stay reasons");
@@ -194,6 +216,7 @@ export default function ProjectDetailPage() {
         throw new Error(concernData.error || "Unable to load customer concerns");
       }
 
+      setKeySellingPoints(keySellingData);
       setOwnStayReasons(ownStayData);
       setInvestmentReasons(investmentData);
       setCustomerConcerns(concernData);
@@ -248,17 +271,23 @@ export default function ProjectDetailPage() {
         setKnowledgeLoading(true);
         setKnowledgeErrorMessage("");
 
-        const [ownStayResponse, investmentResponse, concernResponse] = await Promise.all([
+        const [keySellingResponse, ownStayResponse, investmentResponse, concernResponse] = await Promise.all([
+          fetch(getKnowledgeEndpoint(projectId, "keySelling")),
           fetch(getKnowledgeEndpoint(projectId, "ownStay")),
           fetch(getKnowledgeEndpoint(projectId, "investment")),
           fetch(getKnowledgeEndpoint(projectId, "concern")),
         ]);
 
-        const [ownStayData, investmentData, concernData] = await Promise.all([
+        const [keySellingData, ownStayData, investmentData, concernData] = await Promise.all([
+          keySellingResponse.json(),
           ownStayResponse.json(),
           investmentResponse.json(),
           concernResponse.json(),
         ]);
+
+        if (!keySellingResponse.ok) {
+          throw new Error(keySellingData.error || "Unable to load key selling points");
+        }
 
         if (!ownStayResponse.ok) {
           throw new Error(ownStayData.error || "Unable to load own stay reasons");
@@ -272,6 +301,7 @@ export default function ProjectDetailPage() {
           throw new Error(concernData.error || "Unable to load customer concerns");
         }
 
+        setKeySellingPoints(keySellingData);
         setOwnStayReasons(ownStayData);
         setInvestmentReasons(investmentData);
         setCustomerConcerns(concernData);
@@ -662,6 +692,7 @@ export default function ProjectDetailPage() {
             </div>
           ) : null}
 
+          {renderKnowledgeSection("keySelling", keySellingPoints)}
           {renderKnowledgeSection("ownStay", ownStayReasons)}
           {renderKnowledgeSection("investment", investmentReasons)}
           {renderKnowledgeSection("concern", customerConcerns)}
