@@ -2,7 +2,12 @@ import type { User } from "@supabase/supabase-js";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 
 export type UserRole = "super_admin" | "admin" | "leader" | "agent";
-export type UserProfileStatus = "active" | "inactive";
+export type UserProfileStatus =
+  | "pending_approval"
+  | "pending_profile"
+  | "active"
+  | "inactive"
+  | "rejected";
 
 export type UserProfile = {
   auth_user_id: string;
@@ -62,4 +67,13 @@ export function isActiveProfile(profile: UserProfile | null) {
 
 export function getUserRole(profile: UserProfile | null) {
   return profile?.role ?? null;
+}
+
+export function getRouteForProfileStatus(status: UserProfileStatus | null) {
+  if (status === "active") return "/";
+  if (status === "pending_approval") return "/pending-approval";
+  if (status === "pending_profile") return "/complete-profile";
+  if (status === "rejected") return "/account-rejected";
+
+  return "/account-disabled";
 }

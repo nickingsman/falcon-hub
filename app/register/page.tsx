@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -19,6 +20,23 @@ export default function LoginPage() {
       setIsSubmitting(true);
       setErrorMessage("");
 
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          confirmPassword,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to register account");
+      }
+
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
@@ -26,25 +44,18 @@ export default function LoginPage() {
       });
 
       if (error) {
-        throw error;
+        router.replace("/login");
+        router.refresh();
+        return;
       }
 
-      const response = await fetch("/api/auth/me", {
-        cache: "no-store",
-      });
-      const currentUser = await response.json();
-
-      if (!response.ok) {
-        throw new Error(currentUser.error || "Unable to load account status");
-      }
-
-      router.replace(currentUser.statusRoute || "/account-disabled");
+      router.replace("/pending-approval");
       router.refresh();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Unable to sign in"
+          : "Unable to register account"
       );
     } finally {
       setIsSubmitting(false);
@@ -60,7 +71,7 @@ export default function LoginPage() {
           </div>
           <div>
             <p className="text-lg font-semibold">Falcon Hub</p>
-            <p className="text-sm text-zinc-500">Sign in to continue</p>
+            <p className="text-sm text-zinc-500">Create your account</p>
           </div>
         </div>
 
@@ -82,10 +93,24 @@ export default function LoginPage() {
             <input
               type="password"
               required
+              minLength={8}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
-              placeholder="Password"
+              placeholder="At least 8 characters"
+            />
+          </label>
+
+          <label className="block text-sm text-zinc-600">
+            <span className="mb-2 block font-medium text-zinc-900">Confirm Password</span>
+            <input
+              type="password"
+              required
+              minLength={8}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
+              placeholder="Repeat your password"
             />
           </label>
 
@@ -100,13 +125,13 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="w-full rounded-full bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {isSubmitting ? "Signing in..." : "Sign In"}
+            {isSubmitting ? "Creating account..." : "Register"}
           </button>
 
           <p className="text-center text-sm text-zinc-500">
-            Don&apos;t have an account?{" "}
-            <Link href="/register" className="font-medium text-zinc-900 hover:underline">
-              Register
+            Already have an account?{" "}
+            <Link href="/login" className="font-medium text-zinc-900 hover:underline">
+              Sign in
             </Link>
           </p>
         </form>

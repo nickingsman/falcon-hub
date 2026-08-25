@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
-import type { UserProfile } from "@/lib/auth";
+import { getRouteForProfileStatus, type UserProfile } from "@/lib/auth";
 import { canManageProjects } from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 
@@ -59,6 +59,8 @@ export async function GET() {
       displayName,
       email: userData.user.email ?? null,
       role: userProfile?.role ?? null,
+      status: userProfile?.status ?? null,
+      statusRoute: getRouteForProfileStatus(userProfile?.status ?? null),
       isActive: userProfile?.status === "active",
       canManageProjects: canManageProjects(userProfile),
     });
@@ -69,6 +71,8 @@ export async function GET() {
       displayName: "User",
       email: null,
       role: null,
+      status: null,
+      statusRoute: "/account-disabled",
       isActive: false,
       canManageProjects: false,
     });

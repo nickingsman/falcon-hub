@@ -1,4 +1,8 @@
-import { getAuthenticatedUserProfile } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import {
+  getAuthenticatedUserProfile,
+  getRouteForProfileStatus,
+} from "@/lib/auth";
 import { canManageProjects } from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
@@ -13,6 +17,15 @@ export default async function AppLayout({
 }>) {
   const authContext = await getAuthenticatedUserProfile().catch(() => null);
   const profile = authContext?.profile ?? null;
+
+  if (!authContext) {
+    redirect("/login");
+  }
+
+  if (profile?.status !== "active") {
+    redirect(getRouteForProfileStatus(profile?.status ?? null));
+  }
+
   let memberDisplayName: string | null = null;
 
   if (profile?.member_id) {
