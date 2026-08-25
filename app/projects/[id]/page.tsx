@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 type Project = {
@@ -19,13 +19,196 @@ type Project = {
   notes: string | null;
 };
 
+type KnowledgeSectionKey = "ownStay" | "investment" | "concern";
+
+type KnowledgeFieldKey =
+  | "explanation"
+  | "how_to_sell"
+  | "investment_logic"
+  | "supporting_data"
+  | "customer_concern"
+  | "real_issue"
+  | "analysis"
+  | "suggested_counter";
+
+type KnowledgeItem = {
+  id: string;
+  project_id: string;
+  title: string;
+  explanation?: string | null;
+  how_to_sell?: string | null;
+  investment_logic?: string | null;
+  supporting_data?: string | null;
+  customer_concern?: string | null;
+  real_issue?: string | null;
+  analysis?: string | null;
+  suggested_counter?: string | null;
+  sort_order: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type KnowledgeForm = {
+  title: string;
+  explanation: string;
+  how_to_sell: string;
+  investment_logic: string;
+  supporting_data: string;
+  customer_concern: string;
+  real_issue: string;
+  analysis: string;
+  suggested_counter: string;
+  sort_order: string;
+};
+
+type SectionConfig = {
+  title: string;
+  description: string;
+  endpoint: string;
+  fields: Array<{
+    key: KnowledgeFieldKey;
+    label: string;
+  }>;
+};
+
+const emptyKnowledgeForm: KnowledgeForm = {
+  title: "",
+  explanation: "",
+  how_to_sell: "",
+  investment_logic: "",
+  supporting_data: "",
+  customer_concern: "",
+  real_issue: "",
+  analysis: "",
+  suggested_counter: "",
+  sort_order: "0",
+};
+
+const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
+  ownStay: {
+    title: "Own Stay Reasons",
+    description: "Reasons agents can use for buyers planning to live in the project.",
+    endpoint: "own-stay-reasons",
+    fields: [
+      { key: "explanation", label: "Explanation" },
+      { key: "how_to_sell", label: "How To Sell" },
+    ],
+  },
+  investment: {
+    title: "Investment Reasons",
+    description: "Investment logic, sales framing, and supporting data.",
+    endpoint: "investment-reasons",
+    fields: [
+      { key: "investment_logic", label: "Investment Logic" },
+      { key: "how_to_sell", label: "How To Sell" },
+      { key: "supporting_data", label: "Supporting Data" },
+    ],
+  },
+  concern: {
+    title: "Things To Watch Out / Customer Concerns",
+    description: "Known buyer concerns, real issues, analysis, and suggested counters.",
+    endpoint: "customer-concerns",
+    fields: [
+      { key: "customer_concern", label: "Customer Concern" },
+      { key: "real_issue", label: "Real Issue" },
+      { key: "analysis", label: "Analysis" },
+      { key: "suggested_counter", label: "Suggested Counter" },
+      { key: "supporting_data", label: "Supporting Data" },
+    ],
+  },
+};
+
+function getProjectId(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return value ?? "";
+}
+
+function getKnowledgeEndpoint(projectId: string, section: KnowledgeSectionKey, itemId?: string) {
+  const baseEndpoint = `/api/projects/${projectId}/${sectionConfigs[section].endpoint}`;
+
+  return itemId ? `${baseEndpoint}/${itemId}` : baseEndpoint;
+}
+
+function getFormFromItem(item: KnowledgeItem): KnowledgeForm {
+  return {
+    title: item.title || "",
+    explanation: item.explanation || "",
+    how_to_sell: item.how_to_sell || "",
+    investment_logic: item.investment_logic || "",
+    supporting_data: item.supporting_data || "",
+    customer_concern: item.customer_concern || "",
+    real_issue: item.real_issue || "",
+    analysis: item.analysis || "",
+    suggested_counter: item.suggested_counter || "",
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const projectId = getProjectId(params.id);
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [knowledgeErrorMessage, setKnowledgeErrorMessage] = useState("");
+  const [ownStayReasons, setOwnStayReasons] = useState<KnowledgeItem[]>([]);
+  const [investmentReasons, setInvestmentReasons] = useState<KnowledgeItem[]>([]);
+  const [customerConcerns, setCustomerConcerns] = useState<KnowledgeItem[]>([]);
+  const [activeSection, setActiveSection] = useState<KnowledgeSectionKey | null>(null);
+  const [editingKnowledgeItemId, setEditingKnowledgeItemId] = useState<string | null>(null);
+  const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeForm>(emptyKnowledgeForm);
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+
+  async function fetchKnowledgeBase(id: string) {
+    try {
+      setKnowledgeLoading(true);
+      setKnowledgeErrorMessage("");
+
+      const [ownStayResponse, investmentResponse, concernResponse] = await Promise.all([
+        fetch(getKnowledgeEndpoint(id, "ownStay")),
+        fetch(getKnowledgeEndpoint(id, "investment")),
+        fetch(getKnowledgeEndpoint(id, "concern")),
+      ]);
+
+      const [ownStayData, investmentData, concernData] = await Promise.all([
+        ownStayResponse.json(),
+        investmentResponse.json(),
+        concernResponse.json(),
+      ]);
+
+      if (!ownStayResponse.ok) {
+        throw new Error(ownStayData.error || "Unable to load own stay reasons");
+      }
+
+      if (!investmentResponse.ok) {
+        throw new Error(investmentData.error || "Unable to load investment reasons");
+      }
+
+      if (!concernResponse.ok) {
+        throw new Error(concernData.error || "Unable to load customer concerns");
+      }
+
+      setOwnStayReasons(ownStayData);
+      setInvestmentReasons(investmentData);
+      setCustomerConcerns(concernData);
+    } catch (error) {
+      console.error("Load project knowledge base error:", error);
+
+      setKnowledgeErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load project knowledge base"
+      );
+    } finally {
+      setKnowledgeLoading(false);
+    }
+  }
 
   useEffect(() => {
     async function loadProject() {
@@ -33,8 +216,7 @@ export default function ProjectDetailPage() {
         setLoading(true);
         setErrorMessage("");
 
-        const response = await fetch(`/api/projects/${params.id}`);
-
+        const response = await fetch(`/api/projects/${projectId}`);
         const result = await response.json();
 
         if (!response.ok) {
@@ -55,10 +237,265 @@ export default function ProjectDetailPage() {
       }
     }
 
-    if (params.id) {
+    if (projectId) {
       loadProject();
     }
-  }, [params.id]);
+  }, [projectId]);
+
+  useEffect(() => {
+    async function loadKnowledgeBase() {
+      try {
+        setKnowledgeLoading(true);
+        setKnowledgeErrorMessage("");
+
+        const [ownStayResponse, investmentResponse, concernResponse] = await Promise.all([
+          fetch(getKnowledgeEndpoint(projectId, "ownStay")),
+          fetch(getKnowledgeEndpoint(projectId, "investment")),
+          fetch(getKnowledgeEndpoint(projectId, "concern")),
+        ]);
+
+        const [ownStayData, investmentData, concernData] = await Promise.all([
+          ownStayResponse.json(),
+          investmentResponse.json(),
+          concernResponse.json(),
+        ]);
+
+        if (!ownStayResponse.ok) {
+          throw new Error(ownStayData.error || "Unable to load own stay reasons");
+        }
+
+        if (!investmentResponse.ok) {
+          throw new Error(investmentData.error || "Unable to load investment reasons");
+        }
+
+        if (!concernResponse.ok) {
+          throw new Error(concernData.error || "Unable to load customer concerns");
+        }
+
+        setOwnStayReasons(ownStayData);
+        setInvestmentReasons(investmentData);
+        setCustomerConcerns(concernData);
+      } catch (error) {
+        console.error("Load project knowledge base error:", error);
+
+        setKnowledgeErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to load project knowledge base"
+        );
+      } finally {
+        setKnowledgeLoading(false);
+      }
+    }
+
+    if (projectId) {
+      loadKnowledgeBase();
+    }
+  }, [projectId]);
+
+  function updateKnowledgeField(field: keyof KnowledgeForm, value: string) {
+    setKnowledgeForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function openAddKnowledgeItem(section: KnowledgeSectionKey) {
+    setActiveSection(section);
+    setEditingKnowledgeItemId(null);
+    setKnowledgeForm(emptyKnowledgeForm);
+    setKnowledgeErrorMessage("");
+  }
+
+  function openEditKnowledgeItem(section: KnowledgeSectionKey, item: KnowledgeItem) {
+    setActiveSection(section);
+    setEditingKnowledgeItemId(item.id);
+    setKnowledgeForm(getFormFromItem(item));
+    setKnowledgeErrorMessage("");
+  }
+
+  function closeKnowledgeModal() {
+    if (knowledgeSaving) return;
+
+    setActiveSection(null);
+    setEditingKnowledgeItemId(null);
+    setKnowledgeForm(emptyKnowledgeForm);
+  }
+
+  async function handleKnowledgeSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!activeSection || !projectId) return;
+
+    if (!knowledgeForm.title.trim()) {
+      setKnowledgeErrorMessage("Title is required.");
+      return;
+    }
+
+    try {
+      setKnowledgeSaving(true);
+      setKnowledgeErrorMessage("");
+
+      const response = await fetch(
+        getKnowledgeEndpoint(projectId, activeSection, editingKnowledgeItemId ?? undefined),
+        {
+          method: editingKnowledgeItemId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...knowledgeForm,
+            title: knowledgeForm.title.trim(),
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to save knowledge item");
+      }
+
+      closeKnowledgeModal();
+      await fetchKnowledgeBase(projectId);
+    } catch (error) {
+      console.error("Save project knowledge item error:", error);
+
+      setKnowledgeErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to save knowledge item"
+      );
+    } finally {
+      setKnowledgeSaving(false);
+    }
+  }
+
+  async function handleDeleteKnowledgeItem(section: KnowledgeSectionKey, item: KnowledgeItem) {
+    if (!projectId) return;
+
+    const confirmed = window.confirm(`Are you sure you want to delete "${item.title}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setKnowledgeErrorMessage("");
+
+      const response = await fetch(getKnowledgeEndpoint(projectId, section, item.id), {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete knowledge item");
+      }
+
+      await fetchKnowledgeBase(projectId);
+    } catch (error) {
+      console.error("Delete project knowledge item error:", error);
+
+      setKnowledgeErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete knowledge item"
+      );
+    }
+  }
+
+  function renderKnowledgeSection(section: KnowledgeSectionKey, items: KnowledgeItem[]) {
+    const config = sectionConfigs[section];
+
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">{config.title}</h2>
+            <p className="mt-1 text-sm text-zinc-500">{config.description}</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => openAddKnowledgeItem(section)}
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            Add Item
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {knowledgeLoading ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              Loading items...
+            </p>
+          ) : items.length === 0 ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              No items added yet.
+            </p>
+          ) : (
+            items.map((item) => (
+              <article
+                key={item.id}
+                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                      Sort Order {item.sort_order ?? 0}
+                    </p>
+                    <h3 className="mt-1 text-base font-semibold text-zinc-900">
+                      {item.title}
+                    </h3>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => openEditKnowledgeItem(section, item)}
+                      className="text-sm font-medium text-zinc-700 hover:text-black"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKnowledgeItem(section, item)}
+                      className="text-sm font-medium text-red-500 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {config.fields.map((field) => {
+                    const value = item[field.key];
+
+                    if (!value) {
+                      return null;
+                    }
+
+                    return (
+                      <div key={field.key}>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          {field.label}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                          {value}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+    );
+  }
 
   if (loading) {
     return (
@@ -102,6 +539,8 @@ export default function ProjectDetailPage() {
     );
   }
 
+  const activeConfig = activeSection ? sectionConfigs[activeSection] : null;
+
   return (
     <main className="min-h-screen bg-white px-8 py-10">
       <div className="mx-auto max-w-6xl">
@@ -114,30 +553,30 @@ export default function ProjectDetailPage() {
         </button>
 
         <div className="mb-8 flex items-start justify-between">
-  <div>
-    <p className="text-sm text-zinc-500">
-      Project Management
-    </p>
+          <div>
+            <p className="text-sm text-zinc-500">
+              Project Management
+            </p>
 
-    <h1 className="mt-2 text-4xl font-semibold tracking-tight text-zinc-900">
-      {project.project_name}
-    </h1>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-zinc-900">
+              {project.project_name}
+            </h1>
 
-    {project.developer && (
-      <p className="mt-2 text-lg text-zinc-500">
-        {project.developer}
-      </p>
-    )}
-  </div>
+            {project.developer && (
+              <p className="mt-2 text-lg text-zinc-500">
+                {project.developer}
+              </p>
+            )}
+          </div>
 
-  <button
-    type="button"
-    onClick={() => router.push(`/projects?edit=${project.id}`)}
-    className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
-  >
-    Edit Project
-  </button>
-</div>
+          <button
+            type="button"
+            onClick={() => router.push(`/projects?edit=${project.id}`)}
+            className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            Edit Project
+          </button>
+        </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-2xl border border-zinc-200 bg-white p-6">
@@ -213,7 +652,117 @@ export default function ProjectDetailPage() {
             {project.notes || "No notes available."}
           </p>
         </div>
+
+        <div className="mt-8 space-y-6">
+          {knowledgeErrorMessage && !activeSection ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+              <p className="text-sm font-medium text-red-700">
+                {knowledgeErrorMessage}
+              </p>
+            </div>
+          ) : null}
+
+          {renderKnowledgeSection("ownStay", ownStayReasons)}
+          {renderKnowledgeSection("investment", investmentReasons)}
+          {renderKnowledgeSection("concern", customerConcerns)}
+        </div>
       </div>
+
+      {activeConfig && activeSection ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">
+                  {editingKnowledgeItemId ? "Edit Item" : "Add Item"}
+                </h2>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  {activeConfig.title}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeKnowledgeModal}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleKnowledgeSubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Title *
+                  </label>
+
+                  <input
+                    value={knowledgeForm.title}
+                    onChange={(event) => updateKnowledgeField("title", event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="Short headline"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Sort Order
+                  </label>
+
+                  <input
+                    type="number"
+                    value={knowledgeForm.sort_order}
+                    onChange={(event) => updateKnowledgeField("sort_order", event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                  />
+                </div>
+
+                {activeConfig.fields.map((field) => (
+                  <div key={field.key}>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      {field.label}
+                    </label>
+
+                    <textarea
+                      rows={4}
+                      value={knowledgeForm[field.key]}
+                      onChange={(event) => updateKnowledgeField(field.key, event.target.value)}
+                      className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+                ))}
+
+                {knowledgeErrorMessage ? (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {knowledgeErrorMessage}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeKnowledgeModal}
+                  disabled={knowledgeSaving}
+                  className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={knowledgeSaving}
+                  className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {knowledgeSaving ? "Saving..." : "Save Item"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
