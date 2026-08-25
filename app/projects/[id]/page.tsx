@@ -64,6 +64,28 @@ type KnowledgeForm = {
   sort_order: string;
 };
 
+type ProjectResource = {
+  id: string;
+  project_id: string;
+  resource_name: string;
+  resource_type: string;
+  description: string | null;
+  external_link: string | null;
+  visibility: string;
+  sort_order: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ProjectResourceForm = {
+  resource_name: string;
+  resource_type: string;
+  description: string;
+  external_link: string;
+  visibility: string;
+  sort_order: string;
+};
+
 type SectionConfig = {
   title: string;
   description: string;
@@ -87,6 +109,28 @@ const emptyKnowledgeForm: KnowledgeForm = {
   suggested_counter: "",
   sort_order: "0",
 };
+
+const emptyResourceForm: ProjectResourceForm = {
+  resource_name: "",
+  resource_type: "Brochure",
+  description: "",
+  external_link: "",
+  visibility: "internal",
+  sort_order: "0",
+};
+
+const resourceTypes = [
+  "Brochure",
+  "Floor Plan",
+  "Price List",
+  "Package",
+  "Sales Kit",
+  "Location Map",
+  "Developer Information",
+  "Video",
+  "Training Material",
+  "Other",
+];
 
 const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
   keySelling: {
@@ -162,6 +206,23 @@ function getFormFromItem(item: KnowledgeItem): KnowledgeForm {
   };
 }
 
+function getResourceEndpoint(projectId: string, itemId?: string) {
+  const baseEndpoint = `/api/projects/${projectId}/resources`;
+
+  return itemId ? `${baseEndpoint}/${itemId}` : baseEndpoint;
+}
+
+function getResourceFormFromItem(item: ProjectResource): ProjectResourceForm {
+  return {
+    resource_name: item.resource_name || "",
+    resource_type: item.resource_type || "Other",
+    description: item.description || "",
+    external_link: item.external_link || "",
+    visibility: item.visibility || "internal",
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -176,6 +237,13 @@ export default function ProjectDetailPage() {
   const [ownStayReasons, setOwnStayReasons] = useState<KnowledgeItem[]>([]);
   const [investmentReasons, setInvestmentReasons] = useState<KnowledgeItem[]>([]);
   const [customerConcerns, setCustomerConcerns] = useState<KnowledgeItem[]>([]);
+  const [projectResources, setProjectResources] = useState<ProjectResource[]>([]);
+  const [resourcesLoading, setResourcesLoading] = useState(true);
+  const [resourcesErrorMessage, setResourcesErrorMessage] = useState("");
+  const [isResourceModalOpen, setIsResourceModalOpen] = useState(false);
+  const [editingResourceId, setEditingResourceId] = useState<string | null>(null);
+  const [resourceForm, setResourceForm] = useState<ProjectResourceForm>(emptyResourceForm);
+  const [resourceSaving, setResourceSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<KnowledgeSectionKey | null>(null);
   const [editingKnowledgeItemId, setEditingKnowledgeItemId] = useState<string | null>(null);
   const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeForm>(emptyKnowledgeForm);
@@ -323,11 +391,98 @@ export default function ProjectDetailPage() {
     }
   }, [projectId]);
 
+  async function fetchProjectResources(id: string) {
+    try {
+      setResourcesLoading(true);
+      setResourcesErrorMessage("");
+
+      const response = await fetch(getResourceEndpoint(id));
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load project resources");
+      }
+
+      setProjectResources(result);
+    } catch (error) {
+      console.error("Load project resources error:", error);
+
+      setResourcesErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load project resources"
+      );
+    } finally {
+      setResourcesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    async function loadProjectResources() {
+      try {
+        setResourcesLoading(true);
+        setResourcesErrorMessage("");
+
+        const response = await fetch(getResourceEndpoint(projectId));
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || "Unable to load project resources");
+        }
+
+        setProjectResources(result);
+      } catch (error) {
+        console.error("Load project resources error:", error);
+
+        setResourcesErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to load project resources"
+        );
+      } finally {
+        setResourcesLoading(false);
+      }
+    }
+
+    if (projectId) {
+      loadProjectResources();
+    }
+  }, [projectId]);
+
   function updateKnowledgeField(field: keyof KnowledgeForm, value: string) {
     setKnowledgeForm((current) => ({
       ...current,
       [field]: value,
     }));
+  }
+
+  function updateResourceField(field: keyof ProjectResourceForm, value: string) {
+    setResourceForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function openAddResource() {
+    setEditingResourceId(null);
+    setResourceForm(emptyResourceForm);
+    setResourcesErrorMessage("");
+    setIsResourceModalOpen(true);
+  }
+
+  function openEditResource(resource: ProjectResource) {
+    setEditingResourceId(resource.id);
+    setResourceForm(getResourceFormFromItem(resource));
+    setResourcesErrorMessage("");
+    setIsResourceModalOpen(true);
+  }
+
+  function closeResourceModal() {
+    if (resourceSaving) return;
+
+    setIsResourceModalOpen(false);
+    setEditingResourceId(null);
+    setResourceForm(emptyResourceForm);
   }
 
   function openAddKnowledgeItem(section: KnowledgeSectionKey) {
@@ -433,6 +588,192 @@ export default function ProjectDetailPage() {
           : "Unable to delete knowledge item"
       );
     }
+  }
+
+  async function handleResourceSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!projectId) return;
+
+    if (!resourceForm.resource_name.trim()) {
+      setResourcesErrorMessage("Resource Name is required.");
+      return;
+    }
+
+    try {
+      setResourceSaving(true);
+      setResourcesErrorMessage("");
+
+      const response = await fetch(
+        getResourceEndpoint(projectId, editingResourceId ?? undefined),
+        {
+          method: editingResourceId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...resourceForm,
+            resource_name: resourceForm.resource_name.trim(),
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to save project resource");
+      }
+
+      closeResourceModal();
+      await fetchProjectResources(projectId);
+    } catch (error) {
+      console.error("Save project resource error:", error);
+
+      setResourcesErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to save project resource"
+      );
+    } finally {
+      setResourceSaving(false);
+    }
+  }
+
+  async function handleDeleteResource(resource: ProjectResource) {
+    if (!projectId) return;
+
+    const confirmed = window.confirm(`Are you sure you want to delete "${resource.resource_name}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setResourcesErrorMessage("");
+
+      const response = await fetch(getResourceEndpoint(projectId, resource.id), {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete project resource");
+      }
+
+      await fetchProjectResources(projectId);
+    } catch (error) {
+      console.error("Delete project resource error:", error);
+
+      setResourcesErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete project resource"
+      );
+    }
+  }
+
+  function renderProjectResources() {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Project Resources</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Sales materials, external documents, and links for agents.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openAddResource}
+            className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            Add Resource
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {resourcesErrorMessage && !isResourceModalOpen ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {resourcesErrorMessage}
+            </div>
+          ) : null}
+
+          {resourcesLoading ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              Loading resources...
+            </p>
+          ) : projectResources.length === 0 ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              No resources added yet.
+            </p>
+          ) : (
+            projectResources.map((resource) => (
+              <article
+                key={resource.id}
+                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700">
+                        {resource.resource_type || "Other"}
+                      </span>
+                      <span className="rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium capitalize text-zinc-500">
+                        {resource.visibility || "internal"}
+                      </span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Sort Order {resource.sort_order ?? 0}
+                      </span>
+                    </div>
+
+                    <h3 className="mt-3 text-base font-semibold text-zinc-900">
+                      {resource.resource_name}
+                    </h3>
+
+                    {resource.description ? (
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                        {resource.description}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {resource.external_link ? (
+                      <a
+                        href={resource.external_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-sm font-medium text-zinc-900 hover:underline"
+                      >
+                        Open Link
+                      </a>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => openEditResource(resource)}
+                      className="text-sm font-medium text-zinc-700 hover:text-black"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteResource(resource)}
+                      className="text-sm font-medium text-red-500 hover:text-red-700"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+    );
   }
 
   function renderKnowledgeSection(section: KnowledgeSectionKey, items: KnowledgeItem[]) {
@@ -696,6 +1037,7 @@ export default function ProjectDetailPage() {
           {renderKnowledgeSection("ownStay", ownStayReasons)}
           {renderKnowledgeSection("investment", investmentReasons)}
           {renderKnowledgeSection("concern", customerConcerns)}
+          {renderProjectResources()}
         </div>
       </div>
 
@@ -788,6 +1130,148 @@ export default function ProjectDetailPage() {
                   className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {knowledgeSaving ? "Saving..." : "Save Item"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {isResourceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">
+                  {editingResourceId ? "Edit Resource" : "Add Resource"}
+                </h2>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  Project Resources
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeResourceModal}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleResourceSubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Resource Name *
+                  </label>
+
+                  <input
+                    value={resourceForm.resource_name}
+                    onChange={(event) => updateResourceField("resource_name", event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="e.g. Project brochure"
+                  />
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Resource Type
+                    </label>
+
+                    <select
+                      value={resourceForm.resource_type}
+                      onChange={(event) => updateResourceField("resource_type", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      {resourceTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Visibility
+                    </label>
+
+                    <select
+                      value={resourceForm.visibility}
+                      onChange={(event) => updateResourceField("visibility", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      <option value="internal">Internal</option>
+                      <option value="customer">Customer</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    External Link
+                  </label>
+
+                  <input
+                    value={resourceForm.external_link}
+                    onChange={(event) => updateResourceField("external_link", event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Sort Order
+                  </label>
+
+                  <input
+                    type="number"
+                    value={resourceForm.sort_order}
+                    onChange={(event) => updateResourceField("sort_order", event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Description
+                  </label>
+
+                  <textarea
+                    rows={4}
+                    value={resourceForm.description}
+                    onChange={(event) => updateResourceField("description", event.target.value)}
+                    className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                  />
+                </div>
+
+                {resourcesErrorMessage ? (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {resourcesErrorMessage}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeResourceModal}
+                  disabled={resourceSaving}
+                  className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={resourceSaving}
+                  className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {resourceSaving ? "Saving..." : "Save Resource"}
                 </button>
               </div>
             </form>
