@@ -8,6 +8,7 @@ type MemberRecord = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
+  birthday: string | null;
   employment_type: string | null;
   position: string | null;
   leader_id: string | number | null;
@@ -19,6 +20,7 @@ type MemberFormState = {
   full_name: string;
   email: string;
   phone: string;
+  birthday: string;
   employment_type: string;
   position: string;
   leader_id: string;
@@ -30,6 +32,7 @@ const initialFormState: MemberFormState = {
   full_name: "",
   email: "",
   phone: "",
+  birthday: "",
   employment_type: "Core Agent",
   position: "Team Leader",
   leader_id: "",
@@ -171,6 +174,7 @@ console.log(filteredMembers);
       full_name: formState.full_name.trim(),
       email: formState.email.trim() || null,
       phone: formState.phone.trim() || null,
+      birthday: formState.birthday || null,
       employment_type: formState.employment_type || null,
       position: formState.position || null,
       leader_id: formState.leader_id || null,
@@ -465,6 +469,7 @@ const handleDelete = async (id: string | number) => {
         full_name: member.full_name || "",
         email: member.email || "",
         phone: member.phone || "",
+        birthday: member.birthday || "",
         employment_type: member.employment_type || "Core Agent",
         position: member.position || "Team Leader",
         leader_id: member.leader_id ? String(member.leader_id) : "",
@@ -563,6 +568,15 @@ const handleDelete = async (id: string | number) => {
               onChange={(event) => setFormState((current) => ({ ...current, phone: event.target.value }))}
               className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
               placeholder="Phone"
+            />
+          </label>
+          <label className="block text-sm text-zinc-600">
+            <span className="mb-1 block font-medium text-zinc-900">Birthday</span>
+            <input
+              type="date"
+              value={formState.birthday}
+              onChange={(event) => setFormState((current) => ({ ...current, birthday: event.target.value }))}
+              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
             />
           </label>
           <label className="block text-sm text-zinc-600">
