@@ -5,6 +5,10 @@ import {
   isMemberStatus,
 } from "@/lib/member-options";
 import {
+  getActiveMemberCount,
+  getScopedHierarchyMembers,
+} from "@/lib/member-hierarchy";
+import {
   canManageMembers,
   requireMembersApiReadAccess,
   requireMembersApiWriteAccess,
@@ -146,48 +150,6 @@ async function buildMemberPayload(
   };
 }
 
-function getScopedMembers(
-  members: MemberDirectoryRow[],
-  currentMemberId: string,
-) {
-  if (!members.some((member) => member.id === currentMemberId)) {
-    return [];
-  }
-
-  const membersByLeader = new Map<string, MemberDirectoryRow[]>();
-
-  for (const member of members) {
-    if (!member.leader_id) continue;
-
-    const directReports = membersByLeader.get(member.leader_id) ?? [];
-    directReports.push(member);
-    membersByLeader.set(member.leader_id, directReports);
-  }
-
-  const allowedMemberIds = new Set<string>();
-  const pendingMemberIds = [currentMemberId];
-
-  while (pendingMemberIds.length > 0) {
-    const memberId = pendingMemberIds.shift();
-
-    if (!memberId || allowedMemberIds.has(memberId)) continue;
-
-    allowedMemberIds.add(memberId);
-
-    for (const directReport of membersByLeader.get(memberId) ?? []) {
-      if (!allowedMemberIds.has(directReport.id)) {
-        pendingMemberIds.push(directReport.id);
-      }
-    }
-  }
-
-  return members.filter((member) => allowedMemberIds.has(member.id));
-}
-
-function getActiveMemberCount(members: MemberDirectoryRow[]) {
-  return members.filter((member) => member.status === "Active").length;
-}
-
 export async function GET() {
   const authorization = await requireMembersApiReadAccess();
 
@@ -234,7 +196,10 @@ export async function GET() {
       );
     }
 
-    const scopedMembers = getScopedMembers(members, authorization.profile.member_id);
+    const scopedMembers = getScopedHierarchyMembers(
+      members,
+      authorization.profile.member_id,
+    );
 
     return NextResponse.json(
       {
