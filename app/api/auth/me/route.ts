@@ -4,6 +4,7 @@ import { getRouteForProfileStatus, type UserProfile } from "@/lib/auth";
 import {
   canManageProjects,
   canManageUserApprovals,
+  canManageUsers,
 } from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 
@@ -67,6 +68,7 @@ export async function GET() {
       isActive: userProfile?.status === "active",
       canManageProjects: canManageProjects(userProfile),
       canManageUserApprovals: canManageUserApprovals(userProfile),
+      canManageUsers: canManageUsers(userProfile),
     });
   } catch (error) {
     console.error("GET /api/auth/me error:", error);
@@ -80,6 +82,7 @@ export async function GET() {
       isActive: false,
       canManageProjects: false,
       canManageUserApprovals: false,
+      canManageUsers: false,
     });
   }
 }

@@ -30,7 +30,7 @@ export function canManageProjects(profile: UserProfile | null) {
 }
 
 export function canManageUsers(profile: UserProfile | null) {
-  return hasRole(profile, ["super_admin"]);
+  return hasRole(profile, ["super_admin", "admin"]);
 }
 
 export function canManageUserApprovals(profile: UserProfile | null) {
@@ -154,6 +154,27 @@ export async function requireUserApprovalAccess() {
   }
 
   if (!canManageUserApprovals(authContext.profile)) {
+    return { authorized: false, response: forbiddenJson() } as const;
+  }
+
+  return { authorized: true, ...authContext } as const;
+}
+
+export async function requireAdminUserManagementAccess() {
+  const authContext = await getAuthenticatedUserProfile();
+
+  if (!authContext) {
+    return { authorized: false, response: unauthorizedJson() } as const;
+  }
+
+  if (!authContext.profile) {
+    return {
+      authorized: false,
+      response: forbiddenJson("User profile is required"),
+    } as const;
+  }
+
+  if (!canManageUsers(authContext.profile)) {
     return { authorized: false, response: forbiddenJson() } as const;
   }
 

@@ -15,7 +15,10 @@ const sidebarItems = [
   {
     label: "Team",
     href: "#",
-    children: [{ label: "Members", href: "/team/members" }],
+    children: [
+      { label: "Members", href: "/team/members" },
+      { label: "User Management", href: "/team/user-management", permission: "canManageUsers" },
+    ],
   },
   {
     label: "Sales",
@@ -58,7 +61,7 @@ function getRoleLabel(role: ReturnType<typeof useAppPermissions>["role"]) {
 export default function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { displayName, role, canManageUserApprovals } = useAppPermissions();
+  const { displayName, role, canManageUserApprovals, canManageUsers } = useAppPermissions();
   const visibleSidebarItems = sidebarItems.map((item) => {
     if (item.label !== "Team") {
       return item;
@@ -67,7 +70,11 @@ export default function AppSidebar() {
     return {
       ...item,
       children: [
-        ...(item.children ?? []),
+        ...((item.children ?? []).filter((child) => {
+          if (child.permission === "canManageUsers") return canManageUsers;
+
+          return true;
+        })),
         ...(canManageUserApprovals
           ? [{ label: "User Approvals", href: "/team/user-approvals" }]
           : []),

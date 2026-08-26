@@ -17,6 +17,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 const memberSelectFields = `
   id,
+  member_code,
   full_name,
   chinese_name,
   email,
@@ -43,6 +44,7 @@ type MemberPayload = {
 
 type MemberDirectoryRow = {
   id: string;
+  member_code: number | null;
   full_name: string | null;
   chinese_name: string | null;
   email: string | null;

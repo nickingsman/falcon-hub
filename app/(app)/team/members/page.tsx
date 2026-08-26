@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppPermissions } from "@/app/(app)/components/AppPermissionProvider";
+import { formatMemberCode, formatMemberDisplayName } from "@/lib/member-display";
 import {
   employmentTypeOptions,
   memberPositionOptions,
@@ -10,6 +11,7 @@ import {
 
 type MemberRecord = {
   id: string;
+  member_code: number | null;
   full_name: string | null;
   chinese_name: string | null;
   email: string | null;
@@ -116,7 +118,12 @@ export default function MembersPage() {
   }, []);
 
   const filteredMembers = members.filter((member) => {
-    const matchSearch = (member.full_name ?? "")
+    const matchSearch = [
+      member.full_name,
+      formatMemberCode(member.member_code),
+    ]
+      .filter(Boolean)
+      .join(" ")
       .toLowerCase()
       .includes(search.toLowerCase());
 
@@ -143,8 +150,7 @@ export default function MembersPage() {
   const leaderMap = useMemo(() => {
     return new Map(
       members
-        .filter((member) => !!member.full_name)
-        .map((member) => [member.id, member.full_name as string]),
+        .map((member) => [member.id, formatMemberDisplayName(member)]),
     );
   }, [members]);
 
@@ -429,7 +435,7 @@ export default function MembersPage() {
                 <option value="All">All</option>
                 {members.map((member) => (
                   <option key={member.id} value={member.id}>
-                    {member.full_name || "Unnamed member"}
+                    {formatMemberDisplayName(member)}
                   </option>
                 ))}
               </select>
@@ -496,7 +502,7 @@ export default function MembersPage() {
                           </div>
                         </td>
                         <td className="px-4 py-4 font-medium text-zinc-900">
-                          {member.full_name || "Unnamed member"}
+                          {formatMemberDisplayName(member)}
                         </td>
                         <td className="px-4 py-4">{member.position || "-"}</td>
                         <td className="px-4 py-4">{member.employment_type || "-"}</td>
@@ -663,7 +669,7 @@ export default function MembersPage() {
                   <option value="">No leader</option>
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.full_name || "Unnamed member"}
+                      {formatMemberDisplayName(member)}
                     </option>
                   ))}
                 </select>

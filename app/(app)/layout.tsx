@@ -6,6 +6,7 @@ import {
 import {
   canManageProjects,
   canManageUserApprovals,
+  canManageUsers,
 } from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
@@ -64,6 +65,7 @@ export default async function AppLayout({
     isActive: profile?.status === "active",
     canManageProjects: canManageProjects(profile),
     canManageUserApprovals: canManageUserApprovals(profile),
+    canManageUsers: canManageUsers(profile),
   };
 
   return (

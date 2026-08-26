@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { UserRole } from "@/lib/auth";
+import { formatMemberDisplayName } from "@/lib/member-display";
 import { employmentTypeOptions } from "@/lib/member-options";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
@@ -14,6 +15,7 @@ type PendingRegistration = {
 
 type LeaderOption = {
   id: string;
+  member_code: number | null;
   full_name: string | null;
   position: string | null;
   employment_type: string | null;
@@ -419,7 +421,7 @@ export default function UserApprovalsPage() {
                     <option value="">No leader</option>
                     {leaderOptions.map((leader) => (
                       <option key={leader.id} value={leader.id}>
-                        {leader.full_name || "Unnamed member"}
+                        {formatMemberDisplayName(leader)}
                         {leader.position ? ` - ${leader.position}` : ""}
                       </option>
                     ))}

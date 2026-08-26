@@ -9,6 +9,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 const memberSelectFields = `
   id,
+  member_code,
   full_name,
   chinese_name,
   email,
