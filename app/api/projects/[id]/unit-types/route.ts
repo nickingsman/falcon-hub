@@ -248,7 +248,7 @@ function validateUnitTypePayload(payload: ReturnType<typeof getUnitTypePayload>)
   return null;
 }
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
   const authorization = await requireProjectApiReadAccess();
 
   if (!authorization.authorized) {
@@ -257,6 +257,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   try {
     const { id } = await params;
+    const audience = new URL(request.url).searchParams.get("audience");
     const supabase = createSupabaseAdminClient();
     const { data, error } = await supabase
       .from("project_unit_types")
@@ -287,7 +288,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
       throw error;
     }
 
-    const includeInternalMedia = canViewInternalProjectMedia(authorization.profile);
+    const includeInternalMedia =
+      audience === "customer" ? false : canViewInternalProjectMedia(authorization.profile);
     const response = await Promise.all(
       ((data ?? []) as UnitTypeRow[]).map((unitType) =>
         toUnitTypeResponse(supabase, unitType, includeInternalMedia),
