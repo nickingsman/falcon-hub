@@ -23,6 +23,17 @@ function getFallbackDisplayName(user: User) {
   );
 }
 
+function parseMemberCode(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 export async function GET() {
   try {
     const supabase = await createSupabaseSsrClient();
@@ -42,11 +53,12 @@ export async function GET() {
       .maybeSingle();
 
     let memberDisplayName: string | null = null;
+    let memberCode: number | null = null;
 
     if (profile?.member_id) {
       const { data: member } = await supabase
         .from("users")
-        .select("full_name")
+        .select("full_name, member_code")
         .eq("id", profile.member_id)
         .maybeSingle();
 
@@ -54,6 +66,7 @@ export async function GET() {
         typeof member?.full_name === "string" && member.full_name.trim()
           ? member.full_name.trim()
           : null;
+      memberCode = parseMemberCode(member?.member_code);
     }
 
     const displayName = memberDisplayName || getFallbackDisplayName(userData.user);
@@ -61,6 +74,7 @@ export async function GET() {
 
     return NextResponse.json({
       displayName,
+      memberCode,
       email: userData.user.email ?? null,
       role: userProfile?.role ?? null,
       status: userProfile?.status ?? null,
@@ -75,6 +89,7 @@ export async function GET() {
 
     return NextResponse.json({
       displayName: "User",
+      memberCode: null,
       email: null,
       role: null,
       status: null,

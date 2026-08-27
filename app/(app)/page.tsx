@@ -200,6 +200,11 @@ export default function Home() {
       subtitle: "Open your team directory",
       href: "/team/members",
     },
+    {
+      title: "ROI Calculator",
+      subtitle: "Estimate property investment returns",
+      href: "/tools/roi-calculator",
+    },
     ...(canManageUserApprovals
       ? [
           {

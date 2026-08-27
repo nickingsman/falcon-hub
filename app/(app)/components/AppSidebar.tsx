@@ -7,7 +7,7 @@ import { useAppPermissions } from "./AppPermissionProvider";
 const sidebarItems = [
   { label: "Dashboard", href: "/" },
   { label: "Projects", href: "/projects" },
-  { label: "ROI Calculator", href: "#" },
+  { label: "ROI Calculator", href: "/tools/roi-calculator" },
   { label: "DSR Calculator", href: "#" },
   { label: "Proposal Generator", href: "#" },
   { label: "Check In", href: "#" },
@@ -40,6 +40,10 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 
   if (item.label === "Team") {
     return pathname.startsWith("/team/");
+  }
+
+  if (item.label === "ROI Calculator") {
+    return pathname === "/tools/roi-calculator";
   }
 
   return false;

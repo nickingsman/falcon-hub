@@ -5,6 +5,7 @@ import type { UserRole } from "@/lib/auth";
 
 type AppPermissions = {
   displayName: string;
+  memberCode: number | null;
   email: string | null;
   role: UserRole | null;
   isActive: boolean;
@@ -15,6 +16,7 @@ type AppPermissions = {
 
 const readOnlyPermissions: AppPermissions = {
   displayName: "User",
+  memberCode: null,
   email: null,
   role: null,
   isActive: false,

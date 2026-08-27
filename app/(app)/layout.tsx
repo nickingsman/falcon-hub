@@ -14,6 +14,17 @@ import AppSidebar from "./components/AppSidebar";
 
 export const dynamic = "force-dynamic";
 
+function parseMemberCode(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 export default async function AppLayout({
   children,
 }: Readonly<{
@@ -31,12 +42,13 @@ export default async function AppLayout({
   }
 
   let memberDisplayName: string | null = null;
+  let memberCode: number | null = null;
 
   if (profile?.member_id) {
     const supabase = await createSupabaseSsrClient();
     const { data: member } = await supabase
       .from("users")
-      .select("full_name")
+      .select("full_name, member_code")
       .eq("id", profile.member_id)
       .maybeSingle();
 
@@ -44,6 +56,7 @@ export default async function AppLayout({
       typeof member?.full_name === "string" && member.full_name.trim()
         ? member.full_name.trim()
         : null;
+    memberCode = parseMemberCode(member?.member_code);
   }
 
   const metadataFullName = authContext?.user.user_metadata?.full_name;
@@ -60,6 +73,7 @@ export default async function AppLayout({
     "User";
   const permissions = {
     displayName,
+    memberCode,
     email: authContext?.user.email ?? null,
     role: profile?.role ?? null,
     isActive: profile?.status === "active",
