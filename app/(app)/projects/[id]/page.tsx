@@ -17,6 +17,7 @@ type Project = {
   total_units: number | null;
   status: string | null;
   launch_date: string | null;
+  unit_number_format: string | null;
   notes: string | null;
 };
 
@@ -473,6 +474,14 @@ function getCarparkDisplay(unitType: ProjectUnitType) {
   return unitType.carpark_description
     ? `${unitType.default_carparks} (${unitType.carpark_description})`
     : String(unitType.default_carparks);
+}
+
+function getUnitNumberFormatLabel(value: string | null) {
+  if (value === "tower-floor-stack") return "Tower - Floor - Stack";
+  if (value === "floor-stack") return "Floor - Stack";
+  if (value === "manual") return "Manual Detection";
+
+  return "Manual / Unconfigured";
 }
 
 export default function ProjectDetailPage() {
@@ -2481,6 +2490,15 @@ export default function ProjectDetailPage() {
               {project.title_type || "—"}
             </p>
           </div>
+
+          {canManageProjects ? (
+            <div className="rounded-2xl border border-zinc-200 bg-white p-6">
+              <p className="text-sm text-zinc-500">Unit Number Format</p>
+              <p className="mt-2 text-lg font-medium text-zinc-900">
+                {getUnitNumberFormatLabel(project.unit_number_format)}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">

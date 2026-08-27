@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProjectMediaRow } from "@/lib/project-content";
 import { toProjectMediaResponse } from "@/lib/project-content";
+import {
+  normalizeStackCodeForMatching,
+  normalizeTowerCode,
+  stackCodesMatch,
+} from "@/lib/unit-number-format";
 
 export type FloorPlanRow = {
   id: string;
@@ -46,37 +51,11 @@ export type FloorPlanStackPayload = {
   sort_order: number;
 };
 
-export function normalizeTowerCode(value: string | null | undefined) {
-  const trimmed = value?.trim();
-
-  return trimmed ? trimmed.toUpperCase() : null;
-}
-
-export function normalizeStackCodeForMatching(value: string) {
-  const trimmed = value.trim();
-
-  if (/^\d+$/.test(trimmed)) {
-    return {
-      kind: "numeric" as const,
-      value: String(Number(trimmed)),
-    };
-  }
-
-  return {
-    kind: "text" as const,
-    value: trimmed,
-  };
-}
-
 export function stackCodesConflict(left: string, right: string) {
-  const normalizedLeft = normalizeStackCodeForMatching(left);
-  const normalizedRight = normalizeStackCodeForMatching(right);
-
-  return (
-    normalizedLeft.kind === normalizedRight.kind &&
-    normalizedLeft.value === normalizedRight.value
-  );
+  return stackCodesMatch(left, right);
 }
+
+export { normalizeStackCodeForMatching, normalizeTowerCode };
 
 export function validateCoordinatePayload(payload: FloorPlanStackPayload) {
   const values = [

@@ -17,6 +17,7 @@ type Project = {
   total_units: number | null;
   status: string | null;
   launch_date: string | null;
+  unit_number_format: string | null;
   notes: string | null;
   is_deleted: boolean;
 };
@@ -32,6 +33,7 @@ type ProjectForm = {
   total_units: string;
   status: string;
   launch_date: string;
+  unit_number_format: string;
   notes: string;
 };
 
@@ -46,6 +48,7 @@ const emptyForm: ProjectForm = {
   total_units: "",
   status: "Active",
   launch_date: "",
+  unit_number_format: "",
   notes: "",
 };
 
@@ -81,6 +84,7 @@ export default function ProjectsPage() {
         : "",
     status: project.status || "Active",
     launch_date: project.launch_date || "",
+    unit_number_format: project.unit_number_format || "",
     notes: project.notes || "",
   });
 
@@ -730,6 +734,36 @@ if (projectsResponse.ok) {
                         }
                         className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900"
                       />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Unit Number Format
+                      </label>
+
+                      <select
+                        value={form.unit_number_format}
+                        onChange={(e) =>
+                          updateField(
+                            "unit_number_format",
+                            e.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">
+                          Manual / Unconfigured
+                        </option>
+                        <option value="tower-floor-stack">
+                          Tower - Floor - Stack (A-15-10)
+                        </option>
+                        <option value="floor-stack">
+                          Floor - Stack (15-10)
+                        </option>
+                        <option value="manual">
+                          Manual Detection
+                        </option>
+                      </select>
                     </div>
 
                     <div className="md:col-span-2">

@@ -4,6 +4,13 @@ import {
   requireProjectApiReadAccess,
   requireProjectApiWriteAccess,
 } from "@/lib/permissions";
+import { isUnitNumberFormat } from "@/lib/unit-number-format";
+
+function normalizeProjectUnitNumberFormat(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+
+  return isUnitNumberFormat(value) ? value : undefined;
+}
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -39,6 +46,7 @@ export async function GET(
         total_units,
         status,
         launch_date,
+        unit_number_format,
         notes,
         is_deleted
       `)
@@ -79,6 +87,14 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const unitNumberFormat = normalizeProjectUnitNumberFormat(body.unit_number_format);
+
+    if (unitNumberFormat === undefined) {
+      return NextResponse.json(
+        { error: "Invalid Unit Number Format" },
+        { status: 400 },
+      );
+    }
 
     const supabase = createSupabaseAdminClient();
 
@@ -99,6 +115,7 @@ export async function PATCH(
           : null,
         status: body.status || "Active",
         launch_date: body.launch_date || null,
+        unit_number_format: unitNumberFormat,
         notes: body.notes || null,
       })
       .eq("id", id)

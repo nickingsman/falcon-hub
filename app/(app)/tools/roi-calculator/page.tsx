@@ -10,6 +10,13 @@ import {
   type RoiCalculatorResult,
 } from "@/lib/property-finance";
 import { formatMemberDisplayName } from "@/lib/member-display";
+import {
+  normalizeTowerCode,
+  parseUnitNumber,
+  stackCodesMatch,
+  type ParsedUnitNumber,
+  type UnitNumberFormat,
+} from "@/lib/unit-number-format";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type CalculatorForm = {
@@ -78,6 +85,7 @@ const falconLoanDisbursementEstimate = 1200;
 type ProjectOption = {
   id: string;
   project_name: string;
+  unit_number_format: UnitNumberFormat | null;
 };
 
 type ProjectLayout = {
@@ -110,6 +118,48 @@ type ProjectUnitType = {
   furnishing_package: FurnishingPackage | null;
 };
 
+type FloorPlanStack = {
+  id: string;
+  stack_code: string;
+  unit_type_id: string | null;
+  x_percent: number;
+  y_percent: number;
+  width_percent: number;
+  height_percent: number;
+  unit_type?: {
+    id: string;
+    type_code: string;
+    type_name: string | null;
+    display_configuration: string | null;
+  } | null;
+};
+
+type ProjectFloorPlan = {
+  id: string;
+  name: string;
+  tower_code: string | null;
+  media_id: string | null;
+  floor_from: number;
+  floor_to: number;
+  media: ProjectLayout | null;
+  stacks: FloorPlanStack[];
+};
+
+type FloorPlanPresentationSnapshot = {
+  floorPlanName: string;
+  towerCode: string | null;
+  floorFrom: number;
+  floorTo: number;
+  media: ProjectLayout | null;
+  stackCode: string;
+  stack: {
+    x_percent: number;
+    y_percent: number;
+    width_percent: number;
+    height_percent: number;
+  };
+};
+
 type UnitPresentationSnapshot = {
   projectName: string;
   typeCode: string;
@@ -119,6 +169,17 @@ type UnitPresentationSnapshot = {
   carpark: string;
   layout: ProjectLayout | null;
   furnishingPackage: FurnishingPackage | null;
+};
+
+type DetectionStatus = "manual" | "auto" | "partial" | "not_detected" | "conflict" | "mismatch";
+
+type UnitDetectionState = {
+  status: DetectionStatus;
+  message: string;
+  parsed: ParsedUnitNumber;
+  floorPlan: ProjectFloorPlan | null;
+  stack: FloorPlanStack | null;
+  requiresConfirmation: boolean;
 };
 
 const defaultPurchaseCosts: PurchaseCostItem[] = [
@@ -503,8 +564,33 @@ function getUnitPresentationSnapshot(
   };
 }
 
-function shouldRenderUnitPresentation(snapshot: UnitPresentationSnapshot | null) {
-  return Boolean(snapshot?.layout?.signed_url);
+function getFloorPlanPresentationSnapshot(
+  floorPlan: ProjectFloorPlan | null,
+  stack: FloorPlanStack | null,
+): FloorPlanPresentationSnapshot | null {
+  if (!floorPlan?.media?.signed_url || !stack) return null;
+
+  return {
+    floorPlanName: floorPlan.name,
+    towerCode: floorPlan.tower_code,
+    floorFrom: floorPlan.floor_from,
+    floorTo: floorPlan.floor_to,
+    media: floorPlan.media,
+    stackCode: stack.stack_code,
+    stack: {
+      x_percent: stack.x_percent,
+      y_percent: stack.y_percent,
+      width_percent: stack.width_percent,
+      height_percent: stack.height_percent,
+    },
+  };
+}
+
+function shouldRenderUnitPresentation(
+  snapshot: UnitPresentationSnapshot | null,
+  floorPlanSnapshot: FloorPlanPresentationSnapshot | null,
+) {
+  return Boolean(snapshot?.layout?.signed_url || floorPlanSnapshot?.media?.signed_url);
 }
 
 function proposalUnitInfoField(label: string, value: string) {
@@ -528,6 +614,179 @@ function buildFurnishingItem(item: FurnishingItem) {
       ${item.description ? `<span>${escapeHtml(item.description)}</span>` : ""}
     </li>
   `;
+}
+
+function getProjectUnitNumberFormat(project: ProjectOption | undefined) {
+  return project?.unit_number_format ?? "manual";
+}
+
+function getDetectionLabel(status: DetectionStatus) {
+  if (status === "auto") return "Auto-detected";
+  if (status === "partial") return "Partially detected";
+  if (status === "conflict") return "Conflict";
+  if (status === "mismatch") return "Unit Type mismatch";
+  if (status === "not_detected") return "Not detected";
+
+  return "Manual";
+}
+
+function getFloorPlanLabel(floorPlan: ProjectFloorPlan) {
+  const tower = floorPlan.tower_code ? `Tower ${floorPlan.tower_code}` : "No Tower";
+
+  return `${tower} · Floors ${floorPlan.floor_from}-${floorPlan.floor_to}`;
+}
+
+function getMappedUnitTypeLabel(unitType: FloorPlanStack["unit_type"]) {
+  if (!unitType) return "No Unit Type";
+
+  return [unitType.type_code, unitType.display_configuration, unitType.type_name]
+    .filter(Boolean)
+    .join(" - ");
+}
+
+function getApplicableFloorPlans(
+  floorPlans: ProjectFloorPlan[],
+  parsed: ParsedUnitNumber,
+) {
+  if (!parsed.detected) return [];
+
+  return floorPlans.filter(
+    (floorPlan) =>
+      normalizeTowerCode(floorPlan.tower_code) === parsed.towerCode &&
+      floorPlan.floor_from <= parsed.floor &&
+      floorPlan.floor_to >= parsed.floor,
+  );
+}
+
+function findMatchingStack(floorPlan: ProjectFloorPlan, stackCode: string) {
+  return floorPlan.stacks.filter((stack) => stackCodesMatch(stack.stack_code, stackCode));
+}
+
+function buildDetectionState({
+  unitNumber,
+  format,
+  floorPlans,
+  selectedUnitTypeId,
+  manualFloorPlanId,
+  manualStackId,
+}: {
+  unitNumber: string;
+  format: UnitNumberFormat | null;
+  floorPlans: ProjectFloorPlan[];
+  selectedUnitTypeId: string;
+  manualFloorPlanId: string;
+  manualStackId: string;
+}): UnitDetectionState {
+  const parsed = parseUnitNumber(unitNumber, format);
+  const manualFloorPlan = floorPlans.find((floorPlan) => floorPlan.id === manualFloorPlanId) ?? null;
+  const manualStack =
+    manualFloorPlan?.stacks.find((stack) => stack.id === manualStackId) ?? null;
+
+  if (manualFloorPlan && manualStack) {
+    return {
+      status: "manual",
+      message: "Manual Floor Plan and Stack selected.",
+      parsed,
+      floorPlan: manualFloorPlan,
+      stack: manualStack,
+      requiresConfirmation: false,
+    };
+  }
+
+  if (format === "manual" || !format) {
+    return {
+      status: "manual",
+      message: "Select a Floor Plan and Stack for proposal highlighting.",
+      parsed,
+      floorPlan: manualFloorPlan,
+      stack: null,
+      requiresConfirmation: false,
+    };
+  }
+
+  if (!parsed.detected) {
+    return {
+      status: unitNumber.trim() ? "not_detected" : "manual",
+      message: unitNumber.trim()
+        ? "Unit Number does not match the configured Project format."
+        : "Enter a Unit Number or select a Floor Plan and Stack manually.",
+      parsed,
+      floorPlan: manualFloorPlan,
+      stack: null,
+      requiresConfirmation: false,
+    };
+  }
+
+  const applicableFloorPlans = getApplicableFloorPlans(floorPlans, parsed);
+
+  if (applicableFloorPlans.length === 0) {
+    return {
+      status: "partial",
+      message: "Unit Number was parsed, but no matching customer-visible Floor Plan was found.",
+      parsed,
+      floorPlan: manualFloorPlan,
+      stack: null,
+      requiresConfirmation: false,
+    };
+  }
+
+  if (applicableFloorPlans.length > 1) {
+    return {
+      status: "conflict",
+      message: "Multiple Floor Plans match this Unit Number. Select one manually.",
+      parsed,
+      floorPlan: manualFloorPlan,
+      stack: null,
+      requiresConfirmation: false,
+    };
+  }
+
+  const [floorPlan] = applicableFloorPlans;
+  const matchingStacks = findMatchingStack(floorPlan, parsed.stackCode);
+
+  if (matchingStacks.length === 0) {
+    return {
+      status: "partial",
+      message: "Floor Plan found, but no matching Stack Mapping was found.",
+      parsed,
+      floorPlan,
+      stack: null,
+      requiresConfirmation: false,
+    };
+  }
+
+  if (matchingStacks.length > 1) {
+    return {
+      status: "conflict",
+      message: "Multiple Stack Mappings match this Unit Number. Select one manually.",
+      parsed,
+      floorPlan,
+      stack: null,
+      requiresConfirmation: false,
+    };
+  }
+
+  const [stack] = matchingStacks;
+
+  if (stack.unit_type_id && selectedUnitTypeId && stack.unit_type_id !== selectedUnitTypeId) {
+    return {
+      status: "mismatch",
+      message: `Detected Stack ${stack.stack_code} is mapped to ${getMappedUnitTypeLabel(stack.unit_type)}, while the selected ROI Unit Type is different. Confirm manually before highlighting.`,
+      parsed,
+      floorPlan,
+      stack,
+      requiresConfirmation: true,
+    };
+  }
+
+  return {
+    status: "auto",
+    message: `Stack ${stack.stack_code} matched from Unit Number.`,
+    parsed,
+    floorPlan,
+    stack,
+    requiresConfirmation: false,
+  };
 }
 
 function calculateTotalCashback(result: RoiCalculatorResult) {
@@ -616,6 +875,7 @@ function buildRoiProposalHtml({
   result,
   preparedBy,
   unitPresentation,
+  floorPlanPresentation,
   purchaseCosts,
 }: {
   form: CalculatorForm;
@@ -629,10 +889,14 @@ function buildRoiProposalHtml({
   result: RoiCalculatorResult;
   preparedBy: string;
   unitPresentation: UnitPresentationSnapshot | null;
+  floorPlanPresentation: FloorPlanPresentationSnapshot | null;
   purchaseCosts: ResolvedPurchaseCostItem[];
 }) {
   const projectName = form.projectName.trim() || "Property ROI Proposal";
-  const renderUnitPresentation = shouldRenderUnitPresentation(unitPresentation);
+  const renderUnitPresentation = shouldRenderUnitPresentation(
+    unitPresentation,
+    floorPlanPresentation,
+  );
   const totalCashback = calculateTotalCashback(result);
   const monthlyCashFlow = result.monthlyCashFlow ?? 0;
   const purchaseCostRows = purchaseCosts.map(purchaseCostPdfRow).join("");
@@ -713,20 +977,62 @@ function buildRoiProposalHtml({
         </div>
       </section>
 
-      ${
-        unitPresentation?.layout?.signed_url
-          ? `<section class="section wide layout-section">
-              <div class="section-heading-row">
-                <h2>Layout Plan</h2>
-                <span>${escapeHtml(unitPresentation.layout.title || "Unit Layout")}</span>
-              </div>
-              <div class="layout-frame">
-                <img src="${escapeHtml(unitPresentation.layout.signed_url)}" alt="${escapeHtml(unitPresentation.layout.title || "Unit layout")}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                <div class="layout-unavailable">Layout plan unavailable</div>
-              </div>
-            </section>`
-          : ""
-      }
+      <section class="visual-grid ${unitPresentation?.layout?.signed_url && floorPlanPresentation?.media?.signed_url ? "" : "single"}">
+        ${
+          unitPresentation?.layout?.signed_url
+            ? `<div class="section layout-section">
+                <div class="section-heading-row">
+                  <h2>Layout Plan</h2>
+                  <span>${escapeHtml(unitPresentation.layout.title || "Unit Layout")}</span>
+                </div>
+                <div class="layout-frame">
+                  <img src="${escapeHtml(unitPresentation.layout.signed_url)}" alt="${escapeHtml(unitPresentation.layout.title || "Unit layout")}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                  <div class="layout-unavailable">Layout plan unavailable</div>
+                </div>
+              </div>`
+            : ""
+        }
+        ${
+          floorPlanPresentation?.media?.signed_url
+            ? `<div class="section floor-plan-section">
+                <div class="section-heading-row">
+                  <h2>Floor Plan</h2>
+                  <span>${escapeHtml(getFloorPlanLabel({
+                    id: "",
+                    name: floorPlanPresentation.floorPlanName,
+                    tower_code: floorPlanPresentation.towerCode,
+                    media_id: null,
+                    floor_from: floorPlanPresentation.floorFrom,
+                    floor_to: floorPlanPresentation.floorTo,
+                    media: null,
+                    stacks: [],
+                  }))}</span>
+                </div>
+                <div class="floor-plan-frame">
+                  <div class="floor-plan-image-wrap">
+                    <img src="${escapeHtml(floorPlanPresentation.media.signed_url)}" alt="${escapeHtml(floorPlanPresentation.media.title || "Floor plan")}" onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling.style.display='flex';" />
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      <rect
+                        x="${floorPlanPresentation.stack.x_percent}"
+                        y="${floorPlanPresentation.stack.y_percent}"
+                        width="${floorPlanPresentation.stack.width_percent}"
+                        height="${floorPlanPresentation.stack.height_percent}"
+                        rx="0.8"
+                      ></rect>
+                      <text
+                        x="${Math.max(Math.min(floorPlanPresentation.stack.x_percent + floorPlanPresentation.stack.width_percent / 2, 96), 4)}"
+                        y="${Math.max(floorPlanPresentation.stack.y_percent - 1.2, 3)}"
+                        text-anchor="middle"
+                      >YOUR UNIT</text>
+                    </svg>
+                  </div>
+                  <div class="layout-unavailable">Floor plan unavailable</div>
+                </div>
+                <p class="floor-plan-caption">Highlighted Stack ${escapeHtml(floorPlanPresentation.stackCode)}</p>
+              </div>`
+            : ""
+        }
+      </section>
 
     </main>`
     : "";
@@ -1044,6 +1350,21 @@ function buildRoiProposalHtml({
       .layout-section {
         margin-top: 10px;
       }
+      .visual-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .visual-grid.single {
+        grid-template-columns: 1fr;
+      }
+      .visual-grid.single .layout-frame {
+        height: 158mm;
+      }
+      .visual-grid.single .floor-plan-frame {
+        min-height: 158mm;
+      }
       .section-heading-row {
         display: flex;
         justify-content: space-between;
@@ -1056,7 +1377,7 @@ function buildRoiProposalHtml({
       }
       .layout-frame {
         margin-top: 8px;
-        height: 158mm;
+        height: 152mm;
         border: 1px solid #e4e4e7;
         border-radius: 12px;
         background: #fafafa;
@@ -1081,6 +1402,58 @@ function buildRoiProposalHtml({
         justify-content: center;
         color: #71717a;
         font-size: 11px;
+      }
+      .floor-plan-frame {
+        margin-top: 8px;
+        min-height: 152mm;
+        border: 1px solid #e4e4e7;
+        border-radius: 12px;
+        background: #fafafa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .floor-plan-image-wrap {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+        max-height: 152mm;
+      }
+      .floor-plan-image-wrap img {
+        display: block;
+        max-width: 100%;
+        max-height: 152mm;
+        width: auto;
+        height: auto;
+      }
+      .floor-plan-image-wrap svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+      .floor-plan-image-wrap rect {
+        fill: rgba(139, 58, 58, 0.22);
+        stroke: #8B3A3A;
+        stroke-width: 0.9;
+        vector-effect: non-scaling-stroke;
+      }
+      .floor-plan-image-wrap text {
+        fill: #8B3A3A;
+        font-size: 3px;
+        font-weight: 800;
+        paint-order: stroke;
+        stroke: #ffffff;
+        stroke-width: 0.65;
+        stroke-linejoin: round;
+      }
+      .floor-plan-caption {
+        margin: 6px 0 0;
+        color: #52525b;
+        font-size: 9px;
+        font-weight: 700;
       }
       .furnishing-section {
         margin-top: 8px;
@@ -1433,6 +1806,11 @@ export default function RoiCalculatorPage() {
   const [isLoadingUnitTypes, setIsLoadingUnitTypes] = useState(false);
   const [selectedUnitTypeId, setSelectedUnitTypeId] = useState("");
   const [unitPresentation, setUnitPresentation] = useState<UnitPresentationSnapshot | null>(null);
+  const [floorPlans, setFloorPlans] = useState<ProjectFloorPlan[]>([]);
+  const [floorPlansError, setFloorPlansError] = useState("");
+  const [isLoadingFloorPlans, setIsLoadingFloorPlans] = useState(false);
+  const [manualFloorPlanId, setManualFloorPlanId] = useState("");
+  const [manualStackId, setManualStackId] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1635,12 +2013,37 @@ export default function RoiCalculatorPage() {
     }
   }
 
+  async function loadFloorPlans(projectId: string) {
+    setIsLoadingFloorPlans(true);
+    setFloorPlansError("");
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/floor-plans?audience=customer`);
+
+      if (!response.ok) {
+        throw new Error("Unable to load Floor Plans");
+      }
+
+      const data = (await response.json()) as ProjectFloorPlan[];
+      setFloorPlans(data);
+    } catch (error) {
+      setFloorPlans([]);
+      setFloorPlansError(error instanceof Error ? error.message : "Unable to load Floor Plans");
+    } finally {
+      setIsLoadingFloorPlans(false);
+    }
+  }
+
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId);
     setSelectedUnitTypeId("");
     setUnitTypes([]);
     setUnitTypesError("");
     setUnitPresentation(null);
+    setFloorPlans([]);
+    setFloorPlansError("");
+    setManualFloorPlanId("");
+    setManualStackId("");
 
     const selectedProject = projects.find((project) => project.id === projectId);
 
@@ -1650,6 +2053,7 @@ export default function RoiCalculatorPage() {
 
     if (projectId) {
       void loadUnitTypes(projectId);
+      void loadFloorPlans(projectId);
     }
   }
 
@@ -1669,8 +2073,16 @@ export default function RoiCalculatorPage() {
     setUnitPresentation(snapshot);
   }
 
+  function handleUnitNumberChange(unitNumber: string) {
+    updateField("unitNumber", unitNumber);
+    setManualFloorPlanId("");
+    setManualStackId("");
+  }
+
   function handleUnitTypeChange(unitTypeId: string) {
     setSelectedUnitTypeId(unitTypeId);
+    setManualFloorPlanId("");
+    setManualStackId("");
 
     const selectedUnitType = unitTypes.find((unitType) => unitType.id === unitTypeId);
 
@@ -1681,6 +2093,48 @@ export default function RoiCalculatorPage() {
 
     applyUnitTypeSnapshot(selectedUnitType);
   }
+
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const unitNumberFormat = getProjectUnitNumberFormat(selectedProject);
+  const detectionState = useMemo(
+    () =>
+      buildDetectionState({
+        unitNumber: form.unitNumber,
+        format: unitNumberFormat,
+        floorPlans,
+        selectedUnitTypeId,
+        manualFloorPlanId,
+        manualStackId,
+      }),
+    [
+      floorPlans,
+      form.unitNumber,
+      manualFloorPlanId,
+      manualStackId,
+      selectedUnitTypeId,
+      unitNumberFormat,
+    ],
+  );
+  const availableManualFloorPlans = useMemo(() => {
+    if (!detectionState.parsed.detected) return floorPlans;
+
+    const parsedMatches = getApplicableFloorPlans(floorPlans, detectionState.parsed);
+
+    return parsedMatches.length > 0 ? parsedMatches : floorPlans;
+  }, [detectionState.parsed, floorPlans]);
+  const activeManualFloorPlan =
+    availableManualFloorPlans.find((floorPlan) => floorPlan.id === manualFloorPlanId) ??
+    detectionState.floorPlan ??
+    null;
+  const activeManualStacks = activeManualFloorPlan?.stacks ?? [];
+  const confirmedFloorPlan =
+    detectionState.requiresConfirmation && !manualStackId ? null : detectionState.floorPlan;
+  const confirmedStack =
+    detectionState.requiresConfirmation && !manualStackId ? null : detectionState.stack;
+  const floorPlanPresentation = getFloorPlanPresentationSnapshot(
+    confirmedFloorPlan,
+    confirmedStack,
+  );
 
   async function getFreshUnitPresentationForExport() {
     if (!selectedProjectId || !selectedUnitTypeId) return unitPresentation;
@@ -1704,6 +2158,40 @@ export default function RoiCalculatorPage() {
       return getUnitPresentationSnapshot(selectedProjectName, freshUnitType);
     } catch {
       return unitPresentation;
+    }
+  }
+
+  async function getFreshFloorPlanPresentationForExport() {
+    if (!selectedProjectId) return floorPlanPresentation;
+
+    try {
+      const response = await fetch(
+        `/api/projects/${selectedProjectId}/floor-plans?audience=customer`,
+      );
+
+      if (!response.ok) return floorPlanPresentation;
+
+      const freshFloorPlans = (await response.json()) as ProjectFloorPlan[];
+      const freshDetectionState = buildDetectionState({
+        unitNumber: form.unitNumber,
+        format: unitNumberFormat,
+        floorPlans: freshFloorPlans,
+        selectedUnitTypeId,
+        manualFloorPlanId,
+        manualStackId,
+      });
+      const freshConfirmedFloorPlan =
+        freshDetectionState.requiresConfirmation && !manualStackId
+          ? null
+          : freshDetectionState.floorPlan;
+      const freshConfirmedStack =
+        freshDetectionState.requiresConfirmation && !manualStackId
+          ? null
+          : freshDetectionState.stack;
+
+      return getFloorPlanPresentationSnapshot(freshConfirmedFloorPlan, freshConfirmedStack);
+    } catch {
+      return floorPlanPresentation;
     }
   }
 
@@ -1752,7 +2240,10 @@ export default function RoiCalculatorPage() {
   async function handleExportPdf() {
     if (hasBlockingValidation) return;
 
-    const freshUnitPresentation = await getFreshUnitPresentationForExport();
+    const [freshUnitPresentation, freshFloorPlanPresentation] = await Promise.all([
+      getFreshUnitPresentationForExport(),
+      getFreshFloorPlanPresentationForExport(),
+    ]);
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -1771,6 +2262,7 @@ export default function RoiCalculatorPage() {
           member_code: memberCode,
         }),
         unitPresentation: freshUnitPresentation,
+        floorPlanPresentation: freshFloorPlanPresentation,
         purchaseCosts: resolvedPurchaseCosts,
       }),
     );
@@ -1917,11 +2409,113 @@ export default function RoiCalculatorPage() {
                   </span>
                   <input
                     value={form.unitNumber}
-                    onChange={(event) => updateField("unitNumber", event.target.value)}
+                    onChange={(event) => handleUnitNumberChange(event.target.value)}
                     className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.unitNumber.trim())}`}
                     placeholder="Optional"
                   />
                 </label>
+                {selectedProjectId ? (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm md:col-span-2">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-zinc-900">Floor Plan Detection</p>
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                              detectionState.status === "auto" || detectionState.status === "manual"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : detectionState.status === "mismatch" || detectionState.status === "conflict"
+                                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                                  : "border-zinc-200 bg-white text-zinc-600"
+                            }`}
+                          >
+                            {getDetectionLabel(detectionState.status)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {detectionState.message}
+                        </p>
+                        {detectionState.parsed.detected ? (
+                          <p className="mt-2 text-xs text-zinc-500">
+                            Parsed:{" "}
+                            {detectionState.parsed.towerCode
+                              ? `Tower ${detectionState.parsed.towerCode} · `
+                              : ""}
+                            Floor {detectionState.parsed.floor} · Stack{" "}
+                            {detectionState.parsed.stackCode}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {isLoadingFloorPlans ? (
+                        <p className="text-xs text-zinc-500">Loading Floor Plans...</p>
+                      ) : floorPlansError ? (
+                        <p className="text-xs text-amber-700">
+                          {floorPlansError}. Manual proposal entry still works.
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {detectionState.floorPlan && detectionState.stack && !detectionState.requiresConfirmation ? (
+                      <div className="mt-3 rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                        <p className="text-xs font-medium text-zinc-500">Auto highlight</p>
+                        <p className="mt-1 font-semibold text-zinc-900">
+                          {getFloorPlanLabel(detectionState.floorPlan)} · Stack{" "}
+                          {detectionState.stack.stack_code}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {floorPlans.length > 0 ? (
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <label className="block text-xs font-medium text-zinc-600">
+                          <span className="mb-1 block">Manual Floor Plan</span>
+                          <select
+                            value={manualFloorPlanId}
+                            onChange={(event) => {
+                              setManualFloorPlanId(event.target.value);
+                              setManualStackId("");
+                            }}
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none"
+                          >
+                            <option value="">
+                              {detectionState.floorPlan
+                                ? "Use auto-detected Floor Plan"
+                                : "Select Floor Plan"}
+                            </option>
+                            {availableManualFloorPlans.map((floorPlan) => (
+                              <option key={floorPlan.id} value={floorPlan.id}>
+                                {floorPlan.name} · {getFloorPlanLabel(floorPlan)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="block text-xs font-medium text-zinc-600">
+                          <span className="mb-1 block">Manual Stack</span>
+                          <select
+                            value={manualStackId}
+                            onChange={(event) => setManualStackId(event.target.value)}
+                            disabled={!activeManualFloorPlan}
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <option value="">
+                              {detectionState.stack && !detectionState.requiresConfirmation
+                                ? `Use auto-detected Stack ${detectionState.stack.stack_code}`
+                                : "Select Stack"}
+                            </option>
+                            {activeManualStacks.map((stack) => (
+                              <option key={stack.id} value={stack.id}>
+                                {stack.stack_code}
+                                {stack.unit_type ? ` · ${getMappedUnitTypeLabel(stack.unit_type)}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Unit Type
