@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
@@ -152,6 +152,37 @@ type ProjectUnitType = {
   furnishing_package: FurnishingPackage | null;
 };
 
+type FloorPlanStack = {
+  id: string;
+  floor_plan_id: string;
+  stack_code: string;
+  unit_type_id: string | null;
+  x_percent: number;
+  y_percent: number;
+  width_percent: number;
+  height_percent: number;
+  sort_order: number | null;
+  unit_type?: {
+    id: string;
+    type_code: string;
+    type_name: string | null;
+    display_configuration: string | null;
+  } | null;
+};
+
+type ProjectFloorPlan = {
+  id: string;
+  project_id: string;
+  name: string;
+  tower_code: string | null;
+  media_id: string | null;
+  floor_from: number;
+  floor_to: number;
+  sort_order: number | null;
+  media: ProjectMedia | null;
+  stacks: FloorPlanStack[];
+};
+
 type UnitTypeForm = {
   type_code: string;
   type_name: string;
@@ -163,6 +194,24 @@ type UnitTypeForm = {
   default_carparks: string;
   carpark_description: string;
   furnishing_package_id: string;
+  sort_order: string;
+};
+
+type FloorPlanForm = {
+  name: string;
+  tower_code: string;
+  floor_from: string;
+  floor_to: string;
+  sort_order: string;
+};
+
+type StackForm = {
+  stack_code: string;
+  unit_type_id: string;
+  x_percent: string;
+  y_percent: string;
+  width_percent: string;
+  height_percent: string;
   sort_order: string;
 };
 
@@ -217,6 +266,24 @@ const emptyUnitTypeForm: UnitTypeForm = {
   default_carparks: "",
   carpark_description: "",
   furnishing_package_id: "",
+  sort_order: "0",
+};
+
+const emptyFloorPlanForm: FloorPlanForm = {
+  name: "",
+  tower_code: "",
+  floor_from: "",
+  floor_to: "",
+  sort_order: "0",
+};
+
+const emptyStackForm: StackForm = {
+  stack_code: "",
+  unit_type_id: "",
+  x_percent: "",
+  y_percent: "",
+  width_percent: "",
+  height_percent: "",
   sort_order: "0",
 };
 
@@ -356,6 +423,36 @@ function getUnitTypeFormFromItem(item: ProjectUnitType): UnitTypeForm {
   };
 }
 
+function getFloorPlanFormFromItem(item: ProjectFloorPlan): FloorPlanForm {
+  return {
+    name: item.name || "",
+    tower_code: item.tower_code || "",
+    floor_from: String(item.floor_from),
+    floor_to: String(item.floor_to),
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
+function getStackFormFromItem(item: FloorPlanStack): StackForm {
+  return {
+    stack_code: item.stack_code || "",
+    unit_type_id: item.unit_type_id || "",
+    x_percent: String(item.x_percent),
+    y_percent: String(item.y_percent),
+    width_percent: String(item.width_percent),
+    height_percent: String(item.height_percent),
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
+function getUnitTypeDisplay(unitType: FloorPlanStack["unit_type"]) {
+  if (!unitType) return "No Unit Type";
+
+  return [unitType.type_code, unitType.display_configuration, unitType.type_name]
+    .filter(Boolean)
+    .join(" - ");
+}
+
 function suggestConfiguration(form: UnitTypeForm) {
   const bedrooms = form.bedrooms.trim();
   const additionalRooms = Number(form.additional_rooms || "0");
@@ -383,6 +480,7 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const { canManageProjects } = useAppPermissions();
   const projectId = getProjectId(params.id);
+  const floorPlanImageRef = useRef<HTMLDivElement | null>(null);
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -408,6 +506,20 @@ export default function ProjectDetailPage() {
   const [unitTypeForm, setUnitTypeForm] = useState<UnitTypeForm>(emptyUnitTypeForm);
   const [unitTypeLayoutFile, setUnitTypeLayoutFile] = useState<File | null>(null);
   const [unitTypeSaving, setUnitTypeSaving] = useState(false);
+  const [floorPlans, setFloorPlans] = useState<ProjectFloorPlan[]>([]);
+  const [floorPlansLoading, setFloorPlansLoading] = useState(true);
+  const [floorPlansErrorMessage, setFloorPlansErrorMessage] = useState("");
+  const [isFloorPlanModalOpen, setIsFloorPlanModalOpen] = useState(false);
+  const [editingFloorPlanId, setEditingFloorPlanId] = useState<string | null>(null);
+  const [floorPlanForm, setFloorPlanForm] = useState<FloorPlanForm>(emptyFloorPlanForm);
+  const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
+  const [floorPlanSaving, setFloorPlanSaving] = useState(false);
+  const [mappingFloorPlan, setMappingFloorPlan] = useState<ProjectFloorPlan | null>(null);
+  const [editingStackId, setEditingStackId] = useState<string | null>(null);
+  const [stackForm, setStackForm] = useState<StackForm>(emptyStackForm);
+  const [stackSaving, setStackSaving] = useState(false);
+  const [isDrawingStack, setIsDrawingStack] = useState(false);
+  const [stackDragStart, setStackDragStart] = useState<{ x: number; y: number } | null>(null);
   const [furnishingPackages, setFurnishingPackages] = useState<FurnishingPackage[]>([]);
   const [furnishingLoading, setFurnishingLoading] = useState(true);
   const [furnishingErrorMessage, setFurnishingErrorMessage] = useState("");
@@ -666,11 +778,38 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function fetchFloorPlans(id: string) {
+    try {
+      setFloorPlansLoading(true);
+      setFloorPlansErrorMessage("");
+
+      const response = await fetch(`/api/projects/${id}/floor-plans`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load floor plans");
+      }
+
+      setFloorPlans(result);
+      setMappingFloorPlan((current) =>
+        current ? result.find((item: ProjectFloorPlan) => item.id === current.id) ?? null : null,
+      );
+    } catch (error) {
+      console.error("Load floor plans error:", error);
+      setFloorPlansErrorMessage(
+        error instanceof Error ? error.message : "Unable to load floor plans",
+      );
+    } finally {
+      setFloorPlansLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (projectId) {
       const timeoutId = window.setTimeout(() => {
         void fetchFurnishingPackages(projectId);
         void fetchUnitTypes(projectId);
+        void fetchFloorPlans(projectId);
       }, 0);
 
       return () => window.clearTimeout(timeoutId);
@@ -693,6 +832,20 @@ export default function ProjectDetailPage() {
 
   function updateUnitTypeField(field: keyof UnitTypeForm, value: string) {
     setUnitTypeForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateFloorPlanField(field: keyof FloorPlanForm, value: string) {
+    setFloorPlanForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateStackField(field: keyof StackForm, value: string) {
+    setStackForm((current) => ({
       ...current,
       [field]: value,
     }));
@@ -793,6 +946,76 @@ export default function ProjectDetailPage() {
     setEditingUnitTypeId(null);
     setUnitTypeForm(emptyUnitTypeForm);
     setUnitTypeLayoutFile(null);
+  }
+
+  function openAddFloorPlan() {
+    if (!canManageProjects) return;
+
+    setEditingFloorPlanId(null);
+    setFloorPlanForm(emptyFloorPlanForm);
+    setFloorPlanFile(null);
+    setFloorPlansErrorMessage("");
+    setIsFloorPlanModalOpen(true);
+  }
+
+  function openEditFloorPlan(floorPlan: ProjectFloorPlan) {
+    if (!canManageProjects) return;
+
+    setEditingFloorPlanId(floorPlan.id);
+    setFloorPlanForm(getFloorPlanFormFromItem(floorPlan));
+    setFloorPlanFile(null);
+    setFloorPlansErrorMessage("");
+    setIsFloorPlanModalOpen(true);
+  }
+
+  function closeFloorPlanModal() {
+    if (floorPlanSaving) return;
+
+    setIsFloorPlanModalOpen(false);
+    setEditingFloorPlanId(null);
+    setFloorPlanForm(emptyFloorPlanForm);
+    setFloorPlanFile(null);
+  }
+
+  function openStackMapper(floorPlan: ProjectFloorPlan) {
+    if (!canManageProjects) return;
+
+    setMappingFloorPlan(floorPlan);
+    setEditingStackId(null);
+    setStackForm(emptyStackForm);
+    setIsDrawingStack(false);
+    setStackDragStart(null);
+    setFloorPlansErrorMessage("");
+  }
+
+  function closeStackMapper() {
+    if (stackSaving) return;
+
+    setMappingFloorPlan(null);
+    setEditingStackId(null);
+    setStackForm(emptyStackForm);
+    setIsDrawingStack(false);
+    setStackDragStart(null);
+  }
+
+  function openAddStack() {
+    if (!canManageProjects) return;
+
+    setEditingStackId(null);
+    setStackForm(emptyStackForm);
+    setIsDrawingStack(true);
+    setStackDragStart(null);
+    setFloorPlansErrorMessage("");
+  }
+
+  function openEditStack(stack: FloorPlanStack) {
+    if (!canManageProjects) return;
+
+    setEditingStackId(stack.id);
+    setStackForm(getStackFormFromItem(stack));
+    setIsDrawingStack(false);
+    setStackDragStart(null);
+    setFloorPlansErrorMessage("");
   }
 
   function openAddFurnishingPackage() {
@@ -1056,6 +1279,30 @@ export default function ProjectDetailPage() {
     return result as ProjectMedia;
   }
 
+  async function uploadFloorPlanMedia(id: string, name: string) {
+    if (!floorPlanFile) return null;
+
+    const formData = new FormData();
+    formData.append("file", floorPlanFile);
+    formData.append("title", `${name} Floor Plan`);
+    formData.append("media_type", "floor_plan");
+    formData.append("visibility", "customer");
+    formData.append("description", "Typical floor plan");
+    formData.append("sort_order", "0");
+
+    const response = await fetch(`/api/projects/${id}/media`, {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to upload floor plan");
+    }
+
+    return result as ProjectMedia;
+  }
+
   async function handleUnitTypeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1134,6 +1381,266 @@ export default function ProjectDetailPage() {
       console.error("Delete unit type error:", error);
       setUnitTypesErrorMessage(
         error instanceof Error ? error.message : "Unable to delete unit type",
+      );
+    }
+  }
+
+  async function handleFloorPlanSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canManageProjects || !projectId) return;
+
+    if (!floorPlanForm.name.trim()) {
+      setFloorPlansErrorMessage("Floor Plan Name is required.");
+      return;
+    }
+
+    const floorFrom = Number(floorPlanForm.floor_from);
+    const floorTo = Number(floorPlanForm.floor_to);
+    const sortOrder = Number(floorPlanForm.sort_order || "0");
+
+    if (!Number.isInteger(floorFrom) || floorFrom <= 0) {
+      setFloorPlansErrorMessage("Floor From must be a positive whole number.");
+      return;
+    }
+
+    if (!Number.isInteger(floorTo) || floorTo <= 0) {
+      setFloorPlansErrorMessage("Floor To must be a positive whole number.");
+      return;
+    }
+
+    if (floorFrom > floorTo) {
+      setFloorPlansErrorMessage("Floor From must be less than or equal to Floor To.");
+      return;
+    }
+
+    if (!Number.isInteger(sortOrder)) {
+      setFloorPlansErrorMessage("Sort Order must be a whole number.");
+      return;
+    }
+
+    const currentFloorPlan = floorPlans.find((item) => item.id === editingFloorPlanId);
+
+    if (!floorPlanFile && !currentFloorPlan?.media_id) {
+      setFloorPlansErrorMessage("Floor Plan image is required.");
+      return;
+    }
+
+    let uploadedMedia: ProjectMedia | null = null;
+
+    try {
+      setFloorPlanSaving(true);
+      setFloorPlansErrorMessage("");
+
+      uploadedMedia = await uploadFloorPlanMedia(projectId, floorPlanForm.name.trim());
+      const mediaId = uploadedMedia?.id ?? currentFloorPlan?.media_id ?? null;
+      const response = await fetch(
+        editingFloorPlanId
+          ? `/api/projects/${projectId}/floor-plans/${editingFloorPlanId}`
+          : `/api/projects/${projectId}/floor-plans`,
+        {
+          method: editingFloorPlanId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...floorPlanForm,
+            name: floorPlanForm.name.trim(),
+            tower_code: floorPlanForm.tower_code.trim() || null,
+            media_id: mediaId,
+          }),
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (uploadedMedia?.id) {
+          await fetch(`/api/projects/${projectId}/media/${uploadedMedia.id}`, {
+            method: "DELETE",
+          }).catch(() => undefined);
+        }
+
+        throw new Error(result.error || "Unable to save floor plan");
+      }
+
+      closeFloorPlanModal();
+      await fetchFloorPlans(projectId);
+    } catch (error) {
+      console.error("Save floor plan error:", error);
+      setFloorPlansErrorMessage(
+        error instanceof Error ? error.message : "Unable to save floor plan",
+      );
+    } finally {
+      setFloorPlanSaving(false);
+    }
+  }
+
+  async function handleDeleteFloorPlan(floorPlan: ProjectFloorPlan) {
+    if (!canManageProjects || !projectId) return;
+
+    const confirmed = window.confirm(`Are you sure you want to delete "${floorPlan.name}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setFloorPlansErrorMessage("");
+
+      const response = await fetch(`/api/projects/${projectId}/floor-plans/${floorPlan.id}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete floor plan");
+      }
+
+      if (mappingFloorPlan?.id === floorPlan.id) {
+        closeStackMapper();
+      }
+
+      await fetchFloorPlans(projectId);
+    } catch (error) {
+      console.error("Delete floor plan error:", error);
+      setFloorPlansErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete floor plan",
+      );
+    }
+  }
+
+  function getPointerPercent(event: PointerEvent<HTMLDivElement>) {
+    const bounds = floorPlanImageRef.current?.getBoundingClientRect();
+
+    if (!bounds) return null;
+
+    return {
+      x: Math.min(Math.max(((event.clientX - bounds.left) / bounds.width) * 100, 0), 100),
+      y: Math.min(Math.max(((event.clientY - bounds.top) / bounds.height) * 100, 0), 100),
+    };
+  }
+
+  function handleStackPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!isDrawingStack || !canManageProjects) return;
+
+    const point = getPointerPercent(event);
+
+    if (!point) return;
+
+    setStackDragStart(point);
+    setStackForm((current) => ({
+      ...current,
+      x_percent: point.x.toFixed(3),
+      y_percent: point.y.toFixed(3),
+      width_percent: "",
+      height_percent: "",
+    }));
+  }
+
+  function handleStackPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!isDrawingStack || !stackDragStart) return;
+
+    const point = getPointerPercent(event);
+
+    if (!point) return;
+
+    const x = Math.min(stackDragStart.x, point.x);
+    const y = Math.min(stackDragStart.y, point.y);
+    const width = Math.abs(point.x - stackDragStart.x);
+    const height = Math.abs(point.y - stackDragStart.y);
+
+    setStackForm((current) => ({
+      ...current,
+      x_percent: x.toFixed(3),
+      y_percent: y.toFixed(3),
+      width_percent: width.toFixed(3),
+      height_percent: height.toFixed(3),
+    }));
+  }
+
+  function handleStackPointerUp() {
+    if (!isDrawingStack || !stackDragStart) return;
+
+    setStackDragStart(null);
+  }
+
+  async function handleStackSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canManageProjects || !projectId || !mappingFloorPlan) return;
+
+    if (!stackForm.stack_code.trim()) {
+      setFloorPlansErrorMessage("Stack Code is required.");
+      return;
+    }
+
+    try {
+      setStackSaving(true);
+      setFloorPlansErrorMessage("");
+
+      const response = await fetch(
+        editingStackId
+          ? `/api/projects/${projectId}/floor-plans/${mappingFloorPlan.id}/stacks/${editingStackId}`
+          : `/api/projects/${projectId}/floor-plans/${mappingFloorPlan.id}/stacks`,
+        {
+          method: editingStackId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...stackForm,
+            stack_code: stackForm.stack_code.trim(),
+            unit_type_id: stackForm.unit_type_id || null,
+          }),
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to save stack mapping");
+      }
+
+      setEditingStackId(null);
+      setStackForm(emptyStackForm);
+      setIsDrawingStack(false);
+      await fetchFloorPlans(projectId);
+    } catch (error) {
+      console.error("Save stack mapping error:", error);
+      setFloorPlansErrorMessage(
+        error instanceof Error ? error.message : "Unable to save stack mapping",
+      );
+    } finally {
+      setStackSaving(false);
+    }
+  }
+
+  async function handleDeleteStack(stack: FloorPlanStack) {
+    if (!canManageProjects || !projectId || !mappingFloorPlan) return;
+
+    const confirmed = window.confirm(`Delete Stack "${stack.stack_code}" mapping?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setFloorPlansErrorMessage("");
+
+      const response = await fetch(
+        `/api/projects/${projectId}/floor-plans/${mappingFloorPlan.id}/stacks/${stack.id}`,
+        { method: "DELETE" },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete stack mapping");
+      }
+
+      await fetchFloorPlans(projectId);
+    } catch (error) {
+      console.error("Delete stack mapping error:", error);
+      setFloorPlansErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete stack mapping",
       );
     }
   }
@@ -1370,6 +1877,130 @@ export default function ProjectDetailPage() {
                       ) : null}
                     </div>
                   ) : null}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderFloorPlans() {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Floor Plans</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Typical floor plans and stack mapping for future unit presentation.
+            </p>
+          </div>
+
+          {canManageProjects ? (
+            <button
+              type="button"
+              onClick={openAddFloorPlan}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Add Floor Plan
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {floorPlansErrorMessage && !isFloorPlanModalOpen && !mappingFloorPlan ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {floorPlansErrorMessage}
+            </div>
+          ) : null}
+
+          {floorPlansLoading ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              Loading floor plans...
+            </p>
+          ) : floorPlans.length === 0 ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              No floor plans added yet.
+            </p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {floorPlans.map((floorPlan) => (
+                <article
+                  key={floorPlan.id}
+                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Sort Order {floorPlan.sort_order ?? 0}
+                      </p>
+                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
+                        {floorPlan.name}
+                      </h3>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {floorPlan.tower_code ? `Tower/Block ${floorPlan.tower_code}` : "No Tower/Block"} · Floors {floorPlan.floor_from}-{floorPlan.floor_to}
+                      </p>
+                    </div>
+
+                    {canManageProjects ? (
+                      <div className="flex flex-wrap items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => openEditFloorPlan(floorPlan)}
+                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openStackMapper(floorPlan)}
+                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                        >
+                          Map Stacks
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFloorPlan(floorPlan)}
+                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {floorPlan.media?.signed_url ? (
+                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={floorPlan.media.signed_url}
+                        alt={`${floorPlan.name} floor plan`}
+                        className="max-h-64 w-full rounded-lg object-contain"
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                      Stack Mappings
+                    </p>
+                    {floorPlan.stacks.length === 0 ? (
+                      <p className="mt-2 text-sm text-zinc-500">No stacks mapped yet.</p>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {floorPlan.stacks.map((stack) => (
+                          <span
+                            key={stack.id}
+                            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700"
+                          >
+                            {stack.stack_code}
+                            {stack.unit_type ? ` · ${getUnitTypeDisplay(stack.unit_type)}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </article>
               ))}
             </div>
@@ -1862,6 +2493,7 @@ export default function ProjectDetailPage() {
 
         <div className="mt-8 space-y-6">
           {renderUnitTypes()}
+          {renderFloorPlans()}
           {renderFurnishingPackages()}
 
           {knowledgeErrorMessage && !activeSection ? (
@@ -2110,6 +2742,403 @@ export default function ProjectDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {canManageProjects && isFloorPlanModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">
+                  {editingFloorPlanId ? "Edit Floor Plan" : "Add Floor Plan"}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Upload a typical floor plan and define its tower/block and floor range.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeFloorPlanModal}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleFloorPlanSubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Floor Plan Name *
+                    </label>
+                    <input
+                      value={floorPlanForm.name}
+                      onChange={(event) => updateFloorPlanField("name", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      placeholder="Typical Floor Plan"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Tower / Block
+                    </label>
+                    <input
+                      value={floorPlanForm.tower_code}
+                      onChange={(event) => updateFloorPlanField("tower_code", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Floor From *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={floorPlanForm.floor_from}
+                      onChange={(event) => updateFloorPlanField("floor_from", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Floor To *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={floorPlanForm.floor_to}
+                      onChange={(event) => updateFloorPlanField("floor_to", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Sort Order
+                    </label>
+                    <input
+                      type="number"
+                      value={floorPlanForm.sort_order}
+                      onChange={(event) => updateFloorPlanField("sort_order", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Floor Plan Image {editingFloorPlanId ? "" : "*"}
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => setFloorPlanFile(event.target.files?.[0] ?? null)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white focus:border-zinc-900"
+                  />
+                  <p className="mt-2 text-xs text-zinc-500">
+                    JPG, PNG, or WebP. Maximum 10MB. Uploading a new image replaces the current floor plan image after the save completes.
+                  </p>
+                </div>
+
+                {floorPlansErrorMessage ? (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {floorPlansErrorMessage}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeFloorPlanModal}
+                  disabled={floorPlanSaving}
+                  className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={floorPlanSaving}
+                  className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {floorPlanSaving ? "Saving..." : "Save Floor Plan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {canManageProjects && mappingFloorPlan ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">Stack Mapping</h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {mappingFloorPlan.name} · Floors {mappingFloorPlan.floor_from}-{mappingFloorPlan.floor_to}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeStackMapper}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-zinc-500">
+                    Draw rectangles as percentages so mappings stay responsive.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openAddStack}
+                    className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                  >
+                    Draw New Stack
+                  </button>
+                </div>
+
+                {mappingFloorPlan.media?.signed_url ? (
+                  <div
+                    ref={floorPlanImageRef}
+                    onPointerDown={handleStackPointerDown}
+                    onPointerMove={handleStackPointerMove}
+                    onPointerUp={handleStackPointerUp}
+                    className={`relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100 ${
+                      isDrawingStack ? "cursor-crosshair" : ""
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={mappingFloorPlan.media.signed_url}
+                      alt={`${mappingFloorPlan.name} floor plan`}
+                      draggable={false}
+                      className="block w-full select-none"
+                    />
+
+                    {mappingFloorPlan.stacks.map((stack) => (
+                      <button
+                        key={stack.id}
+                        type="button"
+                        onClick={() => openEditStack(stack)}
+                        className="absolute border-2 border-emerald-600 bg-emerald-500/20 text-[11px] font-semibold text-emerald-950 shadow-sm"
+                        style={{
+                          left: `${stack.x_percent}%`,
+                          top: `${stack.y_percent}%`,
+                          width: `${stack.width_percent}%`,
+                          height: `${stack.height_percent}%`,
+                        }}
+                        title={`Stack ${stack.stack_code}`}
+                      >
+                        {stack.stack_code}
+                      </button>
+                    ))}
+
+                    {stackForm.x_percent && stackForm.y_percent && stackForm.width_percent && stackForm.height_percent ? (
+                      <div
+                        className="pointer-events-none absolute border-2 border-amber-600 bg-amber-400/25"
+                        style={{
+                          left: `${stackForm.x_percent}%`,
+                          top: `${stackForm.y_percent}%`,
+                          width: `${stackForm.width_percent}%`,
+                          height: `${stackForm.height_percent}%`,
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
+                    Floor plan image is unavailable.
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-5">
+                <form onSubmit={handleStackSubmit} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-zinc-900">
+                        {editingStackId ? "Edit Stack" : "Add Stack"}
+                      </h3>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Numeric codes like 5, 05, and 005 are treated as the same stack for duplicate checks.
+                      </p>
+                    </div>
+                    {editingStackId ? (
+                      <button
+                        type="button"
+                        onClick={openAddStack}
+                        className="text-xs font-medium text-zinc-600 hover:text-black"
+                      >
+                        New
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Stack Code *
+                      </label>
+                      <input
+                        value={stackForm.stack_code}
+                        onChange={(event) => updateStackField("stack_code", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="05"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Unit Type
+                      </label>
+                      <select
+                        value={stackForm.unit_type_id}
+                        onChange={(event) => updateStackField("unit_type_id", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">No Unit Type assigned</option>
+                        {unitTypes.map((unitType) => (
+                          <option key={unitType.id} value={unitType.id}>
+                            {unitType.type_code}
+                            {unitType.display_configuration ? ` · ${unitType.display_configuration}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        max="100"
+                        value={stackForm.x_percent}
+                        onChange={(event) => updateStackField("x_percent", event.target.value)}
+                        className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="X %"
+                      />
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        max="100"
+                        value={stackForm.y_percent}
+                        onChange={(event) => updateStackField("y_percent", event.target.value)}
+                        className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="Y %"
+                      />
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        max="100"
+                        value={stackForm.width_percent}
+                        onChange={(event) => updateStackField("width_percent", event.target.value)}
+                        className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="Width %"
+                      />
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        max="100"
+                        value={stackForm.height_percent}
+                        onChange={(event) => updateStackField("height_percent", event.target.value)}
+                        className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="Height %"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Sort Order
+                      </label>
+                      <input
+                        type="number"
+                        value={stackForm.sort_order}
+                        onChange={(event) => updateStackField("sort_order", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      />
+                    </div>
+
+                    {floorPlansErrorMessage ? (
+                      <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                        {floorPlansErrorMessage}
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="submit"
+                      disabled={stackSaving}
+                      className="w-full rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {stackSaving ? "Saving..." : "Save Stack"}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                  <h3 className="text-base font-semibold text-zinc-900">Mapped Stacks</h3>
+                  <div className="mt-3 space-y-2">
+                    {mappingFloorPlan.stacks.length === 0 ? (
+                      <p className="text-sm text-zinc-500">No stacks mapped yet.</p>
+                    ) : (
+                      mappingFloorPlan.stacks.map((stack) => (
+                        <div
+                          key={stack.id}
+                          className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-zinc-900">
+                                Stack {stack.stack_code}
+                              </p>
+                              <p className="mt-1 text-xs text-zinc-500">
+                                {getUnitTypeDisplay(stack.unit_type)}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => openEditStack(stack)}
+                                className="text-xs font-medium text-zinc-700 hover:text-black"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStack(stack)}
+                                className="text-xs font-medium text-red-500 hover:text-red-700"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

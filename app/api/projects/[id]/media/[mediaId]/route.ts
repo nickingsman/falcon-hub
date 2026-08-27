@@ -124,6 +124,24 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       );
     }
 
+    const { count: floorPlanReferenceCount, error: floorPlanReferenceError } = await supabase
+      .from("project_floor_plans")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", id)
+      .eq("media_id", mediaId)
+      .eq("is_deleted", false);
+
+    if (floorPlanReferenceError) {
+      throw floorPlanReferenceError;
+    }
+
+    if ((floorPlanReferenceCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "This media is currently used as a Floor Plan." },
+        { status: 409 },
+      );
+    }
+
     const { data, error } = await supabase
       .from("project_media")
       .update({
