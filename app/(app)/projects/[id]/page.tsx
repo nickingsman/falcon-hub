@@ -134,6 +134,26 @@ type FurnishingPackageForm = {
   }>;
 };
 
+type ProjectFacing = {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  media_id: string | null;
+  view_type: string | null;
+  disclaimer: string | null;
+  sort_order: number | null;
+  media: ProjectMedia | null;
+};
+
+type FacingForm = {
+  name: string;
+  description: string;
+  view_type: string;
+  disclaimer: string;
+  sort_order: string;
+};
+
 type ProjectUnitType = {
   id: string;
   project_id: string;
@@ -158,6 +178,7 @@ type FloorPlanStack = {
   floor_plan_id: string;
   stack_code: string;
   unit_type_id: string | null;
+  facing_id: string | null;
   x_percent: number;
   y_percent: number;
   width_percent: number;
@@ -169,6 +190,7 @@ type FloorPlanStack = {
     type_name: string | null;
     display_configuration: string | null;
   } | null;
+  facing?: ProjectFacing | null;
 };
 
 type ProjectFloorPlan = {
@@ -209,6 +231,7 @@ type FloorPlanForm = {
 type StackForm = {
   stack_code: string;
   unit_type_id: string;
+  facing_id: string;
   x_percent: string;
   y_percent: string;
   width_percent: string;
@@ -256,6 +279,14 @@ const emptyFurnishingPackageForm: FurnishingPackageForm = {
   items: [],
 };
 
+const emptyFacingForm: FacingForm = {
+  name: "",
+  description: "",
+  view_type: "",
+  disclaimer: "",
+  sort_order: "0",
+};
+
 const emptyUnitTypeForm: UnitTypeForm = {
   type_code: "",
   type_name: "",
@@ -281,6 +312,7 @@ const emptyFloorPlanForm: FloorPlanForm = {
 const emptyStackForm: StackForm = {
   stack_code: "",
   unit_type_id: "",
+  facing_id: "",
   x_percent: "",
   y_percent: "",
   width_percent: "",
@@ -407,6 +439,16 @@ function getFurnishingFormFromItem(item: FurnishingPackage): FurnishingPackageFo
   };
 }
 
+function getFacingFormFromItem(item: ProjectFacing): FacingForm {
+  return {
+    name: item.name || "",
+    description: item.description || "",
+    view_type: item.view_type || "",
+    disclaimer: item.disclaimer || "",
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
 function getUnitTypeFormFromItem(item: ProjectUnitType): UnitTypeForm {
   return {
     type_code: item.type_code || "",
@@ -438,12 +480,21 @@ function getStackFormFromItem(item: FloorPlanStack): StackForm {
   return {
     stack_code: item.stack_code || "",
     unit_type_id: item.unit_type_id || "",
+    facing_id: item.facing_id || "",
     x_percent: String(item.x_percent),
     y_percent: String(item.y_percent),
     width_percent: String(item.width_percent),
     height_percent: String(item.height_percent),
     sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
   };
+}
+
+function getViewTypeLabel(value: string | null) {
+  if (value === "actual") return "Actual View";
+  if (value === "indicative") return "Indicative View";
+  if (value === "artist_impression") return "Artist Impression";
+
+  return "View Type Not Set";
 }
 
 function getUnitTypeDisplay(unitType: FloorPlanStack["unit_type"]) {
@@ -523,6 +574,14 @@ export default function ProjectDetailPage() {
   const [floorPlanForm, setFloorPlanForm] = useState<FloorPlanForm>(emptyFloorPlanForm);
   const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
   const [floorPlanSaving, setFloorPlanSaving] = useState(false);
+  const [facings, setFacings] = useState<ProjectFacing[]>([]);
+  const [facingsLoading, setFacingsLoading] = useState(true);
+  const [facingsErrorMessage, setFacingsErrorMessage] = useState("");
+  const [isFacingModalOpen, setIsFacingModalOpen] = useState(false);
+  const [editingFacingId, setEditingFacingId] = useState<string | null>(null);
+  const [facingForm, setFacingForm] = useState<FacingForm>(emptyFacingForm);
+  const [facingFile, setFacingFile] = useState<File | null>(null);
+  const [facingSaving, setFacingSaving] = useState(false);
   const [mappingFloorPlan, setMappingFloorPlan] = useState<ProjectFloorPlan | null>(null);
   const [editingStackId, setEditingStackId] = useState<string | null>(null);
   const [stackForm, setStackForm] = useState<StackForm>(emptyStackForm);
@@ -813,12 +872,36 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function fetchFacings(id: string) {
+    try {
+      setFacingsLoading(true);
+      setFacingsErrorMessage("");
+
+      const response = await fetch(`/api/projects/${id}/facings`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load facings");
+      }
+
+      setFacings(result);
+    } catch (error) {
+      console.error("Load facings error:", error);
+      setFacingsErrorMessage(
+        error instanceof Error ? error.message : "Unable to load facings",
+      );
+    } finally {
+      setFacingsLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (projectId) {
       const timeoutId = window.setTimeout(() => {
         void fetchFurnishingPackages(projectId);
         void fetchUnitTypes(projectId);
         void fetchFloorPlans(projectId);
+        void fetchFacings(projectId);
       }, 0);
 
       return () => window.clearTimeout(timeoutId);
@@ -834,6 +917,13 @@ export default function ProjectDetailPage() {
 
   function updateResourceField(field: keyof ProjectResourceForm, value: string) {
     setResourceForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateFacingField(field: keyof FacingForm, value: string) {
+    setFacingForm((current) => ({
       ...current,
       [field]: value,
     }));
@@ -984,6 +1074,35 @@ export default function ProjectDetailPage() {
     setEditingFloorPlanId(null);
     setFloorPlanForm(emptyFloorPlanForm);
     setFloorPlanFile(null);
+  }
+
+  function openAddFacing() {
+    if (!canManageProjects) return;
+
+    setEditingFacingId(null);
+    setFacingForm(emptyFacingForm);
+    setFacingFile(null);
+    setFacingsErrorMessage("");
+    setIsFacingModalOpen(true);
+  }
+
+  function openEditFacing(facing: ProjectFacing) {
+    if (!canManageProjects) return;
+
+    setEditingFacingId(facing.id);
+    setFacingForm(getFacingFormFromItem(facing));
+    setFacingFile(null);
+    setFacingsErrorMessage("");
+    setIsFacingModalOpen(true);
+  }
+
+  function closeFacingModal() {
+    if (facingSaving) return;
+
+    setIsFacingModalOpen(false);
+    setEditingFacingId(null);
+    setFacingForm(emptyFacingForm);
+    setFacingFile(null);
   }
 
   function openStackMapper(floorPlan: ProjectFloorPlan) {
@@ -1312,6 +1431,125 @@ export default function ProjectDetailPage() {
     return result as ProjectMedia;
   }
 
+  async function uploadFacingMedia(id: string, name: string) {
+    if (!facingFile) return null;
+
+    const formData = new FormData();
+    formData.append("file", facingFile);
+    formData.append("title", `${name} Facing View`);
+    formData.append("media_type", "facing_view");
+    formData.append("visibility", "customer");
+    formData.append("description", "Facing / view image");
+    formData.append("sort_order", "0");
+
+    const response = await fetch(`/api/projects/${id}/media`, {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to upload facing image");
+    }
+
+    return result as ProjectMedia;
+  }
+
+  async function handleFacingSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canManageProjects || !projectId) return;
+
+    if (!facingForm.name.trim()) {
+      setFacingsErrorMessage("Facing / View Name is required.");
+      return;
+    }
+
+    let uploadedMedia: ProjectMedia | null = null;
+
+    try {
+      setFacingSaving(true);
+      setFacingsErrorMessage("");
+
+      uploadedMedia = await uploadFacingMedia(projectId, facingForm.name.trim());
+      const currentFacing = facings.find((item) => item.id === editingFacingId);
+      const mediaId = uploadedMedia?.id ?? currentFacing?.media_id ?? null;
+      const response = await fetch(
+        editingFacingId
+          ? `/api/projects/${projectId}/facings/${editingFacingId}`
+          : `/api/projects/${projectId}/facings`,
+        {
+          method: editingFacingId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...facingForm,
+            name: facingForm.name.trim(),
+            media_id: mediaId,
+          }),
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (uploadedMedia?.id) {
+          await fetch(`/api/projects/${projectId}/media/${uploadedMedia.id}`, {
+            method: "DELETE",
+          }).catch(() => undefined);
+        }
+
+        throw new Error(result.error || "Unable to save facing");
+      }
+
+      closeFacingModal();
+      await Promise.all([
+        fetchFacings(projectId),
+        fetchFloorPlans(projectId),
+      ]);
+    } catch (error) {
+      console.error("Save facing error:", error);
+      setFacingsErrorMessage(
+        error instanceof Error ? error.message : "Unable to save facing",
+      );
+    } finally {
+      setFacingSaving(false);
+    }
+  }
+
+  async function handleDeleteFacing(facing: ProjectFacing) {
+    if (!canManageProjects || !projectId) return;
+
+    const confirmed = window.confirm(`Are you sure you want to delete "${facing.name}"?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setFacingsErrorMessage("");
+
+      const response = await fetch(`/api/projects/${projectId}/facings/${facing.id}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete facing");
+      }
+
+      await Promise.all([
+        fetchFacings(projectId),
+        fetchFloorPlans(projectId),
+      ]);
+    } catch (error) {
+      console.error("Delete facing error:", error);
+      setFacingsErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete facing",
+      );
+    }
+  }
+
   async function handleUnitTypeSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -1600,6 +1838,7 @@ export default function ProjectDetailPage() {
             ...stackForm,
             stack_code: stackForm.stack_code.trim(),
             unit_type_id: stackForm.unit_type_id || null,
+            facing_id: stackForm.facing_id || null,
           }),
         },
       );
@@ -2005,11 +2244,112 @@ export default function ProjectDetailPage() {
                           >
                             {stack.stack_code}
                             {stack.unit_type ? ` · ${getUnitTypeDisplay(stack.unit_type)}` : ""}
+                            {stack.facing ? ` · ${stack.facing.name}` : ""}
                           </span>
                         ))}
                       </div>
                     )}
                   </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderFacings() {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Facing / Views</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Optional view references that can be assigned to stack mappings.
+            </p>
+          </div>
+
+          {canManageProjects ? (
+            <button
+              type="button"
+              onClick={openAddFacing}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Add Facing
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {facingsErrorMessage && !isFacingModalOpen ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {facingsErrorMessage}
+            </div>
+          ) : null}
+
+          {facingsLoading ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              Loading facings...
+            </p>
+          ) : facings.length === 0 ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              No facings added yet.
+            </p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {facings.map((facing) => (
+                <article
+                  key={facing.id}
+                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        {getViewTypeLabel(facing.view_type)}
+                      </p>
+                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
+                        {facing.name}
+                      </h3>
+                      {facing.description ? (
+                        <p className="mt-2 text-sm text-zinc-600">{facing.description}</p>
+                      ) : null}
+                    </div>
+
+                    {canManageProjects ? (
+                      <div className="flex items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => openEditFacing(facing)}
+                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteFacing(facing)}
+                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {facing.media?.signed_url ? (
+                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={facing.media.signed_url}
+                        alt={`${facing.name} facing view`}
+                        className="max-h-48 w-full rounded-lg object-contain"
+                      />
+                    </div>
+                  ) : null}
+
+                  {facing.disclaimer ? (
+                    <p className="mt-3 text-xs text-zinc-500">{facing.disclaimer}</p>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -2512,6 +2852,7 @@ export default function ProjectDetailPage() {
         <div className="mt-8 space-y-6">
           {renderUnitTypes()}
           {renderFloorPlans()}
+          {renderFacings()}
           {renderFurnishingPackages()}
 
           {knowledgeErrorMessage && !activeSection ? (
@@ -2757,6 +3098,142 @@ export default function ProjectDetailPage() {
                   className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {unitTypeSaving ? "Saving..." : "Save Unit Type"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {canManageProjects && isFacingModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">
+                  {editingFacingId ? "Edit Facing / View" : "Add Facing / View"}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Add optional view references that can be assigned to stack mappings.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeFacingModal}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleFacingSubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Name *
+                  </label>
+                  <input
+                    value={facingForm.name}
+                    onChange={(event) => updateFacingField("name", event.target.value)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="e.g. Park View"
+                  />
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      View Type
+                    </label>
+                    <select
+                      value={facingForm.view_type}
+                      onChange={(event) => updateFacingField("view_type", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      <option value="">Not set</option>
+                      <option value="actual">Actual View</option>
+                      <option value="indicative">Indicative View</option>
+                      <option value="artist_impression">Artist Impression</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Sort Order
+                    </label>
+                    <input
+                      type="number"
+                      value={facingForm.sort_order}
+                      onChange={(event) => updateFacingField("sort_order", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Description
+                  </label>
+                  <textarea
+                    value={facingForm.description}
+                    onChange={(event) => updateFacingField("description", event.target.value)}
+                    rows={3}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="e.g. Open view facing park area"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Disclaimer
+                  </label>
+                  <textarea
+                    value={facingForm.disclaimer}
+                    onChange={(event) => updateFacingField("disclaimer", event.target.value)}
+                    rows={2}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="e.g. Indicative view for presentation purposes only."
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Facing Image
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => setFacingFile(event.target.files?.[0] ?? null)}
+                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition file:mr-4 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white focus:border-zinc-900"
+                  />
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Optional JPG, PNG, or WebP. Maximum 10MB. Uploading a new image replaces the current image after the Facing saves.
+                  </p>
+                </div>
+
+                {facingsErrorMessage ? (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {facingsErrorMessage}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeFacingModal}
+                  disabled={facingSaving}
+                  className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={facingSaving}
+                  className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {facingSaving ? "Saving..." : "Save Facing"}
                 </button>
               </div>
             </form>
@@ -3042,6 +3519,25 @@ export default function ProjectDetailPage() {
                       </select>
                     </div>
 
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Facing / View
+                      </label>
+                      <select
+                        value={stackForm.facing_id}
+                        onChange={(event) => updateStackField("facing_id", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">No Facing assigned</option>
+                        {facings.map((facing) => (
+                          <option key={facing.id} value={facing.id}>
+                            {facing.name}
+                            {facing.view_type ? ` · ${getViewTypeLabel(facing.view_type)}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <input
                         type="number"
@@ -3132,6 +3628,11 @@ export default function ProjectDetailPage() {
                               <p className="mt-1 text-xs text-zinc-500">
                                 {getUnitTypeDisplay(stack.unit_type)}
                               </p>
+                              {stack.facing ? (
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  Facing: {stack.facing.name}
+                                </p>
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-3">
                               <button

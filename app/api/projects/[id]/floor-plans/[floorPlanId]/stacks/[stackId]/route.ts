@@ -3,6 +3,7 @@ import {
   normalizeInteger,
   normalizeNullableText,
 } from "@/lib/project-content";
+import { getFacingSummaries } from "@/lib/project-facings";
 import {
   getUnitTypeSummaries,
   stackCodesConflict,
@@ -29,6 +30,7 @@ function getStackPayload(body: Record<string, unknown>): FloorPlanStackPayload {
   return {
     stack_code: normalizeNullableText(body.stack_code) || "",
     unit_type_id: normalizeNullableText(body.unit_type_id),
+    facing_id: normalizeNullableText(body.facing_id),
     x_percent: normalizeDecimal(body.x_percent),
     y_percent: normalizeDecimal(body.y_percent),
     width_percent: normalizeDecimal(body.width_percent),
@@ -86,6 +88,28 @@ async function unitTypeBelongsToProject(
   return Boolean(data);
 }
 
+async function facingBelongsToProject(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  projectId: string,
+  facingId: string | null,
+) {
+  if (!facingId) return true;
+
+  const { data, error } = await supabase
+    .from("project_facings")
+    .select("id")
+    .eq("id", facingId)
+    .eq("project_id", projectId)
+    .eq("is_deleted", false)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data);
+}
+
 async function hasDuplicateStackCode(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   floorPlanId: string,
@@ -114,10 +138,16 @@ async function toStackResponse(
     supabase,
     stack.unit_type_id ? [stack.unit_type_id] : [],
   );
+  const facings = await getFacingSummaries(
+    supabase,
+    stack.facing_id ? [stack.facing_id] : [],
+    true,
+  );
 
   return {
     ...stack,
     unit_type: stack.unit_type_id ? unitTypes.get(stack.unit_type_id) ?? null : null,
+    facing: stack.facing_id ? facings.get(stack.facing_id) ?? null : null,
   };
 }
 
@@ -151,6 +181,13 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       );
     }
 
+    if (!(await facingBelongsToProject(supabase, id, payload.facing_id))) {
+      return NextResponse.json(
+        { error: "Facing / View must belong to this project" },
+        { status: 400 },
+      );
+    }
+
     if (await hasDuplicateStackCode(supabase, floorPlanId, payload.stack_code, stackId)) {
       return NextResponse.json(
         { error: "Stack Code already exists for this Floor Plan" },
@@ -163,6 +200,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       .update({
         stack_code: payload.stack_code.trim(),
         unit_type_id: payload.unit_type_id,
+        facing_id: payload.facing_id,
         x_percent: payload.x_percent,
         y_percent: payload.y_percent,
         width_percent: payload.width_percent,
@@ -177,6 +215,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         floor_plan_id,
         stack_code,
         unit_type_id,
+        facing_id,
         x_percent,
         y_percent,
         width_percent,

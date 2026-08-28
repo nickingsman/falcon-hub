@@ -142,6 +142,24 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       );
     }
 
+    const { count: facingReferenceCount, error: facingReferenceError } = await supabase
+      .from("project_facings")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", id)
+      .eq("media_id", mediaId)
+      .eq("is_deleted", false);
+
+    if (facingReferenceError) {
+      throw facingReferenceError;
+    }
+
+    if ((facingReferenceCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "This media is currently used as a Facing / View image." },
+        { status: 409 },
+      );
+    }
+
     const { data, error } = await supabase
       .from("project_media")
       .update({

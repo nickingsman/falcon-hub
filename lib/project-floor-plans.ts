@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getFacingSummaries } from "@/lib/project-facings";
 import type { ProjectMediaRow } from "@/lib/project-content";
 import { toProjectMediaResponse } from "@/lib/project-content";
 import {
@@ -25,6 +26,7 @@ export type FloorPlanStackRow = {
   floor_plan_id: string;
   stack_code: string;
   unit_type_id: string | null;
+  facing_id: string | null;
   x_percent: number;
   y_percent: number;
   width_percent: number;
@@ -44,6 +46,7 @@ export type UnitTypeSummaryRow = {
 export type FloorPlanStackPayload = {
   stack_code: string;
   unit_type_id: string | null;
+  facing_id: string | null;
   x_percent: number;
   y_percent: number;
   width_percent: number;
@@ -142,6 +145,7 @@ export async function getFloorPlanStacks(
       floor_plan_id,
       stack_code,
       unit_type_id,
+      facing_id,
       x_percent,
       y_percent,
       width_percent,
@@ -196,7 +200,13 @@ export async function toFloorPlanResponse(
   const unitTypeIds = stacks
     .map((stack) => stack.unit_type_id)
     .filter((id): id is string => Boolean(id));
-  const unitTypes = await getUnitTypeSummaries(supabase, unitTypeIds);
+  const facingIds = stacks
+    .map((stack) => stack.facing_id)
+    .filter((id): id is string => Boolean(id));
+  const [unitTypes, facings] = await Promise.all([
+    getUnitTypeSummaries(supabase, unitTypeIds),
+    getFacingSummaries(supabase, facingIds, includeInternalMedia),
+  ]);
 
   return {
     id: floorPlan.id,
@@ -213,6 +223,7 @@ export async function toFloorPlanResponse(
     stacks: stacks.map((stack) => ({
       ...stack,
       unit_type: stack.unit_type_id ? unitTypes.get(stack.unit_type_id) ?? null : null,
+      facing: stack.facing_id ? facings.get(stack.facing_id) ?? null : null,
     })),
   };
 }
