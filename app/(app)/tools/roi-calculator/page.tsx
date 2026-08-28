@@ -94,6 +94,14 @@ type ProjectLayout = {
   signed_url: string | null;
 };
 
+type ProjectFacing = {
+  name: string;
+  description: string | null;
+  view_type: "actual" | "indicative" | "artist_impression" | null;
+  disclaimer: string | null;
+  media: ProjectLayout | null;
+};
+
 type FurnishingItem = {
   item_name: string;
   quantity: number | null;
@@ -132,6 +140,7 @@ type FloorPlanStack = {
     type_name: string | null;
     display_configuration: string | null;
   } | null;
+  facing?: ProjectFacing | null;
 };
 
 type ProjectFloorPlan = {
@@ -158,6 +167,7 @@ type FloorPlanPresentationSnapshot = {
     width_percent: number;
     height_percent: number;
   };
+  facing: ProjectFacing | null;
 };
 
 type UnitPresentationSnapshot = {
@@ -564,11 +574,19 @@ function getUnitPresentationSnapshot(
   };
 }
 
+function getFacingViewTypeLabel(viewType: ProjectFacing["view_type"]) {
+  if (viewType === "actual") return "Actual View";
+  if (viewType === "indicative") return "Indicative View";
+  if (viewType === "artist_impression") return "Artist Impression";
+
+  return "";
+}
+
 function getFloorPlanPresentationSnapshot(
   floorPlan: ProjectFloorPlan | null,
   stack: FloorPlanStack | null,
 ): FloorPlanPresentationSnapshot | null {
-  if (!floorPlan?.media?.signed_url || !stack) return null;
+  if (!floorPlan || !stack) return null;
 
   return {
     floorPlanName: floorPlan.name,
@@ -583,6 +601,19 @@ function getFloorPlanPresentationSnapshot(
       width_percent: stack.width_percent,
       height_percent: stack.height_percent,
     },
+    facing: stack.facing ?? null,
+  };
+}
+
+function getFloorPlanUnitLabelPosition(stack: FloorPlanPresentationSnapshot["stack"]) {
+  const x = Math.max(Math.min(stack.x_percent + stack.width_percent / 2, 89), 11);
+  const y = Math.max(stack.y_percent - 1.2, 3.4);
+
+  return {
+    x,
+    y,
+    backgroundX: x - 10.5,
+    backgroundY: Math.max(y - 3, 0.6),
   };
 }
 
@@ -590,7 +621,11 @@ function shouldRenderUnitPresentation(
   snapshot: UnitPresentationSnapshot | null,
   floorPlanSnapshot: FloorPlanPresentationSnapshot | null,
 ) {
-  return Boolean(snapshot?.layout?.signed_url || floorPlanSnapshot?.media?.signed_url);
+  return Boolean(
+    snapshot?.layout?.signed_url ||
+      floorPlanSnapshot?.media?.signed_url ||
+      floorPlanSnapshot?.facing,
+  );
 }
 
 function proposalUnitInfoField(label: string, value: string) {
@@ -950,6 +985,110 @@ function buildRoiProposalHtml({
       ?.filter((item) => item.item_name)
       .map(buildFurnishingItem)
       .join("") ?? "";
+  const selectedFacing = floorPlanPresentation?.facing ?? null;
+  const facingViewTypeLabel = getFacingViewTypeLabel(selectedFacing?.view_type ?? null);
+  const hasUnitLayout = Boolean(unitPresentation?.layout?.signed_url);
+  const hasFloorPlanImage = Boolean(floorPlanPresentation?.media?.signed_url);
+  const hasFacing = Boolean(selectedFacing);
+  const unitLabelPosition = floorPlanPresentation
+    ? getFloorPlanUnitLabelPosition(floorPlanPresentation.stack)
+    : null;
+  const visualCount = [hasUnitLayout, hasFloorPlanImage, hasFacing].filter(Boolean).length;
+  const visualGridClass = [
+    "visual-grid",
+    visualCount <= 1 ? "single" : "",
+    hasFacing ? "with-facing" : "",
+    hasUnitLayout && hasFloorPlanImage && hasFacing ? "three-visuals" : "",
+    hasUnitLayout && !hasFloorPlanImage && hasFacing ? "layout-facing" : "",
+    !hasUnitLayout && hasFloorPlanImage && hasFacing ? "floor-facing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const layoutCardHtml =
+    unitPresentation?.layout?.signed_url
+      ? `<div class="section layout-section">
+          <div class="section-heading-row">
+            <h2>Layout Plan</h2>
+            <span>${escapeHtml(unitPresentation.layout.title || "Unit Layout")}</span>
+          </div>
+          <div class="layout-frame">
+            <img src="${escapeHtml(unitPresentation.layout.signed_url)}" alt="${escapeHtml(unitPresentation.layout.title || "Unit layout")}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+            <div class="layout-unavailable">Layout plan unavailable</div>
+          </div>
+        </div>`
+      : "";
+  const floorPlanCardHtml =
+    floorPlanPresentation?.media?.signed_url
+      ? `<div class="section floor-plan-section">
+          <div class="section-heading-row">
+            <h2>Floor Plan</h2>
+            <span>${escapeHtml(getFloorPlanLabel({
+              id: "",
+              name: floorPlanPresentation.floorPlanName,
+              tower_code: floorPlanPresentation.towerCode,
+              media_id: null,
+              floor_from: floorPlanPresentation.floorFrom,
+              floor_to: floorPlanPresentation.floorTo,
+              media: null,
+              stacks: [],
+            }))}</span>
+          </div>
+          <div class="floor-plan-frame">
+            <div class="floor-plan-image-wrap">
+              <img src="${escapeHtml(floorPlanPresentation.media.signed_url)}" alt="${escapeHtml(floorPlanPresentation.media.title || "Floor plan")}" onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling.style.display='flex';" />
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                <rect
+                  x="${floorPlanPresentation.stack.x_percent}"
+                  y="${floorPlanPresentation.stack.y_percent}"
+                  width="${floorPlanPresentation.stack.width_percent}"
+                  height="${floorPlanPresentation.stack.height_percent}"
+                  rx="0.8"
+                ></rect>
+                ${
+                  unitLabelPosition
+                    ? `<rect
+                        class="unit-label-bg"
+                        x="${unitLabelPosition.backgroundX}"
+                        y="${unitLabelPosition.backgroundY}"
+                        width="21"
+                        height="4.4"
+                        rx="1.1"
+                      ></rect>`
+                    : ""
+                }
+                <text
+                  x="${unitLabelPosition?.x ?? 50}"
+                  y="${unitLabelPosition?.y ?? 3.4}"
+                  text-anchor="middle"
+                >YOUR UNIT</text>
+              </svg>
+            </div>
+            <div class="layout-unavailable">Floor plan unavailable</div>
+          </div>
+          <p class="floor-plan-caption">Highlighted Stack ${escapeHtml(floorPlanPresentation.stackCode)}</p>
+        </div>`
+      : "";
+  const facingCardHtml = selectedFacing
+    ? `<div class="section facing-section">
+        <div class="section-heading-row">
+          <h2>Facing / View</h2>
+          ${facingViewTypeLabel ? `<span>${escapeHtml(facingViewTypeLabel)}</span>` : ""}
+        </div>
+        <div class="facing-content">
+          <h3>${escapeHtml(selectedFacing.name)}</h3>
+          ${
+            selectedFacing.media?.signed_url
+              ? `<div class="facing-image-wrap">
+                  <img src="${escapeHtml(selectedFacing.media.signed_url)}" alt="${escapeHtml(selectedFacing.media.title || selectedFacing.name)}" onerror="this.parentElement.style.display='none';" />
+                </div>`
+              : ""
+          }
+          ${facingViewTypeLabel ? `<p class="facing-type">${escapeHtml(facingViewTypeLabel)}</p>` : ""}
+          ${selectedFacing.description ? `<p class="facing-description">${escapeHtml(selectedFacing.description)}</p>` : ""}
+          ${selectedFacing.disclaimer ? `<p class="facing-disclaimer">${escapeHtml(selectedFacing.disclaimer)}</p>` : ""}
+        </div>
+      </div>`
+    : "";
   const proposalPage2 = renderUnitPresentation
     ? `
     <main class="page page-break">
@@ -977,60 +1116,12 @@ function buildRoiProposalHtml({
         </div>
       </section>
 
-      <section class="visual-grid ${unitPresentation?.layout?.signed_url && floorPlanPresentation?.media?.signed_url ? "" : "single"}">
+      <section class="${visualGridClass}">
+        ${layoutCardHtml}
         ${
-          unitPresentation?.layout?.signed_url
-            ? `<div class="section layout-section">
-                <div class="section-heading-row">
-                  <h2>Layout Plan</h2>
-                  <span>${escapeHtml(unitPresentation.layout.title || "Unit Layout")}</span>
-                </div>
-                <div class="layout-frame">
-                  <img src="${escapeHtml(unitPresentation.layout.signed_url)}" alt="${escapeHtml(unitPresentation.layout.title || "Unit layout")}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                  <div class="layout-unavailable">Layout plan unavailable</div>
-                </div>
-              </div>`
-            : ""
-        }
-        ${
-          floorPlanPresentation?.media?.signed_url
-            ? `<div class="section floor-plan-section">
-                <div class="section-heading-row">
-                  <h2>Floor Plan</h2>
-                  <span>${escapeHtml(getFloorPlanLabel({
-                    id: "",
-                    name: floorPlanPresentation.floorPlanName,
-                    tower_code: floorPlanPresentation.towerCode,
-                    media_id: null,
-                    floor_from: floorPlanPresentation.floorFrom,
-                    floor_to: floorPlanPresentation.floorTo,
-                    media: null,
-                    stacks: [],
-                  }))}</span>
-                </div>
-                <div class="floor-plan-frame">
-                  <div class="floor-plan-image-wrap">
-                    <img src="${escapeHtml(floorPlanPresentation.media.signed_url)}" alt="${escapeHtml(floorPlanPresentation.media.title || "Floor plan")}" onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling.style.display='flex';" />
-                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                      <rect
-                        x="${floorPlanPresentation.stack.x_percent}"
-                        y="${floorPlanPresentation.stack.y_percent}"
-                        width="${floorPlanPresentation.stack.width_percent}"
-                        height="${floorPlanPresentation.stack.height_percent}"
-                        rx="0.8"
-                      ></rect>
-                      <text
-                        x="${Math.max(Math.min(floorPlanPresentation.stack.x_percent + floorPlanPresentation.stack.width_percent / 2, 96), 4)}"
-                        y="${Math.max(floorPlanPresentation.stack.y_percent - 1.2, 3)}"
-                        text-anchor="middle"
-                      >YOUR UNIT</text>
-                    </svg>
-                  </div>
-                  <div class="layout-unavailable">Floor plan unavailable</div>
-                </div>
-                <p class="floor-plan-caption">Highlighted Stack ${escapeHtml(floorPlanPresentation.stackCode)}</p>
-              </div>`
-            : ""
+          hasUnitLayout && hasFloorPlanImage && hasFacing
+            ? `<div class="visual-side-stack">${floorPlanCardHtml}${facingCardHtml}</div>`
+            : `${floorPlanCardHtml}${facingCardHtml}`
         }
       </section>
 
@@ -1365,6 +1456,12 @@ function buildRoiProposalHtml({
       .visual-grid.single .floor-plan-frame {
         min-height: 158mm;
       }
+      .visual-side-stack {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 8px;
+      }
       .section-heading-row {
         display: flex;
         justify-content: space-between;
@@ -1440,20 +1537,88 @@ function buildRoiProposalHtml({
         stroke-width: 0.9;
         vector-effect: non-scaling-stroke;
       }
+      .floor-plan-image-wrap .unit-label-bg {
+        fill: rgba(255, 255, 255, 0.92);
+        stroke: rgba(139, 58, 58, 0.36);
+        stroke-width: 0.35;
+      }
       .floor-plan-image-wrap text {
         fill: #8B3A3A;
         font-size: 3px;
         font-weight: 800;
-        paint-order: stroke;
-        stroke: #ffffff;
-        stroke-width: 0.65;
-        stroke-linejoin: round;
       }
       .floor-plan-caption {
         margin: 6px 0 0;
         color: #52525b;
         font-size: 9px;
         font-weight: 700;
+      }
+      .three-visuals .floor-plan-frame {
+        min-height: 92mm;
+      }
+      .three-visuals .floor-plan-image-wrap,
+      .three-visuals .floor-plan-image-wrap img {
+        max-height: 92mm;
+      }
+      .facing-section {
+        break-inside: avoid;
+      }
+      .facing-content h3 {
+        margin: 2px 0 7px;
+        color: #18181b;
+        font-size: 14px;
+        line-height: 1.15;
+      }
+      .facing-image-wrap {
+        margin-bottom: 7px;
+        max-height: 52mm;
+        border: 1px solid #e4e4e7;
+        border-radius: 11px;
+        background: #fafafa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .facing-image-wrap img {
+        display: block;
+        max-width: 100%;
+        max-height: 52mm;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+      }
+      .visual-grid.single .facing-image-wrap {
+        max-height: 126mm;
+      }
+      .visual-grid.single .facing-image-wrap img {
+        max-height: 126mm;
+      }
+      .layout-facing .facing-image-wrap,
+      .floor-facing .facing-image-wrap {
+        max-height: 122mm;
+      }
+      .layout-facing .facing-image-wrap img,
+      .floor-facing .facing-image-wrap img {
+        max-height: 122mm;
+      }
+      .facing-type {
+        margin: 0 0 5px;
+        color: #087F6B;
+        font-size: 9px;
+        font-weight: 800;
+      }
+      .facing-description {
+        margin: 0 0 6px;
+        color: #3f3f46;
+        font-size: 10px;
+        line-height: 1.35;
+      }
+      .facing-disclaimer {
+        margin: 0;
+        color: #71717a;
+        font-size: 8.5px;
+        line-height: 1.35;
       }
       .furnishing-section {
         margin-top: 8px;
@@ -2135,6 +2300,8 @@ export default function RoiCalculatorPage() {
     confirmedFloorPlan,
     confirmedStack,
   );
+  const selectedFacing = floorPlanPresentation?.facing ?? null;
+  const selectedFacingViewTypeLabel = getFacingViewTypeLabel(selectedFacing?.view_type ?? null);
 
   async function getFreshUnitPresentationForExport() {
     if (!selectedProjectId || !selectedUnitTypeId) return unitPresentation;
@@ -2463,6 +2630,20 @@ export default function RoiCalculatorPage() {
                           {getFloorPlanLabel(detectionState.floorPlan)} · Stack{" "}
                           {detectionState.stack.stack_code}
                         </p>
+                      </div>
+                    ) : null}
+
+                    {selectedFacing ? (
+                      <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-2">
+                        <p className="text-xs font-medium text-zinc-500">Facing / View</p>
+                        <p className="mt-1 font-semibold text-zinc-900">
+                          {selectedFacing.name}
+                        </p>
+                        {selectedFacingViewTypeLabel ? (
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {selectedFacingViewTypeLabel}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
 
