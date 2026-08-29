@@ -454,6 +454,7 @@ export function validateCommercialPackagePayload(
         return "Discount value must be a non-negative number";
       }
       if (item.cash_benefit_treatment !== null) return "Discount cannot have cash benefit treatment";
+      if (item.receive_at !== null) return "Discount cannot have receive timing";
     }
 
     if (item.item_type === "cash_benefit") {

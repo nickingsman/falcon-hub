@@ -4,12 +4,34 @@ import {
   requireProjectApiReadAccess,
   requireProjectApiWriteAccess,
 } from "@/lib/permissions";
+import { normalizeNullableNumber } from "@/lib/project-comparison";
 import { isUnitNumberFormat } from "@/lib/unit-number-format";
 
 function normalizeProjectUnitNumberFormat(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
 
   return isUnitNumberFormat(value) ? value : undefined;
+}
+
+function normalizeEstimatedVpPart(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) ? parsed : Number.NaN;
+}
+
+function validateEstimatedVp(year: number | null, quarter: number | null) {
+  if (year === null && quarter === null) return null;
+  if (year === null || quarter === null) return "Estimated VP requires both Year and Quarter";
+  if (!Number.isInteger(year) || year < 1900 || year > 9999) {
+    return "Estimated VP Year must be a valid year";
+  }
+  if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) {
+    return "Estimated VP Quarter must be Q1, Q2, Q3, or Q4";
+  }
+
+  return null;
 }
 
 export async function GET() {
@@ -35,7 +57,8 @@ export async function GET() {
         title_type,
         starting_price,
         total_units,
-        estimated_vp_date,
+        estimated_vp_year,
+        estimated_vp_quarter,
         maintenance_fee_per_sqft,
         status,
         launch_date,
@@ -76,10 +99,36 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const unitNumberFormat = normalizeProjectUnitNumberFormat(body.unit_number_format);
+    const estimatedVpYear = normalizeEstimatedVpPart(body.estimated_vp_year);
+    const estimatedVpQuarter = normalizeEstimatedVpPart(body.estimated_vp_quarter);
+    const maintenanceFeePerSqft = normalizeNullableNumber(body.maintenance_fee_per_sqft);
 
     if (unitNumberFormat === undefined) {
       return NextResponse.json(
         { error: "Invalid Unit Number Format" },
+        { status: 400 },
+      );
+    }
+
+    if (Number.isNaN(estimatedVpYear) || Number.isNaN(estimatedVpQuarter)) {
+      return NextResponse.json(
+        { error: "Estimated VP must use valid Year and Quarter values" },
+        { status: 400 },
+      );
+    }
+
+    const estimatedVpError = validateEstimatedVp(estimatedVpYear, estimatedVpQuarter);
+
+    if (estimatedVpError) {
+      return NextResponse.json({ error: estimatedVpError }, { status: 400 });
+    }
+
+    if (
+      maintenanceFeePerSqft !== null &&
+      (!Number.isFinite(maintenanceFeePerSqft) || maintenanceFeePerSqft < 0)
+    ) {
+      return NextResponse.json(
+        { error: "Maintenance Fee Per Sqft must be a non-negative number" },
         { status: 400 },
       );
     }
@@ -104,6 +153,9 @@ export async function POST(request: Request) {
         status: body.status || "Active",
         launch_date: body.launch_date || null,
         unit_number_format: unitNumberFormat,
+        estimated_vp_year: estimatedVpYear,
+        estimated_vp_quarter: estimatedVpQuarter,
+        maintenance_fee_per_sqft: maintenanceFeePerSqft,
         notes: body.notes || null,
         is_deleted: false,
       })

@@ -18,6 +18,9 @@ type Project = {
   status: string | null;
   launch_date: string | null;
   unit_number_format: string | null;
+  estimated_vp_year: number | null;
+  estimated_vp_quarter: number | null;
+  maintenance_fee_per_sqft: number | null;
   notes: string | null;
   is_deleted: boolean;
 };
@@ -34,6 +37,9 @@ type ProjectForm = {
   status: string;
   launch_date: string;
   unit_number_format: string;
+  estimated_vp_year: string;
+  estimated_vp_quarter: string;
+  maintenance_fee_per_sqft: string;
   notes: string;
 };
 
@@ -49,6 +55,9 @@ const emptyForm: ProjectForm = {
   status: "Active",
   launch_date: "",
   unit_number_format: "",
+  estimated_vp_year: "",
+  estimated_vp_quarter: "",
+  maintenance_fee_per_sqft: "",
   notes: "",
 };
 
@@ -85,6 +94,18 @@ export default function ProjectsPage() {
     status: project.status || "Active",
     launch_date: project.launch_date || "",
     unit_number_format: project.unit_number_format || "",
+    estimated_vp_year:
+      project.estimated_vp_year !== null
+        ? String(project.estimated_vp_year)
+        : "",
+    estimated_vp_quarter:
+      project.estimated_vp_quarter !== null
+        ? String(project.estimated_vp_quarter)
+        : "",
+    maintenance_fee_per_sqft:
+      project.maintenance_fee_per_sqft !== null
+        ? String(project.maintenance_fee_per_sqft)
+        : "",
     notes: project.notes || "",
   });
 
@@ -212,6 +233,14 @@ if (projectsResponse.ok) {
 
     if (!form.project_name.trim()) {
       setErrorMessage("Project Name is required.");
+      return;
+    }
+
+    if (
+      (form.estimated_vp_year && !form.estimated_vp_quarter) ||
+      (!form.estimated_vp_year && form.estimated_vp_quarter)
+    ) {
+      setErrorMessage("Estimated VP requires both Year and Quarter.");
       return;
     }
 
@@ -764,6 +793,74 @@ if (projectsResponse.ok) {
                           Manual Detection
                         </option>
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Estimated VP Year
+                      </label>
+
+                      <input
+                        type="number"
+                        min="1900"
+                        max="9999"
+                        value={form.estimated_vp_year}
+                        onChange={(e) =>
+                          updateField(
+                            "estimated_vp_year",
+                            e.target.value
+                          )
+                        }
+                        placeholder="e.g. 2029"
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Estimated VP Quarter
+                      </label>
+
+                      <select
+                        value={form.estimated_vp_quarter}
+                        onChange={(e) =>
+                          updateField(
+                            "estimated_vp_quarter",
+                            e.target.value
+                          )
+                        }
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">Select quarter</option>
+                        <option value="1">Q1</option>
+                        <option value="2">Q2</option>
+                        <option value="3">Q3</option>
+                        <option value="4">Q4</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Maintenance Fee (RM / psf)
+                      </label>
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.maintenance_fee_per_sqft}
+                        onChange={(e) =>
+                          updateField(
+                            "maintenance_fee_per_sqft",
+                            e.target.value
+                          )
+                        }
+                        placeholder="e.g. 0.33"
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      />
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Displayed as RM per psf, including sinking fund where applicable.
+                      </p>
                     </div>
 
                     <div className="md:col-span-2">

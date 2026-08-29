@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, PointerEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
@@ -18,6 +18,9 @@ type Project = {
   status: string | null;
   launch_date: string | null;
   unit_number_format: string | null;
+  estimated_vp_year: number | null;
+  estimated_vp_quarter: number | null;
+  maintenance_fee_per_sqft: number | null;
   notes: string | null;
 };
 
@@ -168,6 +171,12 @@ type ProjectUnitType = {
   carpark_description: string | null;
   layout_media_id: string | null;
   furnishing_package_id: string | null;
+  price_from: number | null;
+  price_to: number | null;
+  estimated_rental_from: number | null;
+  estimated_rental_to: number | null;
+  has_balcony: boolean | null;
+  is_dual_key: boolean | null;
   sort_order: number | null;
   layout: ProjectMedia | null;
   furnishing_package: FurnishingPackage | null;
@@ -217,7 +226,101 @@ type UnitTypeForm = {
   default_carparks: string;
   carpark_description: string;
   furnishing_package_id: string;
+  price_from: string;
+  price_to: string;
+  estimated_rental_from: string;
+  estimated_rental_to: string;
+  has_balcony: string;
+  is_dual_key: string;
   sort_order: string;
+};
+
+type ConnectivityPoint = {
+  id: string;
+  project_id: string;
+  category: string;
+  name: string;
+  distance_meters: number | null;
+  connection_mode: string | null;
+  customer_description: string | null;
+  internal_note?: string | null;
+  sort_order: number | null;
+};
+
+type ConnectivityForm = {
+  category: string;
+  name: string;
+  distance_meters: string;
+  connection_mode: string;
+  customer_description: string;
+  internal_note: string;
+  sort_order: string;
+};
+
+type CommercialPackageItem = {
+  id?: string;
+  package_id?: string;
+  item_type: "discount" | "cash_benefit" | "non_cash_benefit";
+  description: string;
+  discount_method: "percentage_spa" | "percentage_previous_balance" | "fixed" | null;
+  value: number | null;
+  cash_benefit_treatment: "immediate_offset" | "refund_later" | null;
+  receive_at: string | null;
+  sort_order: number | null;
+};
+
+type CommercialPackagePurchaseCost = {
+  id?: string;
+  package_id?: string;
+  cost_key: string;
+  treatment: "customer_pay" | "developer_absorbed" | "not_applicable";
+  amount_override: number | null;
+  sort_order: number | null;
+};
+
+type CommercialPackage = {
+  id: string;
+  project_id: string;
+  package_name: string;
+  customer_description: string | null;
+  internal_note?: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  applies_to_all_unit_types: boolean;
+  furnishing_package_id: string | null;
+  furnishing_package: FurnishingPackage | null;
+  applicable_unit_types: ProjectUnitType[];
+  items: CommercialPackageItem[];
+  purchase_costs: CommercialPackagePurchaseCost[];
+  sort_order: number | null;
+};
+
+type CommercialPackageForm = {
+  package_name: string;
+  customer_description: string;
+  internal_note: string;
+  valid_from: string;
+  valid_until: string;
+  applies_to_all_unit_types: "all" | "selected";
+  furnishing_package_id: string;
+  sort_order: string;
+  unit_type_ids: string[];
+  items: Array<{
+    id: string;
+    item_type: CommercialPackageItem["item_type"];
+    description: string;
+    discount_method: string;
+    value: string;
+    cash_benefit_treatment: string;
+    receive_at: string;
+    sort_order: string;
+  }>;
+  purchase_costs: Array<{
+    cost_key: string;
+    treatment: CommercialPackagePurchaseCost["treatment"];
+    amount_override: string;
+    sort_order: string;
+  }>;
 };
 
 type FloorPlanForm = {
@@ -298,7 +401,47 @@ const emptyUnitTypeForm: UnitTypeForm = {
   default_carparks: "",
   carpark_description: "",
   furnishing_package_id: "",
+  price_from: "",
+  price_to: "",
+  estimated_rental_from: "",
+  estimated_rental_to: "",
+  has_balcony: "",
+  is_dual_key: "",
   sort_order: "0",
+};
+
+const emptyConnectivityForm: ConnectivityForm = {
+  category: "lrt",
+  name: "",
+  distance_meters: "",
+  connection_mode: "",
+  customer_description: "",
+  internal_note: "",
+  sort_order: "0",
+};
+
+const purchaseCostRows: CommercialPackageForm["purchase_costs"] = [
+  { cost_key: "spa_legal_fee", treatment: "not_applicable", amount_override: "", sort_order: "0" },
+  { cost_key: "loan_legal_fee", treatment: "not_applicable", amount_override: "", sort_order: "1" },
+  { cost_key: "spa_disbursement_fee", treatment: "not_applicable", amount_override: "", sort_order: "2" },
+  { cost_key: "loan_disbursement_fee", treatment: "not_applicable", amount_override: "", sort_order: "3" },
+  { cost_key: "loan_stamp_duty", treatment: "not_applicable", amount_override: "", sort_order: "4" },
+  { cost_key: "mot_transfer_stamp_duty", treatment: "not_applicable", amount_override: "", sort_order: "5" },
+  { cost_key: "valuation_fee", treatment: "not_applicable", amount_override: "", sort_order: "6" },
+];
+
+const emptyCommercialPackageForm: CommercialPackageForm = {
+  package_name: "",
+  customer_description: "",
+  internal_note: "",
+  valid_from: "",
+  valid_until: "",
+  applies_to_all_unit_types: "all",
+  furnishing_package_id: "",
+  sort_order: "0",
+  unit_type_ids: [],
+  items: [],
+  purchase_costs: purchaseCostRows,
 };
 
 const emptyFloorPlanForm: FloorPlanForm = {
@@ -332,6 +475,60 @@ const resourceTypes = [
   "Training Material",
   "Other",
 ];
+
+const connectivityCategoryLabels: Record<string, string> = {
+  lrt: "LRT",
+  mrt: "MRT",
+  ktm: "KTM",
+  monorail: "Monorail",
+  brt: "BRT",
+  highway: "Highway",
+  mall: "Mall",
+  grocery: "Grocery",
+  school: "School",
+  university: "University",
+  hospital: "Hospital",
+  park: "Park",
+  business_district: "Business District",
+  other: "Other",
+};
+
+const connectionModeLabels: Record<string, string> = {
+  walking: "Walking",
+  direct_connected: "Direct Connected",
+  sheltered_walking: "Sheltered Walking",
+  shuttle: "Shuttle",
+  driving: "Driving",
+  nearby: "Nearby",
+  other: "Other",
+};
+
+const discountMethodLabels: Record<string, string> = {
+  percentage_spa: "% of SPA Price",
+  percentage_previous_balance: "% of Previous Balance",
+  fixed: "Fixed Amount",
+};
+
+const cashBenefitTreatmentLabels: Record<string, string> = {
+  immediate_offset: "Immediate Offset",
+  refund_later: "Refund Later",
+};
+
+const purchaseCostLabels: Record<string, string> = {
+  spa_legal_fee: "SPA Legal Fee",
+  loan_legal_fee: "Loan Legal Fee",
+  spa_disbursement_fee: "SPA Disbursement Fee",
+  loan_disbursement_fee: "Loan Disbursement Fee",
+  loan_stamp_duty: "Loan Stamp Duty",
+  mot_transfer_stamp_duty: "MOT / Transfer Stamp Duty",
+  valuation_fee: "Valuation Fee",
+};
+
+const purchaseCostTreatmentLabels: Record<string, string> = {
+  customer_pay: "Customer Pay",
+  developer_absorbed: "FREE",
+  not_applicable: "N/A",
+};
 
 const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
   keySelling: {
@@ -462,7 +659,68 @@ function getUnitTypeFormFromItem(item: ProjectUnitType): UnitTypeForm {
       item.default_carparks !== null ? String(item.default_carparks) : "",
     carpark_description: item.carpark_description || "",
     furnishing_package_id: item.furnishing_package_id || "",
+    price_from: item.price_from !== null ? String(item.price_from) : "",
+    price_to: item.price_to !== null ? String(item.price_to) : "",
+    estimated_rental_from:
+      item.estimated_rental_from !== null ? String(item.estimated_rental_from) : "",
+    estimated_rental_to:
+      item.estimated_rental_to !== null ? String(item.estimated_rental_to) : "",
+    has_balcony: item.has_balcony === null ? "" : String(item.has_balcony),
+    is_dual_key: item.is_dual_key === null ? "" : String(item.is_dual_key),
     sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
+function getConnectivityFormFromItem(item: ConnectivityPoint): ConnectivityForm {
+  return {
+    category: item.category || "other",
+    name: item.name || "",
+    distance_meters: item.distance_meters !== null ? String(item.distance_meters) : "",
+    connection_mode: item.connection_mode || "",
+    customer_description: item.customer_description || "",
+    internal_note: item.internal_note || "",
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+  };
+}
+
+function getCommercialPackageFormFromItem(item: CommercialPackage): CommercialPackageForm {
+  const existingCosts = new Map(item.purchase_costs.map((cost) => [cost.cost_key, cost]));
+
+  return {
+    package_name: item.package_name || "",
+    customer_description: item.customer_description || "",
+    internal_note: item.internal_note || "",
+    valid_from: item.valid_from || "",
+    valid_until: item.valid_until || "",
+    applies_to_all_unit_types: item.applies_to_all_unit_types ? "all" : "selected",
+    furnishing_package_id: item.furnishing_package_id || "",
+    sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
+    unit_type_ids: item.applicable_unit_types.map((unitType) => unitType.id),
+    items: item.items.map((child, index) => ({
+      id: child.id || crypto.randomUUID(),
+      item_type: child.item_type,
+      description: child.description || "",
+      discount_method: child.discount_method || "percentage_spa",
+      value: child.value !== null ? String(child.value) : "",
+      cash_benefit_treatment: child.cash_benefit_treatment || "immediate_offset",
+      receive_at: child.receive_at || "",
+      sort_order: child.sort_order !== null ? String(child.sort_order) : String(index),
+    })),
+    purchase_costs: purchaseCostRows.map((row) => {
+      const existing = existingCosts.get(row.cost_key);
+
+      return {
+        cost_key: row.cost_key,
+        treatment: existing?.treatment || row.treatment,
+        amount_override:
+          existing?.amount_override !== null && existing?.amount_override !== undefined
+            ? String(existing.amount_override)
+            : "",
+        sort_order: existing?.sort_order !== null && existing?.sort_order !== undefined
+          ? String(existing.sort_order)
+          : row.sort_order,
+      };
+    }),
   };
 }
 
@@ -535,6 +793,54 @@ function getUnitNumberFormatLabel(value: string | null) {
   return "Manual / Unconfigured";
 }
 
+function formatDate(value: string | null) {
+  if (!value) return "—";
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatEstimatedVp(project: Pick<Project, "estimated_vp_year" | "estimated_vp_quarter">) {
+  if (project.estimated_vp_year === null || project.estimated_vp_quarter === null) {
+    return "—";
+  }
+
+  return `${project.estimated_vp_year} Q${project.estimated_vp_quarter}`;
+}
+
+function formatMoney(value: number | null) {
+  if (value === null) return "—";
+
+  return `RM ${value.toLocaleString("en-MY", {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function formatBoolean(value: boolean | null) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+
+  return "Unknown";
+}
+
+function getUnitTypeSummary(unitType: ProjectUnitType) {
+  return [
+    unitType.type_code,
+    unitType.display_configuration,
+    unitType.type_name,
+    unitType.size_sqft ? `${unitType.size_sqft} sqft` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -566,6 +872,22 @@ export default function ProjectDetailPage() {
   const [unitTypeForm, setUnitTypeForm] = useState<UnitTypeForm>(emptyUnitTypeForm);
   const [unitTypeLayoutFile, setUnitTypeLayoutFile] = useState<File | null>(null);
   const [unitTypeSaving, setUnitTypeSaving] = useState(false);
+  const [connectivityPoints, setConnectivityPoints] = useState<ConnectivityPoint[]>([]);
+  const [connectivityLoading, setConnectivityLoading] = useState(true);
+  const [connectivityErrorMessage, setConnectivityErrorMessage] = useState("");
+  const [isConnectivityModalOpen, setIsConnectivityModalOpen] = useState(false);
+  const [editingConnectivityId, setEditingConnectivityId] = useState<string | null>(null);
+  const [connectivityForm, setConnectivityForm] =
+    useState<ConnectivityForm>(emptyConnectivityForm);
+  const [connectivitySaving, setConnectivitySaving] = useState(false);
+  const [commercialPackages, setCommercialPackages] = useState<CommercialPackage[]>([]);
+  const [commercialPackagesLoading, setCommercialPackagesLoading] = useState(true);
+  const [commercialPackagesErrorMessage, setCommercialPackagesErrorMessage] = useState("");
+  const [isCommercialPackageModalOpen, setIsCommercialPackageModalOpen] = useState(false);
+  const [editingCommercialPackageId, setEditingCommercialPackageId] = useState<string | null>(null);
+  const [commercialPackageForm, setCommercialPackageForm] =
+    useState<CommercialPackageForm>(emptyCommercialPackageForm);
+  const [commercialPackageSaving, setCommercialPackageSaving] = useState(false);
   const [floorPlans, setFloorPlans] = useState<ProjectFloorPlan[]>([]);
   const [floorPlansLoading, setFloorPlansLoading] = useState(true);
   const [floorPlansErrorMessage, setFloorPlansErrorMessage] = useState("");
@@ -846,6 +1168,56 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const fetchConnectivityPoints = useCallback(async (id: string, includeInternalDetails: boolean) => {
+    try {
+      setConnectivityLoading(true);
+      setConnectivityErrorMessage("");
+
+      const response = await fetch(
+        `/api/projects/${id}/connectivity-points${includeInternalDetails ? "" : "?audience=customer"}`,
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load connectivity points");
+      }
+
+      setConnectivityPoints(result);
+    } catch (error) {
+      console.error("Load connectivity points error:", error);
+      setConnectivityErrorMessage(
+        error instanceof Error ? error.message : "Unable to load connectivity points",
+      );
+    } finally {
+      setConnectivityLoading(false);
+    }
+  }, []);
+
+  const fetchCommercialPackages = useCallback(async (id: string, includeInternalDetails: boolean) => {
+    try {
+      setCommercialPackagesLoading(true);
+      setCommercialPackagesErrorMessage("");
+
+      const response = await fetch(
+        `/api/projects/${id}/commercial-packages${includeInternalDetails ? "" : "?audience=customer"}`,
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load commercial packages");
+      }
+
+      setCommercialPackages(result);
+    } catch (error) {
+      console.error("Load commercial packages error:", error);
+      setCommercialPackagesErrorMessage(
+        error instanceof Error ? error.message : "Unable to load commercial packages",
+      );
+    } finally {
+      setCommercialPackagesLoading(false);
+    }
+  }, []);
+
   async function fetchFloorPlans(id: string) {
     try {
       setFloorPlansLoading(true);
@@ -900,13 +1272,15 @@ export default function ProjectDetailPage() {
       const timeoutId = window.setTimeout(() => {
         void fetchFurnishingPackages(projectId);
         void fetchUnitTypes(projectId);
+        void fetchConnectivityPoints(projectId, canManageProjects);
+        void fetchCommercialPackages(projectId, canManageProjects);
         void fetchFloorPlans(projectId);
         void fetchFacings(projectId);
       }, 0);
 
       return () => window.clearTimeout(timeoutId);
     }
-  }, [projectId]);
+  }, [canManageProjects, fetchCommercialPackages, fetchConnectivityPoints, projectId]);
 
   function updateKnowledgeField(field: keyof KnowledgeForm, value: string) {
     setKnowledgeForm((current) => ({
@@ -933,6 +1307,82 @@ export default function ProjectDetailPage() {
     setUnitTypeForm((current) => ({
       ...current,
       [field]: value,
+    }));
+  }
+
+  function updateConnectivityField(field: keyof ConnectivityForm, value: string) {
+    setConnectivityForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateCommercialPackageField(
+    field: Exclude<keyof CommercialPackageForm, "items" | "purchase_costs" | "unit_type_ids">,
+    value: string,
+  ) {
+    setCommercialPackageForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function toggleCommercialPackageUnitType(unitTypeId: string) {
+    setCommercialPackageForm((current) => ({
+      ...current,
+      unit_type_ids: current.unit_type_ids.includes(unitTypeId)
+        ? current.unit_type_ids.filter((id) => id !== unitTypeId)
+        : [...current.unit_type_ids, unitTypeId],
+    }));
+  }
+
+  function addCommercialPackageItem() {
+    setCommercialPackageForm((current) => ({
+      ...current,
+      items: [
+        ...current.items,
+        {
+          id: crypto.randomUUID(),
+          item_type: "discount",
+          description: "",
+          discount_method: "percentage_spa",
+          value: "",
+          cash_benefit_treatment: "immediate_offset",
+          receive_at: "",
+          sort_order: String(current.items.length),
+        },
+      ],
+    }));
+  }
+
+  function updateCommercialPackageItem(
+    id: string,
+    updates: Partial<CommercialPackageForm["items"][number]>,
+  ) {
+    setCommercialPackageForm((current) => ({
+      ...current,
+      items: current.items.map((item) =>
+        item.id === id ? { ...item, ...updates } : item,
+      ),
+    }));
+  }
+
+  function removeCommercialPackageItem(id: string) {
+    setCommercialPackageForm((current) => ({
+      ...current,
+      items: current.items.filter((item) => item.id !== id),
+    }));
+  }
+
+  function updateCommercialPackagePurchaseCost(
+    costKey: string,
+    updates: Partial<CommercialPackageForm["purchase_costs"][number]>,
+  ) {
+    setCommercialPackageForm((current) => ({
+      ...current,
+      purchase_costs: current.purchase_costs.map((cost) =>
+        cost.cost_key === costKey ? { ...cost, ...updates } : cost,
+      ),
     }));
   }
 
@@ -1045,6 +1495,58 @@ export default function ProjectDetailPage() {
     setEditingUnitTypeId(null);
     setUnitTypeForm(emptyUnitTypeForm);
     setUnitTypeLayoutFile(null);
+  }
+
+  function openAddConnectivityPoint() {
+    if (!canManageProjects) return;
+
+    setEditingConnectivityId(null);
+    setConnectivityForm(emptyConnectivityForm);
+    setConnectivityErrorMessage("");
+    setIsConnectivityModalOpen(true);
+  }
+
+  function openEditConnectivityPoint(point: ConnectivityPoint) {
+    if (!canManageProjects) return;
+
+    setEditingConnectivityId(point.id);
+    setConnectivityForm(getConnectivityFormFromItem(point));
+    setConnectivityErrorMessage("");
+    setIsConnectivityModalOpen(true);
+  }
+
+  function closeConnectivityModal() {
+    if (connectivitySaving) return;
+
+    setIsConnectivityModalOpen(false);
+    setEditingConnectivityId(null);
+    setConnectivityForm(emptyConnectivityForm);
+  }
+
+  function openAddCommercialPackage() {
+    if (!canManageProjects) return;
+
+    setEditingCommercialPackageId(null);
+    setCommercialPackageForm(emptyCommercialPackageForm);
+    setCommercialPackagesErrorMessage("");
+    setIsCommercialPackageModalOpen(true);
+  }
+
+  function openEditCommercialPackage(commercialPackage: CommercialPackage) {
+    if (!canManageProjects) return;
+
+    setEditingCommercialPackageId(commercialPackage.id);
+    setCommercialPackageForm(getCommercialPackageFormFromItem(commercialPackage));
+    setCommercialPackagesErrorMessage("");
+    setIsCommercialPackageModalOpen(true);
+  }
+
+  function closeCommercialPackageModal() {
+    if (commercialPackageSaving) return;
+
+    setIsCommercialPackageModalOpen(false);
+    setEditingCommercialPackageId(null);
+    setCommercialPackageForm(emptyCommercialPackageForm);
   }
 
   function openAddFloorPlan() {
@@ -1632,6 +2134,226 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleConnectivitySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canManageProjects || !projectId) return;
+
+    if (!connectivityForm.name.trim()) {
+      setConnectivityErrorMessage("Name is required.");
+      return;
+    }
+
+    const distance = connectivityForm.distance_meters
+      ? Number(connectivityForm.distance_meters)
+      : null;
+
+    if (distance !== null && (!Number.isInteger(distance) || distance < 0)) {
+      setConnectivityErrorMessage("Distance must be a non-negative whole number.");
+      return;
+    }
+
+    try {
+      setConnectivitySaving(true);
+      setConnectivityErrorMessage("");
+
+      const response = await fetch(
+        editingConnectivityId
+          ? `/api/projects/${projectId}/connectivity-points/${editingConnectivityId}`
+          : `/api/projects/${projectId}/connectivity-points`,
+        {
+          method: editingConnectivityId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...connectivityForm,
+            name: connectivityForm.name.trim(),
+            connection_mode: connectivityForm.connection_mode || null,
+            distance_meters: connectivityForm.distance_meters || null,
+          }),
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to save connectivity point");
+      }
+
+      closeConnectivityModal();
+      await fetchConnectivityPoints(projectId, canManageProjects);
+    } catch (error) {
+      console.error("Save connectivity point error:", error);
+      setConnectivityErrorMessage(
+        error instanceof Error ? error.message : "Unable to save connectivity point",
+      );
+    } finally {
+      setConnectivitySaving(false);
+    }
+  }
+
+  async function handleDeleteConnectivityPoint(point: ConnectivityPoint) {
+    if (!canManageProjects || !projectId) return;
+
+    const confirmed = window.confirm(`Delete "${point.name}" from Connectivity & Convenience?`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setConnectivityErrorMessage("");
+
+      const response = await fetch(
+        `/api/projects/${projectId}/connectivity-points/${point.id}`,
+        { method: "DELETE" },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete connectivity point");
+      }
+
+      await fetchConnectivityPoints(projectId, canManageProjects);
+    } catch (error) {
+      console.error("Delete connectivity point error:", error);
+      setConnectivityErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete connectivity point",
+      );
+    }
+  }
+
+  function getCommercialPackagePayloadFromForm() {
+    const appliesToAllUnitTypes = commercialPackageForm.applies_to_all_unit_types === "all";
+
+    return {
+      package_name: commercialPackageForm.package_name.trim(),
+      customer_description: commercialPackageForm.customer_description,
+      internal_note: commercialPackageForm.internal_note,
+      valid_from: commercialPackageForm.valid_from || null,
+      valid_until: commercialPackageForm.valid_until || null,
+      applies_to_all_unit_types: appliesToAllUnitTypes,
+      furnishing_package_id: commercialPackageForm.furnishing_package_id || null,
+      sort_order: commercialPackageForm.sort_order || "0",
+      unit_type_ids: appliesToAllUnitTypes ? [] : commercialPackageForm.unit_type_ids,
+      items: commercialPackageForm.items
+        .filter((item) => item.description.trim())
+        .map((item, index) => ({
+          item_type: item.item_type,
+          description: item.description.trim(),
+          discount_method: item.item_type === "discount" ? item.discount_method : null,
+          value:
+            item.item_type === "non_cash_benefit" || item.value === ""
+              ? null
+              : item.value,
+          cash_benefit_treatment:
+            item.item_type === "cash_benefit" ? item.cash_benefit_treatment : null,
+          receive_at: item.item_type === "cash_benefit" ? item.receive_at || null : null,
+          sort_order: String(index),
+        })),
+      purchase_costs: commercialPackageForm.purchase_costs.map((cost, index) => ({
+        cost_key: cost.cost_key,
+        treatment: cost.treatment,
+        amount_override: cost.amount_override || null,
+        sort_order: String(index),
+      })),
+    };
+  }
+
+  async function handleCommercialPackageSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canManageProjects || !projectId) return;
+
+    if (!commercialPackageForm.package_name.trim()) {
+      setCommercialPackagesErrorMessage("Package Name is required.");
+      return;
+    }
+
+    if (
+      commercialPackageForm.valid_from &&
+      commercialPackageForm.valid_until &&
+      commercialPackageForm.valid_until < commercialPackageForm.valid_from
+    ) {
+      setCommercialPackagesErrorMessage("Valid Until must be on or after Valid From.");
+      return;
+    }
+
+    if (
+      commercialPackageForm.applies_to_all_unit_types === "selected" &&
+      commercialPackageForm.unit_type_ids.length === 0
+    ) {
+      setCommercialPackagesErrorMessage("Select at least one Unit Type.");
+      return;
+    }
+
+    try {
+      setCommercialPackageSaving(true);
+      setCommercialPackagesErrorMessage("");
+
+      const response = await fetch(
+        editingCommercialPackageId
+          ? `/api/projects/${projectId}/commercial-packages/${editingCommercialPackageId}`
+          : `/api/projects/${projectId}/commercial-packages`,
+        {
+          method: editingCommercialPackageId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(getCommercialPackagePayloadFromForm()),
+        },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to save commercial package");
+      }
+
+      closeCommercialPackageModal();
+      await fetchCommercialPackages(projectId, canManageProjects);
+    } catch (error) {
+      console.error("Save commercial package error:", error);
+      setCommercialPackagesErrorMessage(
+        error instanceof Error ? error.message : "Unable to save commercial package",
+      );
+    } finally {
+      setCommercialPackageSaving(false);
+    }
+  }
+
+  async function handleDeleteCommercialPackage(commercialPackage: CommercialPackage) {
+    if (!canManageProjects || !projectId) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${commercialPackage.package_name}"?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCommercialPackagesErrorMessage("");
+
+      const response = await fetch(
+        `/api/projects/${projectId}/commercial-packages/${commercialPackage.id}`,
+        { method: "DELETE" },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete commercial package");
+      }
+
+      await fetchCommercialPackages(projectId, canManageProjects);
+    } catch (error) {
+      console.error("Delete commercial package error:", error);
+      setCommercialPackagesErrorMessage(
+        error instanceof Error ? error.message : "Unable to delete commercial package",
+      );
+    }
+  }
+
   async function handleFloorPlanSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -2098,6 +2820,46 @@ export default function ProjectDetailPage() {
                         {unitType.furnishing_package?.package_name || "—"}
                       </p>
                     </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Price Range
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">
+                        {unitType.price_from !== null
+                          ? unitType.price_to !== null
+                            ? `${formatMoney(unitType.price_from)} - ${formatMoney(unitType.price_to)}`
+                            : `From ${formatMoney(unitType.price_from)}`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Estimated Rental
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">
+                        {unitType.estimated_rental_from !== null
+                          ? unitType.estimated_rental_to !== null
+                            ? `${formatMoney(unitType.estimated_rental_from)} - ${formatMoney(unitType.estimated_rental_to)}`
+                            : `From ${formatMoney(unitType.estimated_rental_from)}`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Balcony
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">
+                        {formatBoolean(unitType.has_balcony)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Dual Key
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">
+                        {formatBoolean(unitType.is_dual_key)}
+                      </p>
+                    </div>
                   </div>
 
                   {unitType.layout ? (
@@ -2125,6 +2887,226 @@ export default function ProjectDetailPage() {
                       ) : null}
                     </div>
                   ) : null}
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderConnectivityPoints() {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Connectivity & Convenience</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Nearby transport, amenities, and customer-safe convenience notes.
+            </p>
+          </div>
+
+          {canManageProjects ? (
+            <button
+              type="button"
+              onClick={openAddConnectivityPoint}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Add Connectivity
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {connectivityErrorMessage && !isConnectivityModalOpen ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {connectivityErrorMessage}
+            </div>
+          ) : null}
+
+          {connectivityLoading ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              Loading connectivity points...
+            </p>
+          ) : connectivityPoints.length === 0 ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              No connectivity points added yet.
+            </p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {connectivityPoints.map((point) => (
+                <article key={point.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-zinc-500">
+                        <span className="rounded-full bg-white px-3 py-1 text-zinc-700">
+                          {connectivityCategoryLabels[point.category] || point.category}
+                        </span>
+                        {point.distance_meters !== null ? <span>{point.distance_meters}m</span> : null}
+                        {point.connection_mode ? (
+                          <span>{connectionModeLabels[point.connection_mode] || point.connection_mode}</span>
+                        ) : null}
+                      </div>
+                      <h3 className="mt-3 text-base font-semibold text-zinc-900">{point.name}</h3>
+                      {point.customer_description ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                          {point.customer_description}
+                        </p>
+                      ) : null}
+                      {canManageProjects && point.internal_note ? (
+                        <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-zinc-500">
+                          Internal: {point.internal_note}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {canManageProjects ? (
+                      <div className="flex items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => openEditConnectivityPoint(point)}
+                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteConnectivityPoint(point)}
+                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  function renderCommercialPackages() {
+    return (
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Commercial Packages</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Developer packages, discounts, benefits, purchase costs, and Unit Type applicability.
+            </p>
+          </div>
+
+          {canManageProjects ? (
+            <button
+              type="button"
+              onClick={openAddCommercialPackage}
+              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Add Commercial Package
+            </button>
+          ) : null}
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {commercialPackagesErrorMessage && !isCommercialPackageModalOpen ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {commercialPackagesErrorMessage}
+            </div>
+          ) : null}
+
+          {commercialPackagesLoading ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              Loading commercial packages...
+            </p>
+          ) : commercialPackages.length === 0 ? (
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              No commercial packages added yet.
+            </p>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {commercialPackages.map((commercialPackage) => (
+                <article
+                  key={commercialPackage.id}
+                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        {commercialPackage.applies_to_all_unit_types
+                          ? "All Unit Types"
+                          : `${commercialPackage.applicable_unit_types.length} Selected Unit Types`}
+                      </p>
+                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
+                        {commercialPackage.package_name}
+                      </h3>
+                      <p className="mt-1 text-sm text-zinc-500">
+                        {commercialPackage.valid_until
+                          ? `Valid until ${formatDate(commercialPackage.valid_until)}`
+                          : "No validity end date"}
+                      </p>
+                    </div>
+
+                    {canManageProjects ? (
+                      <div className="flex items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => openEditCommercialPackage(commercialPackage)}
+                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                        >
+                          Edit Package
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCommercialPackage(commercialPackage)}
+                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {commercialPackage.customer_description ? (
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                      {commercialPackage.customer_description}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4 space-y-2">
+                    {commercialPackage.items.map((item) => (
+                      <div key={item.id ?? `${item.item_type}-${item.sort_order}`} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                        <span className="font-medium">
+                          {item.item_type === "discount"
+                            ? "Discount"
+                            : item.item_type === "cash_benefit"
+                              ? "Cash Benefit"
+                              : "Non-Cash Benefit"}
+                        </span>
+                        <span className="text-zinc-500"> · {item.description}</span>
+                        {item.value !== null ? (
+                          <span className="text-zinc-500"> · {item.value}</span>
+                        ) : null}
+                      </div>
+                    ))}
+                    {commercialPackage.purchase_costs
+                      .filter((cost) => cost.treatment !== "not_applicable")
+                      .map((cost) => (
+                        <div key={cost.cost_key} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                          {purchaseCostLabels[cost.cost_key] || cost.cost_key} ·{" "}
+                          {purchaseCostTreatmentLabels[cost.treatment] || cost.treatment}
+                          {cost.amount_override !== null ? ` · ${formatMoney(cost.amount_override)}` : ""}
+                        </div>
+                      ))}
+                    {commercialPackage.furnishing_package ? (
+                      <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                        Furnishing · {commercialPackage.furnishing_package.package_name}
+                      </div>
+                    ) : null}
+                  </div>
                 </article>
               ))}
             </div>
@@ -2839,6 +3821,25 @@ export default function ProjectDetailPage() {
               </p>
             </div>
           ) : null}
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
+            <p className="text-sm text-zinc-500">Estimated VP</p>
+            <p className="mt-2 text-lg font-medium text-zinc-900">
+              {formatEstimatedVp(project)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
+            <p className="text-sm text-zinc-500">Maintenance Fee</p>
+            <p className="mt-2 text-lg font-medium text-zinc-900">
+              {project.maintenance_fee_per_sqft !== null
+                ? `RM${project.maintenance_fee_per_sqft.toFixed(2)} psf`
+                : "—"}
+            </p>
+            {project.maintenance_fee_per_sqft !== null ? (
+              <p className="mt-1 text-xs text-zinc-500">including sinking fund</p>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">
@@ -2851,6 +3852,8 @@ export default function ProjectDetailPage() {
 
         <div className="mt-8 space-y-6">
           {renderUnitTypes()}
+          {renderConnectivityPoints()}
+          {renderCommercialPackages()}
           {renderFloorPlans()}
           {renderFacings()}
           {renderFurnishingPackages()}
@@ -3061,6 +4064,115 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                    Comparison Fields
+                  </h3>
+                  <div className="mt-4 grid gap-5 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Price From (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitTypeForm.price_from}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setUnitTypeForm((current) => ({
+                            ...current,
+                            price_from: nextValue,
+                            price_to: nextValue ? current.price_to : "",
+                          }));
+                        }}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="e.g. 575100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Price To (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitTypeForm.price_to}
+                        disabled={!unitTypeForm.price_from}
+                        onChange={(event) => updateUnitTypeField("price_to", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400"
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Estimated Rental From (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitTypeForm.estimated_rental_from}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setUnitTypeForm((current) => ({
+                            ...current,
+                            estimated_rental_from: nextValue,
+                            estimated_rental_to: nextValue ? current.estimated_rental_to : "",
+                          }));
+                        }}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="e.g. 2600"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Estimated Rental To (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitTypeForm.estimated_rental_to}
+                        disabled={!unitTypeForm.estimated_rental_from}
+                        onChange={(event) => updateUnitTypeField("estimated_rental_to", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400"
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Balcony
+                      </label>
+                      <select
+                        value={unitTypeForm.has_balcony}
+                        onChange={(event) => updateUnitTypeField("has_balcony", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">Unknown</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Dual Key
+                      </label>
+                      <select
+                        value={unitTypeForm.is_dual_key}
+                        onChange={(event) => updateUnitTypeField("is_dual_key", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">Unknown</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="mb-2 block text-sm font-medium text-zinc-700">
                     Layout Plan
@@ -3098,6 +4210,491 @@ export default function ProjectDetailPage() {
                   className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {unitTypeSaving ? "Saving..." : "Save Unit Type"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {canManageProjects && isConnectivityModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">
+                  {editingConnectivityId ? "Edit Connectivity" : "Add Connectivity"}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Add customer-safe convenience facts and optional internal notes.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeConnectivityModal}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleConnectivitySubmit}>
+              <div className="space-y-5 px-6 py-6">
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Category *
+                    </label>
+                    <select
+                      value={connectivityForm.category}
+                      onChange={(event) => updateConnectivityField("category", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      {Object.entries(connectivityCategoryLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Name *
+                    </label>
+                    <input
+                      value={connectivityForm.name}
+                      onChange={(event) => updateConnectivityField("name", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      placeholder="Ara Damansara LRT Station"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Distance (m)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={connectivityForm.distance_meters}
+                      onChange={(event) => updateConnectivityField("distance_meters", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Connection Mode
+                    </label>
+                    <select
+                      value={connectivityForm.connection_mode}
+                      onChange={(event) => updateConnectivityField("connection_mode", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      <option value="">Not set</option>
+                      {Object.entries(connectionModeLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Customer Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={connectivityForm.customer_description}
+                    onChange={(event) => updateConnectivityField("customer_description", event.target.value)}
+                    className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    placeholder="Approximately 60m walking distance to LRT station"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-zinc-700">
+                    Internal Note
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={connectivityForm.internal_note}
+                    onChange={(event) => updateConnectivityField("internal_note", event.target.value)}
+                    className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                  />
+                </div>
+
+                {connectivityErrorMessage ? (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {connectivityErrorMessage}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeConnectivityModal}
+                  disabled={connectivitySaving}
+                  className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={connectivitySaving}
+                  className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {connectivitySaving ? "Saving..." : "Save Connectivity"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {canManageProjects && isCommercialPackageModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-semibold text-zinc-900">
+                  {editingCommercialPackageId ? "Edit Commercial Package" : "Add Commercial Package"}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Save one complete package through the protected Commercial Package API.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeCommercialPackageModal}
+                className="text-2xl leading-none text-zinc-400 hover:text-zinc-900"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleCommercialPackageSubmit}>
+              <div className="space-y-6 px-6 py-6">
+                <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                    Package Details
+                  </h3>
+                  <div className="mt-4 grid gap-5 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Package Name *
+                      </label>
+                      <input
+                        value={commercialPackageForm.package_name}
+                        onChange={(event) => updateCommercialPackageField("package_name", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="Early Bird Package"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Valid From
+                      </label>
+                      <input
+                        type="date"
+                        value={commercialPackageForm.valid_from}
+                        onChange={(event) => updateCommercialPackageField("valid_from", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Valid Until
+                      </label>
+                      <input
+                        type="date"
+                        value={commercialPackageForm.valid_until}
+                        onChange={(event) => updateCommercialPackageField("valid_until", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Furnishing Package
+                      </label>
+                      <select
+                        value={commercialPackageForm.furnishing_package_id}
+                        onChange={(event) => updateCommercialPackageField("furnishing_package_id", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                      >
+                        <option value="">None</option>
+                        {furnishingPackages.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.package_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Customer Description
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={commercialPackageForm.customer_description}
+                        onChange={(event) => updateCommercialPackageField("customer_description", event.target.value)}
+                        className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Internal Note
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={commercialPackageForm.internal_note}
+                        onChange={(event) => updateCommercialPackageField("internal_note", event.target.value)}
+                        className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                    Applicable Unit Types
+                  </h3>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+                      <input
+                        type="radio"
+                        checked={commercialPackageForm.applies_to_all_unit_types === "all"}
+                        onChange={() =>
+                          setCommercialPackageForm((current) => ({
+                            ...current,
+                            applies_to_all_unit_types: "all",
+                            unit_type_ids: [],
+                          }))
+                        }
+                      />
+                      All Unit Types
+                    </label>
+                    <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+                      <input
+                        type="radio"
+                        checked={commercialPackageForm.applies_to_all_unit_types === "selected"}
+                        onChange={() =>
+                          setCommercialPackageForm((current) => ({
+                            ...current,
+                            applies_to_all_unit_types: "selected",
+                          }))
+                        }
+                      />
+                      Selected Unit Types
+                    </label>
+                  </div>
+
+                  {commercialPackageForm.applies_to_all_unit_types === "selected" ? (
+                    <div className="mt-4 grid gap-2 md:grid-cols-2">
+                      {unitTypes.map((unitType) => (
+                        <label
+                          key={unitType.id}
+                          className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={commercialPackageForm.unit_type_ids.includes(unitType.id)}
+                            onChange={() => toggleCommercialPackageUnitType(unitType.id)}
+                            className="mt-1"
+                          />
+                          <span>{getUnitTypeSummary(unitType)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-zinc-500">
+                      This package dynamically applies to all active Unit Types in this project.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                      Benefits & Discounts
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={addCommercialPackageItem}
+                      className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    >
+                      Add Item
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {commercialPackageForm.items.length === 0 ? (
+                      <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-500">
+                        No benefits or discounts added yet.
+                      </p>
+                    ) : (
+                      commercialPackageForm.items.map((item) => (
+                        <div key={item.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
+                          <div className="grid gap-3 md:grid-cols-[160px_1fr_auto]">
+                            <select
+                              value={item.item_type}
+                              onChange={(event) => {
+                                const itemType = event.target.value as CommercialPackageItem["item_type"];
+                                updateCommercialPackageItem(item.id, {
+                                  item_type: itemType,
+                                  discount_method: itemType === "discount" ? "percentage_spa" : "",
+                                  cash_benefit_treatment: itemType === "cash_benefit" ? "immediate_offset" : "",
+                                  value: itemType === "non_cash_benefit" ? "" : item.value,
+                                  receive_at: "",
+                                });
+                              }}
+                              className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                            >
+                              <option value="discount">Discount</option>
+                              <option value="cash_benefit">Cash Benefit</option>
+                              <option value="non_cash_benefit">Non-Cash Benefit</option>
+                            </select>
+                            <input
+                              value={item.description}
+                              onChange={(event) => updateCommercialPackageItem(item.id, { description: event.target.value })}
+                              className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                              placeholder="Description"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeCommercialPackageItem(item.id)}
+                              className="text-sm font-medium text-red-500 hover:text-red-700"
+                            >
+                              Remove
+                            </button>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 md:grid-cols-3">
+                            {item.item_type === "discount" ? (
+                              <select
+                                value={item.discount_method}
+                                onChange={(event) => updateCommercialPackageItem(item.id, { discount_method: event.target.value })}
+                                className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                              >
+                                {Object.entries(discountMethodLabels).map(([value, label]) => (
+                                  <option key={value} value={value}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : null}
+                            {item.item_type === "cash_benefit" ? (
+                              <>
+                                <select
+                                  value={item.cash_benefit_treatment}
+                                  onChange={(event) => updateCommercialPackageItem(item.id, { cash_benefit_treatment: event.target.value })}
+                                  className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                                >
+                                  {Object.entries(cashBenefitTreatmentLabels).map(([value, label]) => (
+                                    <option key={value} value={value}>
+                                      {label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  value={item.receive_at}
+                                  onChange={(event) => updateCommercialPackageItem(item.id, { receive_at: event.target.value })}
+                                  className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                                  placeholder="Receive timing, e.g. Stage 2B"
+                                />
+                              </>
+                            ) : null}
+                            {item.item_type !== "non_cash_benefit" ? (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.value}
+                                onChange={(event) => updateCommercialPackageItem(item.id, { value: event.target.value })}
+                                className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                                placeholder={item.item_type === "discount" ? "Value" : "Amount"}
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                    Purchase Costs
+                  </h3>
+                  <div className="mt-4 space-y-3">
+                    {commercialPackageForm.purchase_costs.map((cost) => (
+                      <div key={cost.cost_key} className="grid gap-3 rounded-xl border border-zinc-200 bg-white p-3 md:grid-cols-[1fr_180px_160px]">
+                        <p className="py-2 text-sm font-medium text-zinc-800">
+                          {purchaseCostLabels[cost.cost_key] || cost.cost_key}
+                        </p>
+                        <select
+                          value={cost.treatment}
+                          onChange={(event) =>
+                            updateCommercialPackagePurchaseCost(cost.cost_key, {
+                              treatment: event.target.value as CommercialPackagePurchaseCost["treatment"],
+                            })
+                          }
+                          className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-900"
+                        >
+                          {Object.entries(purchaseCostTreatmentLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={cost.amount_override}
+                          onChange={(event) =>
+                            updateCommercialPackagePurchaseCost(cost.cost_key, {
+                              amount_override: event.target.value,
+                            })
+                          }
+                          className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
+                          placeholder="Amount override"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {commercialPackagesErrorMessage ? (
+                  <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {commercialPackagesErrorMessage}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeCommercialPackageModal}
+                  disabled={commercialPackageSaving}
+                  className="rounded-xl border border-zinc-300 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={commercialPackageSaving}
+                  className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {commercialPackageSaving ? "Saving..." : "Save Commercial Package"}
                 </button>
               </div>
             </form>

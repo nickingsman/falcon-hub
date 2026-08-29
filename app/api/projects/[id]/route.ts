@@ -4,13 +4,34 @@ import {
   requireProjectApiReadAccess,
   requireProjectApiWriteAccess,
 } from "@/lib/permissions";
-import { normalizeNullableDate, normalizeNullableNumber } from "@/lib/project-comparison";
+import { normalizeNullableNumber } from "@/lib/project-comparison";
 import { isUnitNumberFormat } from "@/lib/unit-number-format";
 
 function normalizeProjectUnitNumberFormat(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
 
   return isUnitNumberFormat(value) ? value : undefined;
+}
+
+function normalizeEstimatedVpPart(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed = Number(value);
+
+  return Number.isInteger(parsed) ? parsed : Number.NaN;
+}
+
+function validateEstimatedVp(year: number | null, quarter: number | null) {
+  if (year === null && quarter === null) return null;
+  if (year === null || quarter === null) return "Estimated VP requires both Year and Quarter";
+  if (!Number.isInteger(year) || year < 1900 || year > 9999) {
+    return "Estimated VP Year must be a valid year";
+  }
+  if (!Number.isInteger(quarter) || quarter < 1 || quarter > 4) {
+    return "Estimated VP Quarter must be Q1, Q2, Q3, or Q4";
+  }
+
+  return null;
 }
 
 type RouteContext = {
@@ -45,7 +66,8 @@ export async function GET(
         title_type,
         starting_price,
         total_units,
-        estimated_vp_date,
+        estimated_vp_year,
+        estimated_vp_quarter,
         maintenance_fee_per_sqft,
         status,
         launch_date,
@@ -91,10 +113,15 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const unitNumberFormat = normalizeProjectUnitNumberFormat(body.unit_number_format);
-    const hasEstimatedVpDate = Object.hasOwn(body, "estimated_vp_date");
+    const hasEstimatedVpYear = Object.hasOwn(body, "estimated_vp_year");
+    const hasEstimatedVpQuarter = Object.hasOwn(body, "estimated_vp_quarter");
+    const hasEstimatedVp = hasEstimatedVpYear || hasEstimatedVpQuarter;
     const hasMaintenanceFeePerSqft = Object.hasOwn(body, "maintenance_fee_per_sqft");
-    const estimatedVpDate = hasEstimatedVpDate
-      ? normalizeNullableDate(body.estimated_vp_date)
+    const estimatedVpYear = hasEstimatedVp
+      ? normalizeEstimatedVpPart(body.estimated_vp_year)
+      : null;
+    const estimatedVpQuarter = hasEstimatedVp
+      ? normalizeEstimatedVpPart(body.estimated_vp_quarter)
       : null;
     const maintenanceFeePerSqft = hasMaintenanceFeePerSqft
       ? normalizeNullableNumber(body.maintenance_fee_per_sqft)
@@ -107,11 +134,17 @@ export async function PATCH(
       );
     }
 
-    if (estimatedVpDate === undefined) {
+    if (Number.isNaN(estimatedVpYear) || Number.isNaN(estimatedVpQuarter)) {
       return NextResponse.json(
-        { error: "Estimated VP Date must be a valid date" },
+        { error: "Estimated VP must use valid Year and Quarter values" },
         { status: 400 },
       );
+    }
+
+    const estimatedVpError = validateEstimatedVp(estimatedVpYear, estimatedVpQuarter);
+
+    if (estimatedVpError) {
+      return NextResponse.json({ error: estimatedVpError }, { status: 400 });
     }
 
     if (
@@ -142,7 +175,12 @@ export async function PATCH(
       launch_date: body.launch_date || null,
       unit_number_format: unitNumberFormat,
       notes: body.notes || null,
-      ...(hasEstimatedVpDate ? { estimated_vp_date: estimatedVpDate } : {}),
+      ...(hasEstimatedVp
+        ? {
+            estimated_vp_year: estimatedVpYear,
+            estimated_vp_quarter: estimatedVpQuarter,
+          }
+        : {}),
       ...(hasMaintenanceFeePerSqft
         ? { maintenance_fee_per_sqft: maintenanceFeePerSqft }
         : {}),
