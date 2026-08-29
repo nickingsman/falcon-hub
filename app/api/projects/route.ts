@@ -35,6 +35,8 @@ export async function GET() {
         title_type,
         starting_price,
         total_units,
+        estimated_vp_date,
+        maintenance_fee_per_sqft,
         status,
         launch_date,
         unit_number_format,

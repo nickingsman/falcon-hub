@@ -9,6 +9,11 @@ import {
   toProjectMediaResponse,
 } from "@/lib/project-content";
 import { requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
+import {
+  getUnitTypeComparisonPayload,
+  validateUnitTypeComparisonPayload,
+  type UnitTypeComparisonFields,
+} from "@/lib/project-comparison";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 type RouteContext = {
@@ -29,6 +34,12 @@ type UnitTypeRow = {
   carpark_description: string | null;
   layout_media_id: string | null;
   furnishing_package_id: string | null;
+  price_from: number | null;
+  price_to: number | null;
+  estimated_rental_from: number | null;
+  estimated_rental_to: number | null;
+  has_balcony: boolean | null;
+  is_dual_key: boolean | null;
   sort_order: number | null;
   created_at: string;
   updated_at: string;
@@ -136,6 +147,12 @@ async function toUnitTypeResponse(
     carpark_description: unitType.carpark_description,
     layout_media_id: includeInternalMedia || layout ? unitType.layout_media_id : null,
     furnishing_package_id: unitType.furnishing_package_id,
+    price_from: unitType.price_from,
+    price_to: unitType.price_to,
+    estimated_rental_from: unitType.estimated_rental_from,
+    estimated_rental_to: unitType.estimated_rental_to,
+    has_balcony: unitType.has_balcony,
+    is_dual_key: unitType.is_dual_key,
     sort_order: unitType.sort_order,
     created_at: unitType.created_at,
     updated_at: unitType.updated_at,
@@ -208,6 +225,8 @@ function getUnitTypePayload(body: Record<string, unknown>) {
     }) ||
     null;
 
+  const comparisonPayload = getUnitTypeComparisonPayload(body);
+
   return {
     type_code: typeCode,
     type_name: normalizeNullableText(body.type_name),
@@ -220,11 +239,14 @@ function getUnitTypePayload(body: Record<string, unknown>) {
     carpark_description: normalizeNullableText(body.carpark_description),
     layout_media_id: normalizeNullableText(body.layout_media_id),
     furnishing_package_id: normalizeNullableText(body.furnishing_package_id),
+    ...comparisonPayload,
     sort_order: sortOrder,
   };
 }
 
-function validateUnitTypePayload(payload: ReturnType<typeof getUnitTypePayload>) {
+function validateUnitTypePayload(
+  payload: ReturnType<typeof getUnitTypePayload> & UnitTypeComparisonFields,
+) {
   if (!payload.type_code) return "Type Code is required";
   if (!Number.isFinite(payload.additional_rooms) || payload.additional_rooms < 0) {
     return "Additional Rooms must be a non-negative whole number";
@@ -245,7 +267,7 @@ function validateUnitTypePayload(payload: ReturnType<typeof getUnitTypePayload>)
     return "Sort Order must be a whole number";
   }
 
-  return null;
+  return validateUnitTypeComparisonPayload(payload);
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
@@ -275,6 +297,12 @@ export async function GET(request: Request, { params }: RouteContext) {
         carpark_description,
         layout_media_id,
         furnishing_package_id,
+        price_from,
+        price_to,
+        estimated_rental_from,
+        estimated_rental_to,
+        has_balcony,
+        is_dual_key,
         sort_order,
         created_at,
         updated_at
@@ -362,6 +390,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         carpark_description,
         layout_media_id,
         furnishing_package_id,
+        price_from,
+        price_to,
+        estimated_rental_from,
+        estimated_rental_to,
+        has_balcony,
+        is_dual_key,
         sort_order,
         created_at,
         updated_at

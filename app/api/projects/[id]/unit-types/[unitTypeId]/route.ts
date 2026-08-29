@@ -6,11 +6,25 @@ import {
   suggestDisplayConfiguration,
 } from "@/lib/project-content";
 import { requireProjectApiWriteAccess } from "@/lib/permissions";
+import {
+  getUnitTypeComparisonPayload,
+  validateUnitTypeComparisonPayload,
+  type UnitTypeComparisonFields,
+} from "@/lib/project-comparison";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 type RouteContext = {
   params: Promise<{ id: string; unitTypeId: string }>;
 };
+
+const comparisonFieldKeys = [
+  "price_from",
+  "price_to",
+  "estimated_rental_from",
+  "estimated_rental_to",
+  "has_balcony",
+  "is_dual_key",
+] as const;
 
 async function validateLayoutMedia(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
@@ -76,6 +90,8 @@ function getUnitTypePayload(body: Record<string, unknown>) {
     }) ||
     null;
 
+  const comparisonPayload = getUnitTypeComparisonPayload(body);
+
   return {
     type_code: typeCode,
     type_name: normalizeNullableText(body.type_name),
@@ -88,11 +104,12 @@ function getUnitTypePayload(body: Record<string, unknown>) {
     carpark_description: normalizeNullableText(body.carpark_description),
     layout_media_id: normalizeNullableText(body.layout_media_id),
     furnishing_package_id: normalizeNullableText(body.furnishing_package_id),
+    ...comparisonPayload,
     sort_order: sortOrder,
   };
 }
 
-function validateUnitTypePayload(payload: ReturnType<typeof getUnitTypePayload>) {
+function validateBaseUnitTypePayload(payload: ReturnType<typeof getUnitTypePayload>) {
   if (!payload.type_code) return "Type Code is required";
   if (!Number.isFinite(payload.additional_rooms) || payload.additional_rooms < 0) {
     return "Additional Rooms must be a non-negative whole number";
@@ -127,7 +144,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const { id, unitTypeId } = await params;
     const body = await request.json();
     const payload = getUnitTypePayload(body);
-    const validationError = validateUnitTypePayload(payload);
+    const validationError = validateBaseUnitTypePayload(payload);
 
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
@@ -136,7 +153,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const supabase = createSupabaseAdminClient();
     const { data: currentUnitType, error: currentError } = await supabase
       .from("project_unit_types")
-      .select("id, layout_media_id")
+      .select(`
+        id,
+        layout_media_id,
+        price_from,
+        price_to,
+        estimated_rental_from,
+        estimated_rental_to,
+        has_balcony,
+        is_dual_key
+      `)
       .eq("id", unitTypeId)
       .eq("project_id", id)
       .eq("is_deleted", false)
@@ -144,6 +170,30 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     if (currentError) {
       throw currentError;
+    }
+
+    const effectiveComparisonPayload: UnitTypeComparisonFields = {
+      price_from: Object.hasOwn(body, "price_from")
+        ? payload.price_from
+        : currentUnitType.price_from,
+      price_to: Object.hasOwn(body, "price_to") ? payload.price_to : currentUnitType.price_to,
+      estimated_rental_from: Object.hasOwn(body, "estimated_rental_from")
+        ? payload.estimated_rental_from
+        : currentUnitType.estimated_rental_from,
+      estimated_rental_to: Object.hasOwn(body, "estimated_rental_to")
+        ? payload.estimated_rental_to
+        : currentUnitType.estimated_rental_to,
+      has_balcony: Object.hasOwn(body, "has_balcony")
+        ? payload.has_balcony
+        : currentUnitType.has_balcony,
+      is_dual_key: Object.hasOwn(body, "is_dual_key")
+        ? payload.is_dual_key
+        : currentUnitType.is_dual_key,
+    };
+    const comparisonValidationError = validateUnitTypeComparisonPayload(effectiveComparisonPayload);
+
+    if (comparisonValidationError) {
+      return NextResponse.json({ error: comparisonValidationError }, { status: 400 });
     }
 
     if (!(await validateLayoutMedia(supabase, id, payload.layout_media_id))) {
@@ -157,9 +207,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       );
     }
 
+    const updatePayload = { ...payload };
+    for (const key of comparisonFieldKeys) {
+      if (!Object.hasOwn(body, key)) {
+        delete updatePayload[key];
+      }
+    }
+
     const { data, error } = await supabase
       .from("project_unit_types")
-      .update(payload)
+      .update(updatePayload)
       .eq("id", unitTypeId)
       .eq("project_id", id)
       .eq("is_deleted", false)
@@ -177,6 +234,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         carpark_description,
         layout_media_id,
         furnishing_package_id,
+        price_from,
+        price_to,
+        estimated_rental_from,
+        estimated_rental_to,
+        has_balcony,
+        is_dual_key,
         sort_order,
         created_at,
         updated_at

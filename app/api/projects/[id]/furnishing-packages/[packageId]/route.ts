@@ -174,6 +174,24 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Furnishing package not found" }, { status: 404 });
     }
 
+    const { count: commercialPackageReferenceCount, error: referenceError } = await supabase
+      .from("project_commercial_packages")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", id)
+      .eq("furnishing_package_id", packageId)
+      .eq("is_deleted", false);
+
+    if (referenceError) {
+      throw referenceError;
+    }
+
+    if ((commercialPackageReferenceCount ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "This furnishing package is currently used by a Commercial Package." },
+        { status: 409 },
+      );
+    }
+
     const { error: unlinkError } = await supabase
       .from("project_unit_types")
       .update({ furnishing_package_id: null })

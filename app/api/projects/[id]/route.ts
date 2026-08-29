@@ -4,6 +4,7 @@ import {
   requireProjectApiReadAccess,
   requireProjectApiWriteAccess,
 } from "@/lib/permissions";
+import { normalizeNullableDate, normalizeNullableNumber } from "@/lib/project-comparison";
 import { isUnitNumberFormat } from "@/lib/unit-number-format";
 
 function normalizeProjectUnitNumberFormat(value: unknown) {
@@ -44,6 +45,8 @@ export async function GET(
         title_type,
         starting_price,
         total_units,
+        estimated_vp_date,
+        maintenance_fee_per_sqft,
         status,
         launch_date,
         unit_number_format,
@@ -88,6 +91,14 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const unitNumberFormat = normalizeProjectUnitNumberFormat(body.unit_number_format);
+    const hasEstimatedVpDate = Object.hasOwn(body, "estimated_vp_date");
+    const hasMaintenanceFeePerSqft = Object.hasOwn(body, "maintenance_fee_per_sqft");
+    const estimatedVpDate = hasEstimatedVpDate
+      ? normalizeNullableDate(body.estimated_vp_date)
+      : null;
+    const maintenanceFeePerSqft = hasMaintenanceFeePerSqft
+      ? normalizeNullableNumber(body.maintenance_fee_per_sqft)
+      : null;
 
     if (unitNumberFormat === undefined) {
       return NextResponse.json(
@@ -96,28 +107,50 @@ export async function PATCH(
       );
     }
 
+    if (estimatedVpDate === undefined) {
+      return NextResponse.json(
+        { error: "Estimated VP Date must be a valid date" },
+        { status: 400 },
+      );
+    }
+
+    if (
+      maintenanceFeePerSqft !== null &&
+      (!Number.isFinite(maintenanceFeePerSqft) || maintenanceFeePerSqft < 0)
+    ) {
+      return NextResponse.json(
+        { error: "Maintenance Fee Per Sqft must be a non-negative number" },
+        { status: 400 },
+      );
+    }
+
     const supabase = createSupabaseAdminClient();
+    const payload = {
+      project_name: body.project_name,
+      developer: body.developer || null,
+      location: body.location || null,
+      property_type: body.property_type || null,
+      tenure: body.tenure || null,
+      title_type: body.title_type || null,
+      starting_price: body.starting_price
+        ? Number(body.starting_price)
+        : null,
+      total_units: body.total_units
+        ? Number(body.total_units)
+        : null,
+      status: body.status || "Active",
+      launch_date: body.launch_date || null,
+      unit_number_format: unitNumberFormat,
+      notes: body.notes || null,
+      ...(hasEstimatedVpDate ? { estimated_vp_date: estimatedVpDate } : {}),
+      ...(hasMaintenanceFeePerSqft
+        ? { maintenance_fee_per_sqft: maintenanceFeePerSqft }
+        : {}),
+    };
 
     const { data, error } = await supabase
       .from("projects")
-      .update({
-        project_name: body.project_name,
-        developer: body.developer || null,
-        location: body.location || null,
-        property_type: body.property_type || null,
-        tenure: body.tenure || null,
-        title_type: body.title_type || null,
-        starting_price: body.starting_price
-          ? Number(body.starting_price)
-          : null,
-        total_units: body.total_units
-          ? Number(body.total_units)
-          : null,
-        status: body.status || "Active",
-        launch_date: body.launch_date || null,
-        unit_number_format: unitNumberFormat,
-        notes: body.notes || null,
-      })
+      .update(payload)
       .eq("id", id)
       .eq("is_deleted", false)
       .select()
