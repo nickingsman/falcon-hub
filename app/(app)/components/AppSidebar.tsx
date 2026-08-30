@@ -8,6 +8,7 @@ const sidebarItems = [
   { label: "Dashboard", href: "/" },
   { label: "Projects", href: "/projects" },
   { label: "ROI Calculator", href: "/tools/roi-calculator" },
+  { label: "Project Comparison", href: "/tools/project-comparison" },
   { label: "DSR Calculator", href: "#" },
   { label: "Proposal Generator", href: "#" },
   { label: "Check In", href: "#" },
@@ -44,6 +45,10 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 
   if (item.label === "ROI Calculator") {
     return pathname === "/tools/roi-calculator";
+  }
+
+  if (item.label === "Project Comparison") {
+    return pathname === "/tools/project-comparison";
   }
 
   return false;
