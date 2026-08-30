@@ -346,11 +346,21 @@ function escapeHtml(value: string) {
     .replace(/'/g, "&#039;");
 }
 
-function proposalRow(label: string, value: string, emphasis = false) {
+function proposalRow(
+  label: string,
+  value: string,
+  emphasis = false,
+  supportingLines: string[] = [],
+) {
+  const supportingHtml = supportingLines.length
+    ? `<p class="row-note">${supportingLines.map(escapeHtml).join("<br />")}</p>`
+    : "";
+
   return `
-    <div class="row ${emphasis ? "emphasis-row" : ""}">
+    <div class="row ${emphasis ? "emphasis-row" : ""} ${supportingLines.length ? "with-note" : ""}">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
+      ${supportingHtml}
     </div>
   `;
 }
@@ -936,6 +946,16 @@ function buildRoiProposalHtml({
   const monthlyCashFlow = result.monthlyCashFlow ?? 0;
   const purchaseCostRows = purchaseCosts.map(purchaseCostPdfRow).join("");
   const proposalPurchaseCostSummary = calculatePurchaseCostSummary(purchaseCosts);
+  const monthlyCashFlowBreakdown = [
+    `Rental ${formatCurrencyDetailed(numericInput.expectedMonthlyRental)}`,
+    `− Loan Instalment ${formatCurrencyDetailed(result.estimatedMonthlyInstalment)}`,
+    `− Maintenance ${formatCurrencyDetailed(result.monthlyMaintenance)}`,
+    `= ${formatCurrencyDetailed(result.monthlyCashFlow)}`,
+  ];
+  const annualCashFlowExplanation =
+    result.monthlyCashFlow !== null && result.annualCashFlow !== null
+      ? `${formatCurrencyDetailed(result.monthlyCashFlow)} × 12 = ${formatCurrencyDetailed(result.annualCashFlow)}`
+      : "Monthly Cash Flow × 12";
   const monthlyCashFlowLabel =
     monthlyCashFlow > 0
       ? "Positive Cash Flow"
@@ -1213,6 +1233,7 @@ function buildRoiProposalHtml({
       }
       .row {
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
         gap: 10px;
         border-top: 1px solid #f1f1f1;
@@ -1222,6 +1243,14 @@ function buildRoiProposalHtml({
       .row:first-of-type { border-top: 0; }
       .row span { color: #71717a; }
       .row strong { color: #18181b; text-align: right; }
+      .row-note {
+        flex-basis: 100%;
+        margin: -2px 0 0;
+        color: #71717a;
+        font-size: 7.8px;
+        font-weight: 600;
+        line-height: 1.35;
+      }
       .emphasis-row strong {
         color: #087F6B;
         font-size: 12px;
@@ -1804,7 +1833,7 @@ function buildRoiProposalHtml({
           ${proposalRow("Interest Rate", formatPercent(numericInput.annualInterestRatePercent))}
           ${proposalRow("Loan Tenure", `${numericInput.loanTenureYears || 0} years`)}
           ${proposalRow("Loan Amount", formatCurrency(result.loanAmount))}
-          ${proposalRow("Estimated Monthly Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment))}
+          ${proposalRow("Estimated Monthly Loan Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment))}
         </div>
         <div class="section">
           <h2>Cash Required</h2>
@@ -1831,11 +1860,12 @@ function buildRoiProposalHtml({
         <div class="section">
           <h2>Rental / Operating Figures</h2>
           ${proposalRow("Expected Monthly Rental", formatCurrencyDetailed(numericInput.expectedMonthlyRental))}
+          ${proposalRow("Estimated Monthly Loan Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment))}
           ${proposalRow("Monthly Maintenance", formatCurrencyDetailed(result.monthlyMaintenance))}
-          ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent))}
-          ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow))}
-          ${proposalRow("Estimated Annual Cash Flow", formatCurrencyDetailed(result.annualCashFlow))}
-          ${proposalRow("Cash-on-Cash Return", formatPercent(result.cashOnCashReturnPercent))}
+          ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow), false, monthlyCashFlowBreakdown)}
+          ${proposalRow("Estimated Annual Cash Flow", formatCurrencyDetailed(result.annualCashFlow), false, [annualCashFlowExplanation])}
+          ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent), false, ["Based on estimated annual net rental after maintenance."])}
+          ${proposalRow("Cash-on-Cash Return", formatPercent(result.cashOnCashReturnPercent), false, ["Based on estimated annual cash flow against estimated upfront cash invested."])}
         </div>
       </section>
 
@@ -1927,15 +1957,20 @@ function ResultRow({
   label,
   value,
   valueClassName = "text-zinc-900",
+  children,
 }: Readonly<{
   label: string;
   value: string;
   valueClassName?: string;
+  children?: React.ReactNode;
 }>) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-zinc-100 py-3 last:border-0">
-      <p className="text-sm text-zinc-500">{label}</p>
-      <p className={`text-right text-sm font-semibold ${valueClassName}`}>{value}</p>
+    <div className="border-b border-zinc-100 py-3 last:border-0">
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-zinc-500">{label}</p>
+        <p className={`text-right text-sm font-semibold ${valueClassName}`}>{value}</p>
+      </div>
+      {children ? <div className="mt-1 text-xs leading-5 text-zinc-500">{children}</div> : null}
     </div>
   );
 }
@@ -2149,6 +2184,16 @@ export default function RoiCalculatorPage() {
   const hasBlockingValidation = validationMessages.length > 0;
   const cashFlowIsPositive = (result.monthlyCashFlow ?? 0) >= 0;
   const totalCashback = calculateTotalCashback(result);
+  const monthlyCashFlowBreakdown = [
+    `Rental ${formatCurrencyDetailed(numericInput.expectedMonthlyRental)}`,
+    `− Loan Instalment ${formatCurrencyDetailed(result.estimatedMonthlyInstalment)}`,
+    `− Maintenance ${formatCurrencyDetailed(result.monthlyMaintenance)}`,
+    `= ${formatCurrencyDetailed(result.monthlyCashFlow)}`,
+  ];
+  const annualCashFlowExplanation =
+    result.monthlyCashFlow !== null && result.annualCashFlow !== null
+      ? `${formatCurrencyDetailed(result.monthlyCashFlow)} × 12 = ${formatCurrencyDetailed(result.annualCashFlow)}`
+      : "Monthly Cash Flow × 12";
 
   function updateField(field: keyof CalculatorForm, value: string) {
     setForm((current) => ({
@@ -3371,7 +3416,7 @@ export default function RoiCalculatorPage() {
                 />
                 <ResultRow label="Tenure" value={`${numericInput.loanTenureYears || 0} years`} />
                 <ResultRow
-                  label="Estimated Monthly Instalment"
+                  label="Estimated Monthly Loan Instalment"
                   value={formatCurrencyDetailed(result.estimatedMonthlyInstalment)}
                 />
               </div>
@@ -3415,29 +3460,41 @@ export default function RoiCalculatorPage() {
                   value={formatCurrencyDetailed(numericInput.expectedMonthlyRental)}
                 />
                 <ResultRow
+                  label="Estimated Monthly Loan Instalment"
+                  value={formatCurrencyDetailed(result.estimatedMonthlyInstalment)}
+                />
+                <ResultRow
                   label="Monthly Maintenance"
                   value={formatCurrencyDetailed(result.monthlyMaintenance)}
                 />
                 <ResultRow
-                  label="Estimated Monthly Instalment"
-                  value={formatCurrencyDetailed(result.estimatedMonthlyInstalment)}
-                />
-                <ResultRow
-                  label="Net Rental Yield"
-                  value={formatPercent(result.netRentalYieldPercent)}
-                />
-                <ResultRow
                   label="Estimated Monthly Cash Flow"
                   value={formatCurrencyDetailed(result.monthlyCashFlow)}
-                />
+                >
+                  <div className="space-y-0.5 font-medium">
+                    {monthlyCashFlowBreakdown.map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                  </div>
+                </ResultRow>
                 <ResultRow
                   label="Estimated Annual Cash Flow"
                   value={formatCurrencyDetailed(result.annualCashFlow)}
-                />
+                >
+                  {annualCashFlowExplanation}
+                </ResultRow>
+                <ResultRow
+                  label="Net Rental Yield"
+                  value={formatPercent(result.netRentalYieldPercent)}
+                >
+                  Based on estimated annual net rental after maintenance.
+                </ResultRow>
                 <ResultRow
                   label="Cash-on-Cash Return"
                   value={formatPercent(result.cashOnCashReturnPercent)}
-                />
+                >
+                  Based on estimated annual cash flow against estimated upfront cash invested.
+                </ResultRow>
               </div>
             </section>
           </div>
