@@ -662,8 +662,8 @@ if (projectsResponse.ok) {
                         <option value="Commercial">
                           Commercial
                         </option>
-                        <option value="Mixed Development">
-                          Mixed Development
+                        <option value="Commercial under HDA">
+                          Commercial under HDA
                         </option>
                       </select>
                     </div>

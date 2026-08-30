@@ -16,6 +16,8 @@ type Project = {
   total_units: number | null;
   status: string | null;
   launch_date: string | null;
+  estimated_vp_year: number | null;
+  estimated_vp_quarter: number | null;
   notes: string | null;
 };
 
@@ -88,6 +90,12 @@ function renderTextBlock(label: string, value: string | null | undefined) {
       </p>
     </div>
   );
+}
+
+function formatEstimatedCompletion(project: Project) {
+  if (!project.estimated_vp_year || !project.estimated_vp_quarter) return "—";
+
+  return `${project.estimated_vp_year} Q${project.estimated_vp_quarter}`;
 }
 
 function SectionShell({
@@ -303,7 +311,7 @@ export default function ProjectAgentViewPage() {
     { label: "Property Type", value: project.property_type },
     { label: "Price Range", value: formatCurrency(project.starting_price) },
     { label: "Total Units", value: project.total_units },
-    { label: "Launch Date", value: project.launch_date },
+    { label: "Estimated Completion", value: formatEstimatedCompletion(project) },
     { label: "Title Type", value: project.title_type },
   ];
 
