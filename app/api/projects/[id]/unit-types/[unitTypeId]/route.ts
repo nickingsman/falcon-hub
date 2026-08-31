@@ -18,6 +18,8 @@ type RouteContext = {
 };
 
 const comparisonFieldKeys = [
+  "spa_price_from",
+  "spa_price_to",
   "price_from",
   "price_to",
   "estimated_rental_from",
@@ -156,6 +158,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       .select(`
         id,
         layout_media_id,
+        spa_price_from,
+        spa_price_to,
         price_from,
         price_to,
         estimated_rental_from,
@@ -173,6 +177,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const effectiveComparisonPayload: UnitTypeComparisonFields = {
+      spa_price_from: Object.hasOwn(body, "spa_price_from")
+        ? payload.spa_price_from
+        : currentUnitType.spa_price_from,
+      spa_price_to: Object.hasOwn(body, "spa_price_to")
+        ? payload.spa_price_to
+        : currentUnitType.spa_price_to,
       price_from: Object.hasOwn(body, "price_from")
         ? payload.price_from
         : currentUnitType.price_from,
@@ -234,6 +244,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         carpark_description,
         layout_media_id,
         furnishing_package_id,
+        spa_price_from,
+        spa_price_to,
         price_from,
         price_to,
         estimated_rental_from,

@@ -38,6 +38,8 @@ type UnitTypeRow = {
   default_carparks: number | null;
   carpark_description: string | null;
   furnishing_package_id: string | null;
+  spa_price_from: number | null;
+  spa_price_to: number | null;
   price_from: number | null;
   price_to: number | null;
   estimated_rental_from: number | null;
@@ -84,6 +86,14 @@ type CommercialPackageUnitTypeMappingRow = {
   package_id: string;
   unit_type_id: string;
 };
+
+function normalizeNullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 function buildFurnishingPackageMap(
   packages: FurnishingPackageRow[],
@@ -169,6 +179,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
           default_carparks,
           carpark_description,
           furnishing_package_id,
+          spa_price_from,
+          spa_price_to,
           price_from,
           price_to,
           estimated_rental_from,
@@ -378,6 +390,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
         size_sqft: unitType.size_sqft,
         default_carparks: unitType.default_carparks,
         carpark_description: unitType.carpark_description,
+        spa_price_from: normalizeNullableNumber(unitType.spa_price_from),
+        spa_price_to: normalizeNullableNumber(unitType.spa_price_to),
         price_from: unitType.price_from,
         price_to: unitType.price_to,
         estimated_rental_from: unitType.estimated_rental_from,

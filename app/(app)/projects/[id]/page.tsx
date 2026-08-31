@@ -171,6 +171,8 @@ type ProjectUnitType = {
   carpark_description: string | null;
   layout_media_id: string | null;
   furnishing_package_id: string | null;
+  spa_price_from: number | null;
+  spa_price_to: number | null;
   price_from: number | null;
   price_to: number | null;
   estimated_rental_from: number | null;
@@ -226,6 +228,8 @@ type UnitTypeForm = {
   default_carparks: string;
   carpark_description: string;
   furnishing_package_id: string;
+  spa_price_from: string;
+  spa_price_to: string;
   price_from: string;
   price_to: string;
   estimated_rental_from: string;
@@ -401,6 +405,8 @@ const emptyUnitTypeForm: UnitTypeForm = {
   default_carparks: "",
   carpark_description: "",
   furnishing_package_id: "",
+  spa_price_from: "",
+  spa_price_to: "",
   price_from: "",
   price_to: "",
   estimated_rental_from: "",
@@ -659,6 +665,8 @@ function getUnitTypeFormFromItem(item: ProjectUnitType): UnitTypeForm {
       item.default_carparks !== null ? String(item.default_carparks) : "",
     carpark_description: item.carpark_description || "",
     furnishing_package_id: item.furnishing_package_id || "",
+    spa_price_from: item.spa_price_from !== null ? String(item.spa_price_from) : "",
+    spa_price_to: item.spa_price_to !== null ? String(item.spa_price_to) : "",
     price_from: item.price_from !== null ? String(item.price_from) : "",
     price_to: item.price_to !== null ? String(item.price_to) : "",
     estimated_rental_from:
@@ -3009,7 +3017,19 @@ export default function ProjectDetailPage() {
                     </div>
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Price Range
+                        SPA Price Range
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-zinc-800">
+                        {unitType.spa_price_from !== null
+                          ? unitType.spa_price_to !== null
+                            ? `${formatMoney(unitType.spa_price_from)} - ${formatMoney(unitType.spa_price_to)}`
+                            : `From ${formatMoney(unitType.spa_price_from)}`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                        Final Net Price Range
                       </p>
                       <p className="mt-1 text-sm font-medium text-zinc-800">
                         {unitType.price_from !== null
@@ -4259,7 +4279,43 @@ export default function ProjectDetailPage() {
                   <div className="mt-4 grid gap-5 md:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-700">
-                        Price From (RM)
+                        SPA Price From (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitTypeForm.spa_price_from}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setUnitTypeForm((current) => ({
+                            ...current,
+                            spa_price_from: nextValue,
+                            spa_price_to: nextValue ? current.spa_price_to : "",
+                          }));
+                        }}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                        placeholder="e.g. 620000"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        SPA Price To (RM)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unitTypeForm.spa_price_to}
+                        disabled={!unitTypeForm.spa_price_from}
+                        onChange={(event) => updateUnitTypeField("spa_price_to", event.target.value)}
+                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400"
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">
+                        Final Net Price From (RM)
                       </label>
                       <input
                         type="number"
@@ -4280,7 +4336,7 @@ export default function ProjectDetailPage() {
 
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-700">
-                        Price To (RM)
+                        Final Net Price To (RM)
                       </label>
                       <input
                         type="number"

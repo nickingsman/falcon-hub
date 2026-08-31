@@ -34,6 +34,8 @@ type UnitTypeRow = {
   carpark_description: string | null;
   layout_media_id: string | null;
   furnishing_package_id: string | null;
+  spa_price_from: number | null;
+  spa_price_to: number | null;
   price_from: number | null;
   price_to: number | null;
   estimated_rental_from: number | null;
@@ -147,6 +149,8 @@ async function toUnitTypeResponse(
     carpark_description: unitType.carpark_description,
     layout_media_id: includeInternalMedia || layout ? unitType.layout_media_id : null,
     furnishing_package_id: unitType.furnishing_package_id,
+    spa_price_from: unitType.spa_price_from,
+    spa_price_to: unitType.spa_price_to,
     price_from: unitType.price_from,
     price_to: unitType.price_to,
     estimated_rental_from: unitType.estimated_rental_from,
@@ -297,6 +301,8 @@ export async function GET(request: Request, { params }: RouteContext) {
         carpark_description,
         layout_media_id,
         furnishing_package_id,
+        spa_price_from,
+        spa_price_to,
         price_from,
         price_to,
         estimated_rental_from,
@@ -390,6 +396,8 @@ export async function POST(request: Request, { params }: RouteContext) {
         carpark_description,
         layout_media_id,
         furnishing_package_id,
+        spa_price_from,
+        spa_price_to,
         price_from,
         price_to,
         estimated_rental_from,

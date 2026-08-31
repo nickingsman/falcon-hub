@@ -46,6 +46,8 @@ type UnitTypeOption = {
   size_sqft: number | null;
   default_carparks: number | null;
   carpark_description: string | null;
+  spa_price_from: number | null;
+  spa_price_to: number | null;
   price_from: number | null;
   price_to: number | null;
   estimated_rental_from: number | null;
@@ -119,6 +121,7 @@ type ComparisonSlot = {
   projectId: string;
   unitTypeId: string;
   packageId: string;
+  spaPrice: string;
   comparisonPrice: string;
   isLoadingOptions: boolean;
   error: string;
@@ -131,6 +134,8 @@ type ComparedOption = {
   commercialPackage: CommercialPackageOption | null;
   connectivity: ConnectivityPoint[];
   unitMetrics: ProjectComparisonMetrics;
+  effectiveSpaPrice: number | null;
+  spaPriceSource: "manual" | "from_price" | "unavailable";
   effectiveComparisonPrice: number | null;
   comparisonPriceSource: "manual" | "from_price" | "unavailable";
   metrics: ProjectComparisonMetrics;
@@ -142,6 +147,7 @@ const initialSlots: ComparisonSlot[] = [
     projectId: "",
     unitTypeId: "",
     packageId: "",
+    spaPrice: "",
     comparisonPrice: "",
     isLoadingOptions: false,
     error: "",
@@ -151,6 +157,7 @@ const initialSlots: ComparisonSlot[] = [
     projectId: "",
     unitTypeId: "",
     packageId: "",
+    spaPrice: "",
     comparisonPrice: "",
     isLoadingOptions: false,
     error: "",
@@ -186,25 +193,33 @@ function formatMoneyRange(range: ComparisonRange, suffix = "") {
   return `${formatCurrency(range.from)} – ${formatCurrency(range.to)}${suffix}`;
 }
 
-function formatUnitTypePriceRange(unitType: UnitTypeOption) {
-  if (typeof unitType.price_from !== "number" || !Number.isFinite(unitType.price_from)) {
+function formatStoredPriceRange(from: number | null, to: number | null) {
+  if (typeof from !== "number" || !Number.isFinite(from)) {
     return "—";
   }
 
   if (
-    typeof unitType.price_to !== "number" ||
-    !Number.isFinite(unitType.price_to) ||
-    unitType.price_to === unitType.price_from
+    typeof to !== "number" ||
+    !Number.isFinite(to) ||
+    to === from
   ) {
-    return formatCurrency(unitType.price_from);
+    return formatCurrency(from);
   }
 
-  if (unitType.price_to < unitType.price_from) return "—";
+  if (to < from) return "—";
 
-  return `${formatCurrency(unitType.price_from)} – ${formatCurrency(unitType.price_to)}`;
+  return `${formatCurrency(from)} – ${formatCurrency(to)}`;
 }
 
-function formatComparisonPrice(value: number | null, source: ComparedOption["comparisonPriceSource"]) {
+function formatUnitTypeSpaPriceRange(unitType: UnitTypeOption) {
+  return formatStoredPriceRange(unitType.spa_price_from, unitType.spa_price_to);
+}
+
+function formatUnitTypeFinalNetPriceRange(unitType: UnitTypeOption) {
+  return formatStoredPriceRange(unitType.price_from, unitType.price_to);
+}
+
+function formatScenarioPrice(value: number | null, source: "manual" | "from_price" | "unavailable") {
   if (value === null) return "—";
 
   return source === "from_price" ? `${formatCurrency(value)} (from)` : formatCurrency(value);
@@ -245,6 +260,29 @@ function parseComparisonPrice(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
 }
 
+function getEffectiveSpaPrice(slot: ComparisonSlot, unitType: UnitTypeOption) {
+  const parsedSpaPrice = parseComparisonPrice(slot.spaPrice);
+
+  if (typeof parsedSpaPrice === "number" && Number.isFinite(parsedSpaPrice)) {
+    return {
+      value: parsedSpaPrice,
+      source: "manual" as const,
+    };
+  }
+
+  if (typeof unitType.spa_price_from === "number" && Number.isFinite(unitType.spa_price_from)) {
+    return {
+      value: unitType.spa_price_from,
+      source: "from_price" as const,
+    };
+  }
+
+  return {
+    value: null,
+    source: "unavailable" as const,
+  };
+}
+
 function getEffectiveComparisonPrice(slot: ComparisonSlot, unitType: UnitTypeOption) {
   const parsedComparisonPrice = parseComparisonPrice(slot.comparisonPrice);
 
@@ -268,39 +306,67 @@ function getEffectiveComparisonPrice(slot: ComparisonSlot, unitType: UnitTypeOpt
   };
 }
 
-function getComparisonPriceWarning(slot: ComparisonSlot, unitType: UnitTypeOption | undefined) {
-  if (!slot.comparisonPrice.trim()) return "";
+function getScenarioPriceWarning({
+  value,
+  label,
+  from,
+  to,
+}: {
+  value: string;
+  label: string;
+  from: number | null;
+  to: number | null;
+}) {
+  if (!value.trim()) return "";
 
-  const parsedComparisonPrice = parseComparisonPrice(slot.comparisonPrice);
+  const parsedPrice = parseComparisonPrice(value);
 
-  if (typeof parsedComparisonPrice !== "number" || !Number.isFinite(parsedComparisonPrice)) {
-    return "Comparison Price must be more than 0.";
-  }
-
-  if (!unitType) return "";
-
-  if (
-    typeof unitType.price_from === "number" &&
-    Number.isFinite(unitType.price_from) &&
-    typeof unitType.price_to === "number" &&
-    Number.isFinite(unitType.price_to) &&
-    (parsedComparisonPrice < unitType.price_from || parsedComparisonPrice > unitType.price_to)
-  ) {
-    return `Outside the current Unit Type price range of ${formatCurrency(
-      unitType.price_from,
-    )} – ${formatCurrency(unitType.price_to)}.`;
+  if (typeof parsedPrice !== "number" || !Number.isFinite(parsedPrice)) {
+    return `${label} must be more than 0.`;
   }
 
   if (
-    typeof unitType.price_from === "number" &&
-    Number.isFinite(unitType.price_from) &&
-    (unitType.price_to === null || unitType.price_to === undefined) &&
-    parsedComparisonPrice < unitType.price_from
+    typeof from === "number" &&
+    Number.isFinite(from) &&
+    typeof to === "number" &&
+    Number.isFinite(to) &&
+    (parsedPrice < from || parsedPrice > to)
   ) {
-    return `Below the current Unit Type starting price of ${formatCurrency(unitType.price_from)}.`;
+    return `Outside the current Unit Type range of ${formatCurrency(from)} – ${formatCurrency(to)}.`;
+  }
+
+  if (
+    typeof from === "number" &&
+    Number.isFinite(from) &&
+    (to === null || to === undefined) &&
+    parsedPrice < from
+  ) {
+    return `Below the current Unit Type starting price of ${formatCurrency(from)}.`;
   }
 
   return "";
+}
+
+function getSpaPriceWarning(slot: ComparisonSlot, unitType: UnitTypeOption | undefined) {
+  if (!unitType) return "";
+
+  return getScenarioPriceWarning({
+    value: slot.spaPrice,
+    label: "SPA Price",
+    from: unitType.spa_price_from,
+    to: unitType.spa_price_to,
+  });
+}
+
+function getFinalNetPriceWarning(slot: ComparisonSlot, unitType: UnitTypeOption | undefined) {
+  if (!unitType) return "";
+
+  return getScenarioPriceWarning({
+    value: slot.comparisonPrice,
+    label: "Final Net Price",
+    from: unitType.price_from,
+    to: unitType.price_to,
+  });
 }
 
 function formatText(value: string | null | undefined) {
@@ -592,9 +658,13 @@ export default function ProjectComparisonPage() {
     assumptions.loanTenureYears > 0;
   const selectedSlots = useMemo(() => slots.filter((slot) => slot.projectId), [slots]);
   const comparisonPricesValid = selectedSlots.every((slot) => {
+    const parsedSpaPrice = parseComparisonPrice(slot.spaPrice);
     const parsedComparisonPrice = parseComparisonPrice(slot.comparisonPrice);
 
-    return parsedComparisonPrice === null || Number.isFinite(parsedComparisonPrice);
+    return (
+      (parsedSpaPrice === null || Number.isFinite(parsedSpaPrice)) &&
+      (parsedComparisonPrice === null || Number.isFinite(parsedComparisonPrice))
+    );
   });
   const canCompare =
     selectedSlots.length >= 2 &&
@@ -611,11 +681,35 @@ export default function ProjectComparisonPage() {
 
         if (!options || !unitType) return null;
 
+        const effectiveSpaPrice = getEffectiveSpaPrice(slot, unitType);
         const effectiveComparisonPrice = getEffectiveComparisonPrice(slot, unitType);
         const unitMetrics = calculateProjectComparisonMetrics(
           {
             price_from: unitType.price_from,
             price_to: unitType.price_to,
+            size_sqft: unitType.size_sqft,
+            maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
+            estimated_rental_from: unitType.estimated_rental_from,
+            estimated_rental_to: unitType.estimated_rental_to,
+          },
+          assumptions,
+        );
+
+        const finalNetScenarioMetrics = calculateProjectComparisonMetrics(
+          {
+            price_from: effectiveComparisonPrice.value,
+            price_to: effectiveComparisonPrice.value,
+            size_sqft: unitType.size_sqft,
+            maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
+            estimated_rental_from: unitType.estimated_rental_from,
+            estimated_rental_to: unitType.estimated_rental_to,
+          },
+          assumptions,
+        );
+        const spaScenarioMetrics = calculateProjectComparisonMetrics(
+          {
+            price_from: effectiveSpaPrice.value,
+            price_to: effectiveSpaPrice.value,
             size_sqft: unitType.size_sqft,
             maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
             estimated_rental_from: unitType.estimated_rental_from,
@@ -632,19 +726,15 @@ export default function ProjectComparisonPage() {
             options.commercial_packages.find((item) => item.id === slot.packageId) ?? null,
           connectivity: options.connectivity ?? [],
           unitMetrics,
+          effectiveSpaPrice: effectiveSpaPrice.value,
+          spaPriceSource: effectiveSpaPrice.source,
           effectiveComparisonPrice: effectiveComparisonPrice.value,
           comparisonPriceSource: effectiveComparisonPrice.source,
-          metrics: calculateProjectComparisonMetrics(
-            {
-              price_from: effectiveComparisonPrice.value,
-              price_to: effectiveComparisonPrice.value,
-              size_sqft: unitType.size_sqft,
-              maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
-              estimated_rental_from: unitType.estimated_rental_from,
-              estimated_rental_to: unitType.estimated_rental_to,
-            },
-            assumptions,
-          ),
+          metrics: {
+            ...finalNetScenarioMetrics,
+            loanAmount: spaScenarioMetrics.loanAmount,
+            estimatedMonthlyInstalment: spaScenarioMetrics.estimatedMonthlyInstalment,
+          },
         };
       })
       .filter((item): item is ComparedOption => Boolean(item));
@@ -700,6 +790,7 @@ export default function ProjectComparisonPage() {
       projectId,
       unitTypeId: "",
       packageId: "",
+      spaPrice: "",
       comparisonPrice: "",
       error: "",
     });
@@ -713,6 +804,7 @@ export default function ProjectComparisonPage() {
     updateSlot(slotId, {
       unitTypeId,
       packageId: "",
+      spaPrice: "",
       comparisonPrice: "",
     });
   }
@@ -727,6 +819,7 @@ export default function ProjectComparisonPage() {
         projectId: "",
         unitTypeId: "",
         packageId: "",
+        spaPrice: "",
         comparisonPrice: "",
         isLoadingOptions: false,
         error: "",
@@ -887,7 +980,8 @@ export default function ProjectComparisonPage() {
               (unitType) => unitType.id === slot.unitTypeId,
             );
             const applicablePackages = getApplicablePackages(projectOptions, slot.unitTypeId);
-            const comparisonPriceWarning = getComparisonPriceWarning(slot, selectedUnitType);
+            const spaPriceWarning = getSpaPriceWarning(slot, selectedUnitType);
+            const finalNetPriceWarning = getFinalNetPriceWarning(slot, selectedUnitType);
 
             return (
               <article key={slot.id} className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
@@ -978,7 +1072,37 @@ export default function ProjectComparisonPage() {
                   ) : null}
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Comparison Price</span>
+                    <span className="font-medium text-zinc-700">SPA Price</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={slot.spaPrice}
+                      disabled={!slot.unitTypeId}
+                      onChange={(event) =>
+                        updateSlot(slot.id, { spaPrice: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      placeholder={
+                        selectedUnitType?.spa_price_from
+                          ? `${selectedUnitType.spa_price_from}`
+                          : "Optional SPA price"
+                      }
+                    />
+                    {selectedUnitType ? (
+                      <span className="mt-1 block text-xs text-zinc-500">
+                        Unit Type SPA range: {formatUnitTypeSpaPriceRange(selectedUnitType)}
+                      </span>
+                    ) : null}
+                    {spaPriceWarning ? (
+                      <span className="mt-2 block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        {spaPriceWarning}
+                      </span>
+                    ) : null}
+                  </label>
+
+                  <label className="block text-sm">
+                    <span className="font-medium text-zinc-700">Final Net Price</span>
                     <input
                       type="number"
                       min="0"
@@ -992,17 +1116,17 @@ export default function ProjectComparisonPage() {
                       placeholder={
                         selectedUnitType?.price_from
                           ? `${selectedUnitType.price_from}`
-                          : "Optional scenario price"
+                          : "Optional final net price"
                       }
                     />
                     {selectedUnitType ? (
                       <span className="mt-1 block text-xs text-zinc-500">
-                        Unit Type range: {formatUnitTypePriceRange(selectedUnitType)}
+                        Unit Type final net range: {formatUnitTypeFinalNetPriceRange(selectedUnitType)}
                       </span>
                     ) : null}
-                    {comparisonPriceWarning ? (
+                    {finalNetPriceWarning ? (
                       <span className="mt-2 block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        {comparisonPriceWarning}
+                        {finalNetPriceWarning}
                       </span>
                     ) : null}
                   </label>
@@ -1049,7 +1173,7 @@ export default function ProjectComparisonPage() {
           <>
             <ComparisonTable
               title="Quick Comparison"
-              description="Factual comparison using the selected scenario price. Sales Package discounts are not deducted again."
+              description="Factual comparison using SPA Price for financing and Final Net Price for price/yield context. Sales Package discounts are not deducted again."
               comparedOptions={comparedOptions}
               rows={[
                 {
@@ -1061,9 +1185,9 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
                 },
                 {
-                  label: "Comparison Price",
+                  label: "Final Net Price",
                   values: comparedOptions.map((option) =>
-                    formatComparisonPrice(
+                    formatScenarioPrice(
                       option.effectiveComparisonPrice,
                       option.comparisonPriceSource,
                     ),
@@ -1074,8 +1198,16 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
                 },
                 {
-                  label: "Tenure",
-                  values: comparedOptions.map((option) => formatText(option.project.tenure)),
+                  label: "PSF",
+                  values: comparedOptions.map((option) =>
+                    formatMoneyRange(option.unitMetrics.psf, " psf"),
+                  ),
+                },
+                {
+                  label: "SPA Price",
+                  values: comparedOptions.map((option) =>
+                    formatScenarioPrice(option.effectiveSpaPrice, option.spaPriceSource),
+                  ),
                 },
                 {
                   label: "Est. Monthly Instalment",
@@ -1092,6 +1224,10 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) =>
                     formatPercentRange(option.metrics.estimatedGrossRentalYieldPercent),
                   ),
+                },
+                {
+                  label: "Tenure",
+                  values: comparedOptions.map((option) => formatText(option.project.tenure)),
                 },
                 {
                   label: "Estimated Completion",
@@ -1150,6 +1286,12 @@ export default function ProjectComparisonPage() {
                 {
                   label: "Unit Type",
                   values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
+                },
+                {
+                  label: "SPA Price Range",
+                  values: comparedOptions.map((option) =>
+                    formatStoredPriceRange(option.unitType.spa_price_from, option.unitType.spa_price_to),
+                  ),
                 },
                 {
                   label: "Final Net Price Range",

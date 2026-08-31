@@ -72,6 +72,8 @@ export type PurchaseCostKey = (typeof purchaseCostKeys)[number];
 export type PurchaseCostTreatment = (typeof purchaseCostTreatments)[number];
 
 export type UnitTypeComparisonFields = {
+  spa_price_from: number | null;
+  spa_price_to: number | null;
   price_from: number | null;
   price_to: number | null;
   estimated_rental_from: number | null;
@@ -156,6 +158,8 @@ type CommercialPackageUnitTypeRow = {
     bathrooms: number | null;
     default_carparks: number | null;
     carpark_description: string | null;
+    spa_price_from?: number | null;
+    spa_price_to?: number | null;
     price_from?: number | null;
     price_to?: number | null;
     estimated_rental_from?: number | null;
@@ -221,6 +225,8 @@ export function getUnitTypeComparisonPayload(body: Record<string, unknown>): Uni
   const isDualKey = normalizeNullableBoolean(body.is_dual_key);
 
   return {
+    spa_price_from: normalizeNullableNumber(body.spa_price_from),
+    spa_price_to: normalizeNullableNumber(body.spa_price_to),
     price_from: normalizeNullableNumber(body.price_from),
     price_to: normalizeNullableNumber(body.price_to),
     estimated_rental_from: normalizeNullableNumber(body.estimated_rental_from),
@@ -231,6 +237,28 @@ export function getUnitTypeComparisonPayload(body: Record<string, unknown>): Uni
 }
 
 export function validateUnitTypeComparisonPayload(payload: UnitTypeComparisonFields) {
+  if (
+    payload.spa_price_from !== null &&
+    (!Number.isFinite(payload.spa_price_from) || payload.spa_price_from < 0)
+  ) {
+    return "SPA Price From must be a non-negative number";
+  }
+  if (
+    payload.spa_price_to !== null &&
+    (!Number.isFinite(payload.spa_price_to) || payload.spa_price_to < 0)
+  ) {
+    return "SPA Price To must be a non-negative number";
+  }
+  if (payload.spa_price_to !== null && payload.spa_price_from === null) {
+    return "SPA Price To requires SPA Price From";
+  }
+  if (
+    payload.spa_price_from !== null &&
+    payload.spa_price_to !== null &&
+    payload.spa_price_to < payload.spa_price_from
+  ) {
+    return "SPA Price To must be greater than or equal to SPA Price From";
+  }
   if (
     payload.price_from !== null &&
     (!Number.isFinite(payload.price_from) || payload.price_from < 0)
@@ -623,6 +651,8 @@ export async function getCommercialPackagesForProject(
             bathrooms,
             default_carparks,
             carpark_description,
+            spa_price_from,
+            spa_price_to,
             price_from,
             price_to,
             estimated_rental_from,
