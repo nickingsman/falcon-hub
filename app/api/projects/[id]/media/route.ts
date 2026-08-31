@@ -22,11 +22,16 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+type ReplaceProjectCoverMediaResult = ProjectMediaRow & {
+  old_storage_paths: string[] | null;
+};
+
 const mediaTypes: ProjectMediaType[] = [
   "unit_layout",
   "floor_plan",
   "facing_view",
   "project_image",
+  "project_cover",
   "other",
 ];
 
@@ -55,6 +60,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
   try {
     const { id } = await params;
+    const mediaType = parseMediaType(new URL(_request.url).searchParams.get("media_type"));
     const supabase = createSupabaseAdminClient();
     const query = supabase
       .from("project_media")
@@ -77,6 +83,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
       .eq("is_deleted", false)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
+
+    if (mediaType) {
+      query.eq("media_type", mediaType);
+    }
 
     if (!canViewInternalProjectMedia(authorization.profile)) {
       query.eq("visibility", "customer");
@@ -131,7 +141,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const mediaType = parseMediaType(formData.get("media_type"));
-    const visibility = parseVisibility(formData.get("visibility"));
+    const requestedVisibility = parseVisibility(formData.get("visibility"));
     const title = normalizeNullableText(getText(formData, "title")) || file.name;
     const sortOrder = normalizeInteger(getText(formData, "sort_order"), 0);
 
@@ -139,14 +149,22 @@ export async function POST(request: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Media Type is required" }, { status: 400 });
     }
 
-    if (!visibility) {
+    if (!requestedVisibility) {
       return NextResponse.json({ error: "Visibility is required" }, { status: 400 });
+    }
+
+    if (mediaType === "project_cover" && requestedVisibility !== "customer") {
+      return NextResponse.json(
+        { error: "Project Cover must be customer-visible" },
+        { status: 400 },
+      );
     }
 
     if (!Number.isFinite(sortOrder)) {
       return NextResponse.json({ error: "Sort Order must be a whole number" }, { status: 400 });
     }
 
+    const visibility = mediaType === "project_cover" ? "customer" : requestedVisibility;
     const supabase = createSupabaseAdminClient();
 
     if (!(await projectExists(supabase, id))) {
@@ -164,6 +182,43 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     if (uploadError) {
       throw uploadError;
+    }
+
+    if (mediaType === "project_cover") {
+      const { data: coverData, error: coverError } = await supabase
+        .rpc("replace_project_cover_media", {
+          p_project_id: id,
+          p_media_id: mediaId,
+          p_title: title,
+          p_storage_bucket: projectMediaBucket,
+          p_storage_path: storagePath,
+          p_mime_type: file.type,
+          p_file_size_bytes: file.size,
+          p_description: normalizeNullableText(getText(formData, "description")),
+        })
+        .single();
+
+      if (coverError) {
+        await supabase.storage.from(projectMediaBucket).remove([storagePath]);
+        throw coverError;
+      }
+
+      const cover = coverData as ReplaceProjectCoverMediaResult;
+      const oldStoragePaths = cover.old_storage_paths ?? [];
+
+      if (oldStoragePaths.length) {
+        const { error: cleanupError } = await supabase.storage
+          .from(projectMediaBucket)
+          .remove(oldStoragePaths);
+
+        if (cleanupError) {
+          console.error("Unable to remove previous project cover storage objects:", cleanupError);
+        }
+      }
+
+      return NextResponse.json(await toProjectMediaResponse(supabase, cover), {
+        status: 201,
+      });
     }
 
     const { data, error } = await supabase

@@ -13,6 +13,7 @@ export type ProjectMediaType =
   | "floor_plan"
   | "facing_view"
   | "project_image"
+  | "project_cover"
   | "other";
 
 export type ProjectMediaRow = {

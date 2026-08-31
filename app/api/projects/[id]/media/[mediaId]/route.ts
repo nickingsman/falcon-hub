@@ -40,12 +40,34 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const supabase = createSupabaseAdminClient();
+    const { data: currentMedia, error: currentMediaError } = await supabase
+      .from("project_media")
+      .select("media_type")
+      .eq("id", mediaId)
+      .eq("project_id", id)
+      .eq("is_deleted", false)
+      .single();
+
+    if (currentMediaError) {
+      throw currentMediaError;
+    }
+
+    if (currentMedia.media_type === "project_cover" && body.visibility === "internal") {
+      return NextResponse.json(
+        { error: "Project Cover must be customer-visible" },
+        { status: 400 },
+      );
+    }
+
     const { data, error } = await supabase
       .from("project_media")
       .update({
         title,
         description: normalizeNullableText(body.description),
-        visibility: normalizeVisibility(body.visibility),
+        visibility:
+          currentMedia.media_type === "project_cover"
+            ? "customer"
+            : normalizeVisibility(body.visibility),
         sort_order: sortOrder,
       })
       .eq("id", mediaId)

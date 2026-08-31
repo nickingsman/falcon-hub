@@ -31,7 +31,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     console.error("GET /api/projects/[id]/commercial-packages error:", error);
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to load commercial packages" },
+      { error: error instanceof Error ? error.message : "Unable to load sales packages" },
       { status: 500 },
     );
   }
@@ -92,7 +92,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const commercialPackage = commercialPackages?.[0];
 
     if (!commercialPackage) {
-      throw new Error("Unable to create commercial package");
+      throw new Error("Unable to create sales package");
     }
 
     return NextResponse.json(
@@ -103,7 +103,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     console.error("POST /api/projects/[id]/commercial-packages error:", error);
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to create commercial package" },
+      { error: error instanceof Error ? error.message : "Unable to create sales package" },
       { status: 500 },
     );
   }

@@ -187,7 +187,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
 
     if ((commercialPackageReferenceCount ?? 0) > 0) {
       return NextResponse.json(
-        { error: "This furnishing package is currently used by a Commercial Package." },
+        { error: "This furnishing package is currently used by a Sales Package." },
         { status: 409 },
       );
     }

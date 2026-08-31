@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { type ProjectMediaRow, toProjectMediaResponse } from "@/lib/project-content";
 import { shapeConnectivityPoint } from "@/lib/project-comparison";
 import { requireProjectApiReadAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
@@ -151,6 +152,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       unitTypesResult,
       connectivityResult,
       commercialPackagesResult,
+      coverResult,
     ] = await Promise.all([
       supabase
         .from("project_unit_types")
@@ -213,11 +215,36 @@ export async function GET(_request: Request, { params }: RouteContext) {
         .eq("is_deleted", false)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: true }),
+      supabase
+        .from("project_media")
+        .select(`
+          id,
+          project_id,
+          title,
+          media_type,
+          storage_bucket,
+          storage_path,
+          mime_type,
+          file_size_bytes,
+          description,
+          visibility,
+          sort_order,
+          created_at,
+          updated_at
+        `)
+        .eq("project_id", id)
+        .eq("media_type", "project_cover")
+        .eq("visibility", "customer")
+        .eq("is_deleted", false)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     if (unitTypesResult.error) throw unitTypesResult.error;
     if (connectivityResult.error) throw connectivityResult.error;
     if (commercialPackagesResult.error) throw commercialPackagesResult.error;
+    if (coverResult.error) throw coverResult.error;
 
     const unitTypes = (unitTypesResult.data ?? []) as UnitTypeRow[];
     const commercialPackages = (commercialPackagesResult.data ?? []) as CommercialPackageRow[];
@@ -315,6 +342,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
       (commercialPackagePurchaseCostsResult.data ?? []) as CommercialPackagePurchaseCostRow[];
     const mappings =
       (commercialPackageMappingsResult.data ?? []) as CommercialPackageUnitTypeMappingRow[];
+    const coverMedia = await toProjectMediaResponse(supabase, coverResult.data as ProjectMediaRow | null);
 
     return NextResponse.json({
       project: {
@@ -329,6 +357,15 @@ export async function GET(_request: Request, { params }: RouteContext) {
         estimated_vp_year: project.estimated_vp_year,
         estimated_vp_quarter: project.estimated_vp_quarter,
         maintenance_fee_per_sqft: project.maintenance_fee_per_sqft,
+        cover_media: coverMedia
+          ? {
+              title: coverMedia.title,
+              media_type: coverMedia.media_type,
+              mime_type: coverMedia.mime_type,
+              description: coverMedia.description,
+              signed_url: coverMedia.signed_url,
+            }
+          : null,
       },
       unit_types: unitTypes.map((unitType) => ({
         id: unitType.id,

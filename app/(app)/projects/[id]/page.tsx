@@ -864,6 +864,11 @@ export default function ProjectDetailPage() {
   const [editingResourceId, setEditingResourceId] = useState<string | null>(null);
   const [resourceForm, setResourceForm] = useState<ProjectResourceForm>(emptyResourceForm);
   const [resourceSaving, setResourceSaving] = useState(false);
+  const [projectCover, setProjectCover] = useState<ProjectMedia | null>(null);
+  const [projectCoverLoading, setProjectCoverLoading] = useState(true);
+  const [projectCoverErrorMessage, setProjectCoverErrorMessage] = useState("");
+  const [projectCoverFile, setProjectCoverFile] = useState<File | null>(null);
+  const [projectCoverSaving, setProjectCoverSaving] = useState(false);
   const [unitTypes, setUnitTypes] = useState<ProjectUnitType[]>([]);
   const [unitTypesLoading, setUnitTypesLoading] = useState(true);
   const [unitTypesErrorMessage, setUnitTypesErrorMessage] = useState("");
@@ -1090,6 +1095,29 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function fetchProjectCover(id: string) {
+    try {
+      setProjectCoverLoading(true);
+      setProjectCoverErrorMessage("");
+
+      const response = await fetch(`/api/projects/${id}/media?media_type=project_cover`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load project cover");
+      }
+
+      setProjectCover(result[0] ?? null);
+    } catch (error) {
+      console.error("Load project cover error:", error);
+      setProjectCoverErrorMessage(
+        error instanceof Error ? error.message : "Unable to load project cover",
+      );
+    } finally {
+      setProjectCoverLoading(false);
+    }
+  }
+
   useEffect(() => {
     async function loadProjectResources() {
       try {
@@ -1204,14 +1232,14 @@ export default function ProjectDetailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Unable to load commercial packages");
+        throw new Error(result.error || "Unable to load sales packages");
       }
 
       setCommercialPackages(result);
     } catch (error) {
       console.error("Load commercial packages error:", error);
       setCommercialPackagesErrorMessage(
-        error instanceof Error ? error.message : "Unable to load commercial packages",
+        error instanceof Error ? error.message : "Unable to load sales packages",
       );
     } finally {
       setCommercialPackagesLoading(false);
@@ -1276,6 +1304,7 @@ export default function ProjectDetailPage() {
         void fetchCommercialPackages(projectId, canManageProjects);
         void fetchFloorPlans(projectId);
         void fetchFacings(projectId);
+        void fetchProjectCover(projectId);
       }, 0);
 
       return () => window.clearTimeout(timeoutId);
@@ -1885,6 +1914,77 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleProjectCoverSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canManageProjects || !projectId || !project || !projectCoverFile) return;
+
+    try {
+      setProjectCoverSaving(true);
+      setProjectCoverErrorMessage("");
+
+      const formData = new FormData();
+      formData.append("file", projectCoverFile);
+      formData.append("title", `${project.project_name} Cover Image`);
+      formData.append("media_type", "project_cover");
+      formData.append("visibility", "customer");
+      formData.append("description", "Project cover image");
+      formData.append("sort_order", "0");
+
+      const response = await fetch(`/api/projects/${projectId}/media`, {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to save project cover");
+      }
+
+      setProjectCover(result);
+      setProjectCoverFile(null);
+    } catch (error) {
+      console.error("Save project cover error:", error);
+      setProjectCoverErrorMessage(
+        error instanceof Error ? error.message : "Unable to save project cover",
+      );
+    } finally {
+      setProjectCoverSaving(false);
+    }
+  }
+
+  async function handleDeleteProjectCover() {
+    if (!canManageProjects || !projectId || !projectCover) return;
+
+    const confirmed = window.confirm("Remove the current Project Cover Image?");
+
+    if (!confirmed) return;
+
+    try {
+      setProjectCoverSaving(true);
+      setProjectCoverErrorMessage("");
+
+      const response = await fetch(`/api/projects/${projectId}/media/${projectCover.id}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to remove project cover");
+      }
+
+      setProjectCover(null);
+      setProjectCoverFile(null);
+    } catch (error) {
+      console.error("Delete project cover error:", error);
+      setProjectCoverErrorMessage(
+        error instanceof Error ? error.message : "Unable to remove project cover",
+      );
+    } finally {
+      setProjectCoverSaving(false);
+    }
+  }
+
   async function uploadLayoutMedia(id: string, typeCode: string) {
     if (!unitTypeLayoutFile) return null;
 
@@ -2306,7 +2406,7 @@ export default function ProjectDetailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Unable to save commercial package");
+        throw new Error(result.error || "Unable to save sales package");
       }
 
       closeCommercialPackageModal();
@@ -2314,7 +2414,7 @@ export default function ProjectDetailPage() {
     } catch (error) {
       console.error("Save commercial package error:", error);
       setCommercialPackagesErrorMessage(
-        error instanceof Error ? error.message : "Unable to save commercial package",
+        error instanceof Error ? error.message : "Unable to save sales package",
       );
     } finally {
       setCommercialPackageSaving(false);
@@ -2342,14 +2442,14 @@ export default function ProjectDetailPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Unable to delete commercial package");
+        throw new Error(result.error || "Unable to delete sales package");
       }
 
       await fetchCommercialPackages(projectId, canManageProjects);
     } catch (error) {
       console.error("Delete commercial package error:", error);
       setCommercialPackagesErrorMessage(
-        error instanceof Error ? error.message : "Unable to delete commercial package",
+        error instanceof Error ? error.message : "Unable to delete sales package",
       );
     }
   }
@@ -2708,6 +2808,93 @@ export default function ProjectDetailPage() {
     }
   }
 
+  function renderProjectCover() {
+    return (
+      <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Project Cover</h2>
+            <p className="mt-1 text-sm text-zinc-500">
+              Customer-facing image used in Project Comparison and future sales materials.
+            </p>
+          </div>
+        </div>
+
+        {projectCoverErrorMessage ? (
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {projectCoverErrorMessage}
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+            {projectCoverLoading ? (
+              <div className="flex aspect-video items-center justify-center text-sm text-zinc-500">
+                Loading Project Cover...
+              </div>
+            ) : projectCover?.signed_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={projectCover.signed_url}
+                alt={`${project?.project_name ?? "Project"} cover`}
+                className="aspect-video w-full object-cover"
+              />
+            ) : (
+              <div className="flex aspect-video items-center justify-center px-4 text-center text-sm text-zinc-500">
+                No Project Cover added yet.
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <p className="text-sm font-semibold text-zinc-900">
+              {projectCover ? projectCover.title : "Cover Image"}
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              JPG, PNG, or WebP. Maximum 10MB.
+            </p>
+
+            {canManageProjects ? (
+              <form onSubmit={handleProjectCoverSubmit} className="mt-4 space-y-3">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(event) => setProjectCoverFile(event.target.files?.[0] ?? null)}
+                  className="block w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="submit"
+                    disabled={!projectCoverFile || projectCoverSaving}
+                    className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {projectCoverSaving
+                      ? "Saving..."
+                      : projectCover
+                        ? "Replace Cover Image"
+                        : "Upload Cover Image"}
+                  </button>
+                  {projectCover ? (
+                    <button
+                      type="button"
+                      onClick={handleDeleteProjectCover}
+                      disabled={projectCoverSaving}
+                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Remove Cover Image
+                    </button>
+                  ) : null}
+                </div>
+              </form>
+            ) : (
+              <p className="mt-4 text-sm text-zinc-500">Preview only.</p>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   function renderUnitTypes() {
     return (
       <section className="rounded-2xl border border-zinc-200 bg-white p-6">
@@ -2994,7 +3181,7 @@ export default function ProjectDetailPage() {
       <section className="rounded-2xl border border-zinc-200 bg-white p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Commercial Packages</h2>
+            <h2 className="text-xl font-semibold text-zinc-900">Sales Packages</h2>
             <p className="mt-1 text-sm text-zinc-500">
               Developer packages, discounts, benefits, purchase costs, and Unit Type applicability.
             </p>
@@ -3006,7 +3193,7 @@ export default function ProjectDetailPage() {
               onClick={openAddCommercialPackage}
               className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
-              Add Commercial Package
+              Add Sales Package
             </button>
           ) : null}
         </div>
@@ -3020,11 +3207,11 @@ export default function ProjectDetailPage() {
 
           {commercialPackagesLoading ? (
             <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
-              Loading commercial packages...
+              Loading sales packages...
             </p>
           ) : commercialPackages.length === 0 ? (
             <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
-              No commercial packages added yet.
+              No sales packages added yet.
             </p>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -3851,6 +4038,7 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="mt-8 space-y-6">
+          {renderProjectCover()}
           {renderUnitTypes()}
           {renderConnectivityPoints()}
           {renderCommercialPackages()}
@@ -4365,10 +4553,10 @@ export default function ProjectDetailPage() {
             <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold text-zinc-900">
-                  {editingCommercialPackageId ? "Edit Commercial Package" : "Add Commercial Package"}
+                  {editingCommercialPackageId ? "Edit Sales Package" : "Add Sales Package"}
                 </h2>
                 <p className="mt-1 text-sm text-zinc-500">
-                  Save one complete package through the protected Commercial Package API.
+                  Save one complete sales package through the protected package API.
                 </p>
               </div>
 
@@ -4694,7 +4882,7 @@ export default function ProjectDetailPage() {
                   disabled={commercialPackageSaving}
                   className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {commercialPackageSaving ? "Saving..." : "Save Commercial Package"}
+                  {commercialPackageSaving ? "Saving..." : "Save Sales Package"}
                 </button>
               </div>
             </form>

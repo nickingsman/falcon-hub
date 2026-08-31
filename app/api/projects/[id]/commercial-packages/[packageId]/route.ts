@@ -60,7 +60,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     console.error("GET /api/projects/[id]/commercial-packages/[packageId] error:", error);
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to load commercial package" },
+      { error: error instanceof Error ? error.message : "Unable to load sales package" },
       { status: 500 },
     );
   }
@@ -119,7 +119,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     if (!commercialPackages?.[0]) {
-      throw new Error("Unable to update commercial package");
+      throw new Error("Unable to update sales package");
     }
 
     return NextResponse.json(await getCommercialPackagesForProject(supabase, id, false, packageId));
@@ -127,7 +127,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     console.error("PATCH /api/projects/[id]/commercial-packages/[packageId] error:", error);
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to update commercial package" },
+      { error: error instanceof Error ? error.message : "Unable to update sales package" },
       { status: 500 },
     );
   }
@@ -165,7 +165,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     console.error("DELETE /api/projects/[id]/commercial-packages/[packageId] error:", error);
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unable to delete commercial package" },
+      { error: error instanceof Error ? error.message : "Unable to delete sales package" },
       { status: 500 },
     );
   }

@@ -14,6 +14,14 @@ type ProjectOption = {
   location: string | null;
 };
 
+type ProjectCoverMedia = {
+  title: string;
+  media_type: string;
+  mime_type: string | null;
+  description: string | null;
+  signed_url: string | null;
+};
+
 type FurnishingPackage = {
   id: string;
   package_name: string;
@@ -99,6 +107,7 @@ type ProjectOptions = {
     estimated_vp_year: number | null;
     estimated_vp_quarter: number | null;
     maintenance_fee_per_sqft: number | null;
+    cover_media: ProjectCoverMedia | null;
   };
   unit_types: UnitTypeOption[];
   connectivity: ConnectivityPoint[];
@@ -110,6 +119,7 @@ type ComparisonSlot = {
   projectId: string;
   unitTypeId: string;
   packageId: string;
+  comparisonPrice: string;
   isLoadingOptions: boolean;
   error: string;
 };
@@ -120,12 +130,31 @@ type ComparedOption = {
   unitType: UnitTypeOption;
   commercialPackage: CommercialPackageOption | null;
   connectivity: ConnectivityPoint[];
+  unitMetrics: ProjectComparisonMetrics;
+  effectiveComparisonPrice: number | null;
+  comparisonPriceSource: "manual" | "from_price" | "unavailable";
   metrics: ProjectComparisonMetrics;
 };
 
 const initialSlots: ComparisonSlot[] = [
-  { id: "slot-1", projectId: "", unitTypeId: "", packageId: "", isLoadingOptions: false, error: "" },
-  { id: "slot-2", projectId: "", unitTypeId: "", packageId: "", isLoadingOptions: false, error: "" },
+  {
+    id: "slot-1",
+    projectId: "",
+    unitTypeId: "",
+    packageId: "",
+    comparisonPrice: "",
+    isLoadingOptions: false,
+    error: "",
+  },
+  {
+    id: "slot-2",
+    projectId: "",
+    unitTypeId: "",
+    packageId: "",
+    comparisonPrice: "",
+    isLoadingOptions: false,
+    error: "",
+  },
 ];
 
 const currencyFormatter = new Intl.NumberFormat("en-MY", {
@@ -157,6 +186,30 @@ function formatMoneyRange(range: ComparisonRange, suffix = "") {
   return `${formatCurrency(range.from)} – ${formatCurrency(range.to)}${suffix}`;
 }
 
+function formatUnitTypePriceRange(unitType: UnitTypeOption) {
+  if (typeof unitType.price_from !== "number" || !Number.isFinite(unitType.price_from)) {
+    return "—";
+  }
+
+  if (
+    typeof unitType.price_to !== "number" ||
+    !Number.isFinite(unitType.price_to) ||
+    unitType.price_to === unitType.price_from
+  ) {
+    return formatCurrency(unitType.price_from);
+  }
+
+  if (unitType.price_to < unitType.price_from) return "—";
+
+  return `${formatCurrency(unitType.price_from)} – ${formatCurrency(unitType.price_to)}`;
+}
+
+function formatComparisonPrice(value: number | null, source: ComparedOption["comparisonPriceSource"]) {
+  if (value === null) return "—";
+
+  return source === "from_price" ? `${formatCurrency(value)} (from)` : formatCurrency(value);
+}
+
 function formatPercentRange(range: ComparisonRange) {
   if (range.kind === "unavailable") return "—";
   if (range.kind === "single") return `${percentageFormatter.format(range.value)}%`;
@@ -182,6 +235,72 @@ function formatEstimatedCompletion(project: ProjectOptions["project"]) {
 
 function getSelectedProjectIds(slots: ComparisonSlot[]) {
   return slots.map((slot) => slot.projectId).filter(Boolean);
+}
+
+function parseComparisonPrice(value: string) {
+  if (!value.trim()) return null;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
+}
+
+function getEffectiveComparisonPrice(slot: ComparisonSlot, unitType: UnitTypeOption) {
+  const parsedComparisonPrice = parseComparisonPrice(slot.comparisonPrice);
+
+  if (typeof parsedComparisonPrice === "number" && Number.isFinite(parsedComparisonPrice)) {
+    return {
+      value: parsedComparisonPrice,
+      source: "manual" as const,
+    };
+  }
+
+  if (typeof unitType.price_from === "number" && Number.isFinite(unitType.price_from)) {
+    return {
+      value: unitType.price_from,
+      source: "from_price" as const,
+    };
+  }
+
+  return {
+    value: null,
+    source: "unavailable" as const,
+  };
+}
+
+function getComparisonPriceWarning(slot: ComparisonSlot, unitType: UnitTypeOption | undefined) {
+  if (!slot.comparisonPrice.trim()) return "";
+
+  const parsedComparisonPrice = parseComparisonPrice(slot.comparisonPrice);
+
+  if (typeof parsedComparisonPrice !== "number" || !Number.isFinite(parsedComparisonPrice)) {
+    return "Comparison Price must be more than 0.";
+  }
+
+  if (!unitType) return "";
+
+  if (
+    typeof unitType.price_from === "number" &&
+    Number.isFinite(unitType.price_from) &&
+    typeof unitType.price_to === "number" &&
+    Number.isFinite(unitType.price_to) &&
+    (parsedComparisonPrice < unitType.price_from || parsedComparisonPrice > unitType.price_to)
+  ) {
+    return `Outside the current Unit Type price range of ${formatCurrency(
+      unitType.price_from,
+    )} – ${formatCurrency(unitType.price_to)}.`;
+  }
+
+  if (
+    typeof unitType.price_from === "number" &&
+    Number.isFinite(unitType.price_from) &&
+    (unitType.price_to === null || unitType.price_to === undefined) &&
+    parsedComparisonPrice < unitType.price_from
+  ) {
+    return `Below the current Unit Type starting price of ${formatCurrency(unitType.price_from)}.`;
+  }
+
+  return "";
 }
 
 function formatText(value: string | null | undefined) {
@@ -362,6 +481,20 @@ function ComparisonTable({
                   key={`${title}-${option.slot.id}`}
                   className="border-b border-zinc-200 px-4 py-3"
                 >
+                  <div className="mb-3 aspect-video w-full max-w-[220px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+                    {option.project.cover_media?.signed_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={option.project.cover_media.signed_url}
+                        alt={`${option.project.name} cover`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-3 text-center text-xs font-medium normal-case tracking-normal text-zinc-400">
+                        No cover
+                      </div>
+                    )}
+                  </div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-zinc-900">
                     {option.project.name}
                   </p>
@@ -458,10 +591,16 @@ export default function ProjectComparisonPage() {
     Number.isFinite(assumptions.loanTenureYears) &&
     assumptions.loanTenureYears > 0;
   const selectedSlots = useMemo(() => slots.filter((slot) => slot.projectId), [slots]);
+  const comparisonPricesValid = selectedSlots.every((slot) => {
+    const parsedComparisonPrice = parseComparisonPrice(slot.comparisonPrice);
+
+    return parsedComparisonPrice === null || Number.isFinite(parsedComparisonPrice);
+  });
   const canCompare =
     selectedSlots.length >= 2 &&
     selectedSlots.every((slot) => slot.unitTypeId && !slot.isLoadingOptions && !slot.error) &&
-    assumptionsValid;
+    assumptionsValid &&
+    comparisonPricesValid;
   const comparedOptions = useMemo<ComparedOption[]>(() => {
     if (!hasCompared || !canCompare) return [];
 
@@ -472,6 +611,19 @@ export default function ProjectComparisonPage() {
 
         if (!options || !unitType) return null;
 
+        const effectiveComparisonPrice = getEffectiveComparisonPrice(slot, unitType);
+        const unitMetrics = calculateProjectComparisonMetrics(
+          {
+            price_from: unitType.price_from,
+            price_to: unitType.price_to,
+            size_sqft: unitType.size_sqft,
+            maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
+            estimated_rental_from: unitType.estimated_rental_from,
+            estimated_rental_to: unitType.estimated_rental_to,
+          },
+          assumptions,
+        );
+
         return {
           slot,
           project: options.project,
@@ -479,10 +631,13 @@ export default function ProjectComparisonPage() {
           commercialPackage:
             options.commercial_packages.find((item) => item.id === slot.packageId) ?? null,
           connectivity: options.connectivity ?? [],
+          unitMetrics,
+          effectiveComparisonPrice: effectiveComparisonPrice.value,
+          comparisonPriceSource: effectiveComparisonPrice.source,
           metrics: calculateProjectComparisonMetrics(
             {
-              price_from: unitType.price_from,
-              price_to: unitType.price_to,
+              price_from: effectiveComparisonPrice.value,
+              price_to: effectiveComparisonPrice.value,
               size_sqft: unitType.size_sqft,
               maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
               estimated_rental_from: unitType.estimated_rental_from,
@@ -545,6 +700,7 @@ export default function ProjectComparisonPage() {
       projectId,
       unitTypeId: "",
       packageId: "",
+      comparisonPrice: "",
       error: "",
     });
 
@@ -557,6 +713,7 @@ export default function ProjectComparisonPage() {
     updateSlot(slotId, {
       unitTypeId,
       packageId: "",
+      comparisonPrice: "",
     });
   }
 
@@ -570,6 +727,7 @@ export default function ProjectComparisonPage() {
         projectId: "",
         unitTypeId: "",
         packageId: "",
+        comparisonPrice: "",
         isLoadingOptions: false,
         error: "",
       },
@@ -725,7 +883,11 @@ export default function ProjectComparisonPage() {
         <section className="mt-6 grid gap-4 xl:grid-cols-3">
           {slots.map((slot, index) => {
             const projectOptions = projectOptionsById[slot.projectId];
+            const selectedUnitType = projectOptions?.unit_types.find(
+              (unitType) => unitType.id === slot.unitTypeId,
+            );
             const applicablePackages = getApplicablePackages(projectOptions, slot.unitTypeId);
+            const comparisonPriceWarning = getComparisonPriceWarning(slot, selectedUnitType);
 
             return (
               <article key={slot.id} className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
@@ -769,6 +931,23 @@ export default function ProjectComparisonPage() {
                     </p>
                   ) : null}
 
+                  {projectOptions ? (
+                    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+                      {projectOptions.project.cover_media?.signed_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={projectOptions.project.cover_media.signed_url}
+                          alt={`${projectOptions.project.name} cover`}
+                          className="aspect-video w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex aspect-video items-center justify-center px-4 text-center text-sm text-zinc-500">
+                          No Project Cover added yet.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
                   <label className="block text-sm">
                     <span className="font-medium text-zinc-700">Unit Type</span>
                     <select
@@ -799,7 +978,37 @@ export default function ProjectComparisonPage() {
                   ) : null}
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Commercial Package</span>
+                    <span className="font-medium text-zinc-700">Comparison Price</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={slot.comparisonPrice}
+                      disabled={!slot.unitTypeId}
+                      onChange={(event) =>
+                        updateSlot(slot.id, { comparisonPrice: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      placeholder={
+                        selectedUnitType?.price_from
+                          ? `${selectedUnitType.price_from}`
+                          : "Optional scenario price"
+                      }
+                    />
+                    {selectedUnitType ? (
+                      <span className="mt-1 block text-xs text-zinc-500">
+                        Unit Type range: {formatUnitTypePriceRange(selectedUnitType)}
+                      </span>
+                    ) : null}
+                    {comparisonPriceWarning ? (
+                      <span className="mt-2 block rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        {comparisonPriceWarning}
+                      </span>
+                    ) : null}
+                  </label>
+
+                  <label className="block text-sm">
+                    <span className="font-medium text-zinc-700">Sales Package</span>
                     <select
                       value={slot.packageId}
                       disabled={!slot.unitTypeId}
@@ -817,7 +1026,7 @@ export default function ProjectComparisonPage() {
 
                   {slot.unitTypeId && applicablePackages.length === 0 ? (
                     <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
-                      No applicable Commercial Packages. No Package is allowed.
+                      No applicable Sales Packages. No Package is allowed.
                     </p>
                   ) : null}
                 </div>
@@ -840,7 +1049,7 @@ export default function ProjectComparisonPage() {
           <>
             <ComparisonTable
               title="Quick Comparison"
-              description="Factual comparison using final net Unit Type prices. Package discounts are not deducted again."
+              description="Factual comparison using the selected scenario price. Sales Package discounts are not deducted again."
               comparedOptions={comparedOptions}
               rows={[
                 {
@@ -852,8 +1061,13 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
                 },
                 {
-                  label: "Final Net Price",
-                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.finalNetPrice)),
+                  label: "Comparison Price",
+                  values: comparedOptions.map((option) =>
+                    formatComparisonPrice(
+                      option.effectiveComparisonPrice,
+                      option.comparisonPriceSource,
+                    ),
+                  ),
                 },
                 {
                   label: "Size",
@@ -884,7 +1098,7 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => formatEstimatedCompletion(option.project)),
                 },
                 {
-                  label: "Commercial Package",
+                  label: "Sales Package",
                   values: comparedOptions.map((option) =>
                     option.commercialPackage?.package_name ?? "No Package",
                   ),
@@ -938,8 +1152,8 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
                 },
                 {
-                  label: "Final Net Price",
-                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.finalNetPrice)),
+                  label: "Final Net Price Range",
+                  values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.finalNetPrice)),
                 },
                 {
                   label: "Size",
@@ -959,7 +1173,7 @@ export default function ProjectComparisonPage() {
                 },
                 {
                   label: "PSF",
-                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.psf, " psf")),
+                  values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.psf, " psf")),
                 },
                 {
                   label: "Balcony",
