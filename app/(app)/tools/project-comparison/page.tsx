@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   calculateProjectComparisonMetrics,
   type ComparisonAssumptions,
@@ -75,6 +75,17 @@ type CommercialPackageOption = {
   }>;
 };
 
+type ConnectivityPoint = {
+  id: string;
+  project_id: string;
+  category: string;
+  name: string;
+  distance_meters: number | null;
+  connection_mode: string | null;
+  customer_description: string | null;
+  sort_order: number | null;
+};
+
 type ProjectOptions = {
   project: {
     id: string;
@@ -90,6 +101,7 @@ type ProjectOptions = {
     maintenance_fee_per_sqft: number | null;
   };
   unit_types: UnitTypeOption[];
+  connectivity: ConnectivityPoint[];
   commercial_packages: CommercialPackageOption[];
 };
 
@@ -107,6 +119,7 @@ type ComparedOption = {
   project: ProjectOptions["project"];
   unitType: UnitTypeOption;
   commercialPackage: CommercialPackageOption | null;
+  connectivity: ConnectivityPoint[];
   metrics: ProjectComparisonMetrics;
 };
 
@@ -161,7 +174,7 @@ function getUnitTypeLabel(unitType: UnitTypeOption) {
   return details.length ? `${name} · ${details.join(" · ")}` : name;
 }
 
-function formatEstimatedVp(project: ProjectOptions["project"]) {
+function formatEstimatedCompletion(project: ProjectOptions["project"]) {
   if (!project.estimated_vp_year || !project.estimated_vp_quarter) return "—";
 
   return `${project.estimated_vp_year} Q${project.estimated_vp_quarter}`;
@@ -169,6 +182,217 @@ function formatEstimatedVp(project: ProjectOptions["project"]) {
 
 function getSelectedProjectIds(slots: ComparisonSlot[]) {
   return slots.map((slot) => slot.projectId).filter(Boolean);
+}
+
+function formatText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+
+  return trimmed ? trimmed : "—";
+}
+
+function formatNumber(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value.toLocaleString("en-MY")
+    : "—";
+}
+
+function formatSize(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value.toLocaleString("en-MY")} sqft`
+    : "—";
+}
+
+function formatBoolean(value: boolean | null | undefined) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+
+  return "—";
+}
+
+function formatCarParks(unitType: UnitTypeOption) {
+  if (typeof unitType.default_carparks === "number" && Number.isFinite(unitType.default_carparks)) {
+    return unitType.default_carparks.toLocaleString("en-MY");
+  }
+
+  return formatText(unitType.carpark_description);
+}
+
+function formatDistance(distanceMeters: number | null | undefined) {
+  if (typeof distanceMeters !== "number" || !Number.isFinite(distanceMeters)) return null;
+  if (distanceMeters < 1000) return `${distanceMeters.toLocaleString("en-MY")} m`;
+
+  const kilometers = distanceMeters / 1000;
+
+  return `${kilometers.toLocaleString("en-MY", {
+    minimumFractionDigits: kilometers % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 1,
+  })} km`;
+}
+
+function formatConnectionMode(mode: string | null | undefined) {
+  const labels: Record<string, string> = {
+    walking: "Walking",
+    direct_connected: "Direct Connected",
+    sheltered_walking: "Sheltered Walking",
+    shuttle: "Shuttle",
+    driving: "Driving",
+    nearby: "Nearby",
+    other: "Other",
+  };
+
+  return mode ? labels[mode] ?? formatText(mode) : null;
+}
+
+function formatConnectivityMeta(point: ConnectivityPoint) {
+  const parts = [
+    formatDistance(point.distance_meters),
+    formatConnectionMode(point.connection_mode),
+  ].filter(Boolean);
+
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+function getConnectivityItemsForGroup(option: ComparedOption, categories: string[]) {
+  return option.connectivity.filter((point) => categories.includes(point.category));
+}
+
+function renderConnectivityItems(items: ConnectivityPoint[]) {
+  if (!items.length) return "—";
+
+  return (
+    <div className="space-y-4">
+      {items.map((point) => (
+        <div key={point.id}>
+          <p className="font-semibold text-zinc-900">{point.name}</p>
+          <p className="mt-1 text-xs font-medium text-zinc-500">
+            {formatConnectivityMeta(point)}
+          </p>
+          {point.customer_description ? (
+            <p className="mt-2 text-xs font-normal leading-5 text-zinc-600">
+              {point.customer_description}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function getFurnishingSummary(
+  unitType: UnitTypeOption,
+  commercialPackage: CommercialPackageOption | null,
+) {
+  const furnishingPackage = commercialPackage?.furnishing_package ?? unitType.furnishing_package;
+
+  if (!furnishingPackage) return "—";
+
+  return (
+    <div>
+      <p>{furnishingPackage.package_name}</p>
+      {furnishingPackage.items.length ? (
+        <p className="mt-1 text-xs font-normal leading-5 text-zinc-500">
+          {furnishingPackage.items
+            .slice(0, 4)
+            .map((item) =>
+              item.quantity ? `${item.item_name} x ${item.quantity}` : item.item_name,
+            )
+            .join(", ")}
+          {furnishingPackage.items.length > 4 ? "..." : ""}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const connectivityGroups = [
+  {
+    label: "Public Transport",
+    categories: ["lrt", "mrt", "ktm", "monorail", "brt"],
+  },
+  {
+    label: "Lifestyle & Convenience",
+    categories: ["mall", "grocery", "park"],
+  },
+  {
+    label: "Education & Healthcare",
+    categories: ["school", "university", "hospital"],
+  },
+  {
+    label: "Road & Employment",
+    categories: ["highway", "business_district"],
+  },
+  {
+    label: "Other",
+    categories: ["other"],
+  },
+];
+
+type ComparisonRow = {
+  label: string;
+  values: ReactNode[];
+};
+
+function ComparisonTable({
+  title,
+  description,
+  comparedOptions,
+  rows,
+}: {
+  title: string;
+  description: string;
+  comparedOptions: ComparedOption[];
+  rows: ComparisonRow[];
+}) {
+  return (
+    <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+      <div>
+        <p className="text-sm font-semibold text-zinc-900">{title}</p>
+        <p className="text-sm text-zinc-500">{description}</p>
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left text-sm">
+          <thead>
+            <tr>
+              <th className="sticky left-0 border-b border-zinc-200 bg-white py-3 pr-4 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                Detail
+              </th>
+              {comparedOptions.map((option) => (
+                <th
+                  key={`${title}-${option.slot.id}`}
+                  className="border-b border-zinc-200 px-4 py-3"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-900">
+                    {option.project.name}
+                  </p>
+                  <p className="mt-1 text-xs font-medium normal-case tracking-normal text-zinc-500">
+                    {formatText(option.project.location)}
+                  </p>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <th className="sticky left-0 border-b border-zinc-200 bg-white py-4 pr-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  {row.label}
+                </th>
+                {row.values.map((value, index) => (
+                  <td
+                    key={`${row.label}-${index}`}
+                    className="border-b border-zinc-200 px-4 py-4 font-medium text-zinc-900"
+                  >
+                    {value}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 export default function ProjectComparisonPage() {
@@ -233,7 +457,7 @@ export default function ProjectComparisonPage() {
     assumptions.annualInterestRatePercent >= 0 &&
     Number.isFinite(assumptions.loanTenureYears) &&
     assumptions.loanTenureYears > 0;
-  const selectedSlots = slots.filter((slot) => slot.projectId);
+  const selectedSlots = useMemo(() => slots.filter((slot) => slot.projectId), [slots]);
   const canCompare =
     selectedSlots.length >= 2 &&
     selectedSlots.every((slot) => slot.unitTypeId && !slot.isLoadingOptions && !slot.error) &&
@@ -254,6 +478,7 @@ export default function ProjectComparisonPage() {
           unitType,
           commercialPackage:
             options.commercial_packages.find((item) => item.id === slot.packageId) ?? null,
+          connectivity: options.connectivity ?? [],
           metrics: calculateProjectComparisonMetrics(
             {
               price_from: unitType.price_from,
@@ -382,6 +607,14 @@ export default function ProjectComparisonPage() {
 
     setHasCompared(true);
   }
+
+  const activeConnectivityGroups = hasCompared
+    ? connectivityGroups.filter((group) =>
+        comparedOptions.some(
+          (option) => getConnectivityItemsForGroup(option, group.categories).length > 0,
+        ),
+      )
+    : [];
 
   return (
     <>
@@ -604,87 +837,175 @@ export default function ProjectComparisonPage() {
         </section>
 
         {hasCompared && comparedOptions.length > 0 ? (
-          <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-            <div>
-              <p className="text-sm font-semibold text-zinc-900">Quick Comparison</p>
-              <p className="text-sm text-zinc-500">
-                Factual comparison using final net Unit Type prices. Package discounts are not deducted again.
-              </p>
-            </div>
+          <>
+            <ComparisonTable
+              title="Quick Comparison"
+              description="Factual comparison using final net Unit Type prices. Package discounts are not deducted again."
+              comparedOptions={comparedOptions}
+              rows={[
+                {
+                  label: "Project",
+                  values: comparedOptions.map((option) => option.project.name),
+                },
+                {
+                  label: "Unit Type",
+                  values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
+                },
+                {
+                  label: "Final Net Price",
+                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.finalNetPrice)),
+                },
+                {
+                  label: "Size",
+                  values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
+                },
+                {
+                  label: "Tenure",
+                  values: comparedOptions.map((option) => formatText(option.project.tenure)),
+                },
+                {
+                  label: "Est. Monthly Instalment",
+                  values: comparedOptions.map((option) =>
+                    formatMoneyRange(option.metrics.estimatedMonthlyInstalment, " / month"),
+                  ),
+                },
+                {
+                  label: "Est. Rental",
+                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.estimatedRental)),
+                },
+                {
+                  label: "Est. Gross Yield",
+                  values: comparedOptions.map((option) =>
+                    formatPercentRange(option.metrics.estimatedGrossRentalYieldPercent),
+                  ),
+                },
+                {
+                  label: "Estimated Completion",
+                  values: comparedOptions.map((option) => formatEstimatedCompletion(option.project)),
+                },
+                {
+                  label: "Commercial Package",
+                  values: comparedOptions.map((option) =>
+                    option.commercialPackage?.package_name ?? "No Package",
+                  ),
+                },
+              ]}
+            />
 
-            <div className="mt-5 overflow-x-auto">
-              <table className="min-w-[860px] w-full border-separate border-spacing-0 text-left text-sm">
-                <tbody>
-                  {[
-                    {
-                      label: "Project",
-                      values: comparedOptions.map((option) => option.project.name),
-                    },
-                    {
-                      label: "Unit Type",
-                      values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
-                    },
-                    {
-                      label: "Final Net Price",
-                      values: comparedOptions.map((option) => formatMoneyRange(option.metrics.finalNetPrice)),
-                    },
-                    {
-                      label: "Size",
-                      values: comparedOptions.map((option) =>
-                        option.unitType.size_sqft
-                          ? `${option.unitType.size_sqft.toLocaleString("en-MY")} sqft`
-                          : "—",
-                      ),
-                    },
-                    {
-                      label: "Tenure",
-                      values: comparedOptions.map((option) => option.project.tenure || "—"),
-                    },
-                    {
-                      label: "Est. Monthly Instalment",
-                      values: comparedOptions.map((option) =>
-                        formatMoneyRange(option.metrics.estimatedMonthlyInstalment, " / month"),
-                      ),
-                    },
-                    {
-                      label: "Est. Rental",
-                      values: comparedOptions.map((option) => formatMoneyRange(option.metrics.estimatedRental)),
-                    },
-                    {
-                      label: "Est. Gross Yield",
-                      values: comparedOptions.map((option) =>
-                        formatPercentRange(option.metrics.estimatedGrossRentalYieldPercent),
-                      ),
-                    },
-                    {
-                      label: "Estimated VP",
-                      values: comparedOptions.map((option) => formatEstimatedVp(option.project)),
-                    },
-                    {
-                      label: "Commercial Package",
-                      values: comparedOptions.map((option) =>
-                        option.commercialPackage?.package_name ?? "No Package",
-                      ),
-                    },
-                  ].map((row) => (
-                    <tr key={row.label}>
-                      <th className="sticky left-0 border-b border-zinc-200 bg-white py-4 pr-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                        {row.label}
-                      </th>
-                      {row.values.map((value, index) => (
-                        <td
-                          key={`${row.label}-${index}`}
-                          className="border-b border-zinc-200 px-4 py-4 font-medium text-zinc-900"
-                        >
-                          {value}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+            <ComparisonTable
+              title="Project Overview"
+              description="High-level project facts from the customer-safe comparison data."
+              comparedOptions={comparedOptions}
+              rows={[
+                {
+                  label: "Developer",
+                  values: comparedOptions.map((option) => formatText(option.project.developer)),
+                },
+                {
+                  label: "Location",
+                  values: comparedOptions.map((option) => formatText(option.project.location)),
+                },
+                {
+                  label: "Tenure",
+                  values: comparedOptions.map((option) => formatText(option.project.tenure)),
+                },
+                {
+                  label: "Property Type",
+                  values: comparedOptions.map((option) => formatText(option.project.property_type)),
+                },
+                {
+                  label: "Title Type",
+                  values: comparedOptions.map((option) => formatText(option.project.title_type)),
+                },
+                {
+                  label: "Total Units",
+                  values: comparedOptions.map((option) => formatNumber(option.project.total_units)),
+                },
+                {
+                  label: "Estimated Completion",
+                  values: comparedOptions.map((option) => formatEstimatedCompletion(option.project)),
+                },
+              ]}
+            />
+
+            <ComparisonTable
+              title="Unit Comparison"
+              description="Selected Unit Type facts and calculated metrics using the shared assumptions above."
+              comparedOptions={comparedOptions}
+              rows={[
+                {
+                  label: "Unit Type",
+                  values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
+                },
+                {
+                  label: "Final Net Price",
+                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.finalNetPrice)),
+                },
+                {
+                  label: "Size",
+                  values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
+                },
+                {
+                  label: "Bedrooms",
+                  values: comparedOptions.map((option) => formatNumber(option.unitType.bedrooms)),
+                },
+                {
+                  label: "Bathrooms",
+                  values: comparedOptions.map((option) => formatNumber(option.unitType.bathrooms)),
+                },
+                {
+                  label: "Car Parks",
+                  values: comparedOptions.map((option) => formatCarParks(option.unitType)),
+                },
+                {
+                  label: "PSF",
+                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.psf, " psf")),
+                },
+                {
+                  label: "Balcony",
+                  values: comparedOptions.map((option) => formatBoolean(option.unitType.has_balcony)),
+                },
+                {
+                  label: "Dual Key",
+                  values: comparedOptions.map((option) => formatBoolean(option.unitType.is_dual_key)),
+                },
+                {
+                  label: "Furnishing",
+                  values: comparedOptions.map((option) =>
+                    getFurnishingSummary(option.unitType, option.commercialPackage),
+                  ),
+                },
+              ]}
+            />
+
+            {activeConnectivityGroups.length ? (
+              <ComparisonTable
+                title="Connectivity & Convenience"
+                description="Customer-facing connectivity facts grouped by category."
+                comparedOptions={comparedOptions}
+                rows={activeConnectivityGroups.map((group) => ({
+                  label: group.label,
+                  values: comparedOptions.map((option) =>
+                    renderConnectivityItems(
+                      getConnectivityItemsForGroup(option, group.categories),
+                    ),
+                  ),
+                }))}
+              />
+            ) : (
+              <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-900">Connectivity & Convenience</p>
+                  <p className="text-sm text-zinc-500">
+                    Customer-facing connectivity facts grouped by category.
+                  </p>
+                </div>
+                <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                  No connectivity information added yet.
+                </p>
+              </section>
+            )}
+          </>
         ) : null}
       </main>
     </>
