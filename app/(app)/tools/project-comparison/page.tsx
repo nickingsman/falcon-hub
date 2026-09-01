@@ -7,6 +7,13 @@ import {
   type ComparisonRange,
   type ProjectComparisonMetrics,
 } from "@/lib/project-comparison-engine";
+import {
+  purchaseCostKeys,
+  purchaseCostTreatments,
+  type PurchaseCostKey,
+  type PurchaseCostTreatment,
+} from "@/lib/project-comparison-options";
+import { getPurchaseCostEstimates } from "@/lib/purchase-costs";
 
 type ProjectOption = {
   id: string;
@@ -78,8 +85,8 @@ type CommercialPackageOption = {
   }>;
   purchase_costs: Array<{
     id: string;
-    cost_key: string;
-    treatment: string;
+    cost_key: PurchaseCostKey;
+    treatment: PurchaseCostTreatment;
     amount_override: number | null;
     sort_order: number | null;
   }>;
@@ -139,6 +146,21 @@ type ComparedOption = {
   effectiveComparisonPrice: number | null;
   comparisonPriceSource: "manual" | "from_price" | "unavailable";
   metrics: ProjectComparisonMetrics;
+  ownershipCost: OwnershipCostSummary;
+};
+
+type OwnershipCostRow = {
+  costKey: PurchaseCostKey;
+  label: string;
+  treatment: PurchaseCostTreatment | null;
+  amount: number | null;
+};
+
+type OwnershipCostSummary = {
+  cashDownpayment: number | null;
+  purchaseCosts: OwnershipCostRow[];
+  estimatedTotalCashRequired: number | null;
+  totalSavings: number | null;
 };
 
 const initialSlots: ComparisonSlot[] = [
@@ -193,6 +215,10 @@ function formatMoneyRange(range: ComparisonRange, suffix = "") {
   return `${formatCurrency(range.from)} – ${formatCurrency(range.to)}${suffix}`;
 }
 
+function formatOptionalMoney(value: number | null) {
+  return typeof value === "number" && Number.isFinite(value) ? formatCurrency(value) : "—";
+}
+
 function formatStoredPriceRange(from: number | null, to: number | null) {
   if (typeof from !== "number" || !Number.isFinite(from)) {
     return "—";
@@ -225,11 +251,19 @@ function formatScenarioPrice(value: number | null, source: "manual" | "from_pric
   return source === "from_price" ? `${formatCurrency(value)} (from)` : formatCurrency(value);
 }
 
+function getSingleRangeValue(range: ComparisonRange) {
+  return range.kind === "single" ? range.value : null;
+}
+
 function formatPercentRange(range: ComparisonRange) {
   if (range.kind === "unavailable") return "—";
   if (range.kind === "single") return `${percentageFormatter.format(range.value)}%`;
 
   return `${percentageFormatter.format(range.from)}% – ${percentageFormatter.format(range.to)}%`;
+}
+
+function formatPercentValue(value: number) {
+  return Number.isFinite(value) ? `${percentageFormatter.format(value)}%` : "—";
 }
 
 function getUnitTypeLabel(unitType: UnitTypeOption) {
@@ -367,6 +401,170 @@ function getFinalNetPriceWarning(slot: ComparisonSlot, unitType: UnitTypeOption 
     from: unitType.price_from,
     to: unitType.price_to,
   });
+}
+
+function getPurchaseCostEstimateAmount(
+  costKey: PurchaseCostKey,
+  effectiveSpaPrice: number | null,
+  loanAmount: number | null,
+) {
+  if (costKey === "valuation_fee") return null;
+
+  if (
+    (costKey === "spa_legal_fee" || costKey === "mot_transfer_stamp_duty") &&
+    effectiveSpaPrice === null
+  ) {
+    return null;
+  }
+
+  if (
+    (costKey === "loan_legal_fee" || costKey === "loan_stamp_duty") &&
+    loanAmount === null
+  ) {
+    return null;
+  }
+
+  const estimates = getPurchaseCostEstimates(
+    effectiveSpaPrice ?? Number.NaN,
+    loanAmount ?? Number.NaN,
+  );
+
+  return estimates[costKey]?.amount ?? null;
+}
+
+function normalizePackageAmount(value: number | null | undefined) {
+  if (value === null || value === undefined) return null;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function isPurchaseCostTreatment(value: unknown): value is PurchaseCostTreatment {
+  return typeof value === "string" && purchaseCostTreatments.includes(value as PurchaseCostTreatment);
+}
+
+function calculateOwnershipCost({
+  commercialPackage,
+  effectiveSpaPrice,
+  effectiveFinalNetPrice,
+  loanAmount,
+}: {
+  commercialPackage: CommercialPackageOption | null;
+  effectiveSpaPrice: number | null;
+  effectiveFinalNetPrice: number | null;
+  loanAmount: number | null;
+}): OwnershipCostSummary {
+  const cashDownpayment =
+    effectiveFinalNetPrice !== null && loanAmount !== null
+      ? Math.max(effectiveFinalNetPrice - loanAmount, 0)
+      : null;
+
+  if (!commercialPackage) {
+    return {
+      cashDownpayment,
+      purchaseCosts: purchaseCostKeys.map((costKey) => ({
+        costKey,
+        label: purchaseCostLabels[costKey],
+        treatment: null,
+        amount: null,
+      })),
+      estimatedTotalCashRequired: null,
+      totalSavings: null,
+    };
+  }
+
+  const hasCompletePurchaseCostConfiguration = purchaseCostKeys.every((costKey) =>
+    commercialPackage.purchase_costs.some(
+      (cost) => cost.cost_key === costKey && isPurchaseCostTreatment(cost.treatment),
+    ),
+  );
+  const purchaseCosts = purchaseCostKeys.map((costKey) => {
+    const packageCost = commercialPackage.purchase_costs.find(
+      (item) => item.cost_key === costKey && isPurchaseCostTreatment(item.treatment),
+    );
+    const overrideAmount = normalizePackageAmount(packageCost?.amount_override);
+    const estimateAmount = getPurchaseCostEstimateAmount(
+      costKey,
+      effectiveSpaPrice,
+      loanAmount,
+    );
+
+    return {
+      costKey,
+      label: purchaseCostLabels[costKey],
+      treatment: packageCost?.treatment ?? null,
+      amount: overrideAmount ?? estimateAmount,
+    };
+  });
+
+  let customerPayTotal = 0;
+  let developerAbsorbedTotal = 0;
+  let hasUnreliableCashRequired =
+    cashDownpayment === null || !hasCompletePurchaseCostConfiguration;
+  let hasUnreliableSavings = !hasCompletePurchaseCostConfiguration;
+
+  for (const purchaseCost of purchaseCosts) {
+    if (purchaseCost.treatment === "customer_pay") {
+      if (purchaseCost.amount === null) {
+        hasUnreliableCashRequired = true;
+      } else {
+        customerPayTotal += purchaseCost.amount;
+      }
+    }
+
+    if (purchaseCost.treatment === "developer_absorbed") {
+      if (purchaseCost.amount === null) {
+        hasUnreliableSavings = true;
+      } else {
+        developerAbsorbedTotal += purchaseCost.amount;
+      }
+    }
+  }
+
+  return {
+    cashDownpayment,
+    purchaseCosts,
+    estimatedTotalCashRequired: hasUnreliableCashRequired
+      ? null
+      : (cashDownpayment ?? 0) + customerPayTotal,
+    totalSavings: hasUnreliableSavings ? null : developerAbsorbedTotal,
+  };
+}
+
+function formatPurchaseCostTreatment(treatment: PurchaseCostTreatment | null) {
+  if (treatment === "customer_pay") return "Customer Pay";
+  if (treatment === "developer_absorbed") return "FREE";
+  if (treatment === "not_applicable") return "N/A";
+
+  return "—";
+}
+
+function renderPurchaseCostValue(purchaseCost: OwnershipCostRow) {
+  if (purchaseCost.treatment === null) return "—";
+  if (purchaseCost.treatment === "not_applicable") return "N/A";
+
+  const amount = formatOptionalMoney(purchaseCost.amount);
+
+  if (purchaseCost.treatment === "developer_absorbed") {
+    return (
+      <span className="space-y-1">
+        <span className="block text-zinc-900">{amount}</span>
+        <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-700">
+          FREE
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="space-y-1">
+      <span className="block text-zinc-900">{amount}</span>
+      <span className="block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+        {formatPurchaseCostTreatment(purchaseCost.treatment)}
+      </span>
+    </span>
+  );
 }
 
 function formatText(value: string | null | undefined) {
@@ -511,6 +709,16 @@ const connectivityGroups = [
     categories: ["other"],
   },
 ];
+
+const purchaseCostLabels: Record<PurchaseCostKey, string> = {
+  spa_legal_fee: "SPA Legal Fee",
+  loan_legal_fee: "Loan Legal Fee",
+  spa_disbursement_fee: "SPA Disbursement Fee",
+  loan_disbursement_fee: "Loan Disbursement Fee",
+  loan_stamp_duty: "Loan Stamp Duty",
+  mot_transfer_stamp_duty: "MOT / Transfer Stamp Duty",
+  valuation_fee: "Valuation Fee",
+};
 
 type ComparisonRow = {
   label: string;
@@ -683,6 +891,8 @@ export default function ProjectComparisonPage() {
 
         const effectiveSpaPrice = getEffectiveSpaPrice(slot, unitType);
         const effectiveComparisonPrice = getEffectiveComparisonPrice(slot, unitType);
+        const commercialPackage =
+          options.commercial_packages.find((item) => item.id === slot.packageId) ?? null;
         const unitMetrics = calculateProjectComparisonMetrics(
           {
             price_from: unitType.price_from,
@@ -717,13 +927,13 @@ export default function ProjectComparisonPage() {
           },
           assumptions,
         );
+        const loanAmount = getSingleRangeValue(spaScenarioMetrics.loanAmount);
 
         return {
           slot,
           project: options.project,
           unitType,
-          commercialPackage:
-            options.commercial_packages.find((item) => item.id === slot.packageId) ?? null,
+          commercialPackage,
           connectivity: options.connectivity ?? [],
           unitMetrics,
           effectiveSpaPrice: effectiveSpaPrice.value,
@@ -735,6 +945,12 @@ export default function ProjectComparisonPage() {
             loanAmount: spaScenarioMetrics.loanAmount,
             estimatedMonthlyInstalment: spaScenarioMetrics.estimatedMonthlyInstalment,
           },
+          ownershipCost: calculateOwnershipCost({
+            commercialPackage,
+            effectiveSpaPrice: effectiveSpaPrice.value,
+            effectiveFinalNetPrice: effectiveComparisonPrice.value,
+            loanAmount,
+          }),
         };
       })
       .filter((item): item is ComparedOption => Boolean(item));
@@ -1238,6 +1454,81 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) =>
                     option.commercialPackage?.package_name ?? "No Package",
                   ),
+                },
+              ]}
+            />
+
+            <ComparisonTable
+              title="Ownership Cost"
+              description="Estimated financing and upfront purchase costs based on the selected scenario and Sales Package."
+              comparedOptions={comparedOptions}
+              rows={[
+                {
+                  label: "SPA Price",
+                  values: comparedOptions.map((option) =>
+                    formatScenarioPrice(option.effectiveSpaPrice, option.spaPriceSource),
+                  ),
+                },
+                {
+                  label: "Final Net Price",
+                  values: comparedOptions.map((option) =>
+                    formatScenarioPrice(
+                      option.effectiveComparisonPrice,
+                      option.comparisonPriceSource,
+                    ),
+                  ),
+                },
+                {
+                  label: "Loan Margin",
+                  values: comparedOptions.map(() => formatPercentValue(assumptions.loanMarginPercent)),
+                },
+                {
+                  label: "Estimated Loan Amount",
+                  values: comparedOptions.map((option) => formatMoneyRange(option.metrics.loanAmount)),
+                },
+                {
+                  label: "Cash Downpayment",
+                  values: comparedOptions.map((option) =>
+                    formatOptionalMoney(option.ownershipCost.cashDownpayment),
+                  ),
+                },
+                {
+                  label: "Est. Monthly Instalment",
+                  values: comparedOptions.map((option) =>
+                    formatMoneyRange(option.metrics.estimatedMonthlyInstalment, " / month"),
+                  ),
+                },
+                ...purchaseCostKeys.map((costKey) => ({
+                  label: purchaseCostLabels[costKey],
+                  values: comparedOptions.map((option) => {
+                    const purchaseCost = option.ownershipCost.purchaseCosts.find(
+                      (item) => item.costKey === costKey,
+                    );
+
+                    return purchaseCost ? renderPurchaseCostValue(purchaseCost) : "—";
+                  }),
+                })),
+                {
+                  label: "Estimated Total Cash Required",
+                  values: comparedOptions.map((option) => (
+                    <span
+                      key={`${option.slot.id}-estimated-total-cash-required`}
+                      className="font-semibold text-[#8B3A3A]"
+                    >
+                      {formatOptionalMoney(option.ownershipCost.estimatedTotalCashRequired)}
+                    </span>
+                  )),
+                },
+                {
+                  label: "Total Savings",
+                  values: comparedOptions.map((option) => (
+                    <span
+                      key={`${option.slot.id}-total-savings`}
+                      className="font-semibold text-[#087F6B]"
+                    >
+                      {formatOptionalMoney(option.ownershipCost.totalSavings)}
+                    </span>
+                  )),
                 },
               ]}
             />
