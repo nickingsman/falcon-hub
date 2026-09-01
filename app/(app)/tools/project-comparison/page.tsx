@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   calculateProjectComparisonMetrics,
   type ComparisonAssumptions,
@@ -157,6 +157,11 @@ type ComparisonSlot = {
   error: string;
 };
 
+type HandoffPair = {
+  projectId: string;
+  unitTypeId: string;
+};
+
 type ComparedOption = {
   slot: ComparisonSlot;
   project: ProjectOptions["project"];
@@ -235,9 +240,9 @@ const exportSectionOptions: Array<{ id: ExportSectionId; label: string }> = [
 
 const allExportSectionIds = exportSectionOptions.map((section) => section.id);
 
-const initialSlots: ComparisonSlot[] = [
-  {
-    id: "slot-1",
+function createBlankSlot(index: number): ComparisonSlot {
+  return {
+    id: `slot-${index + 1}`,
     projectId: "",
     unitTypeId: "",
     layoutPlanId: "",
@@ -246,19 +251,54 @@ const initialSlots: ComparisonSlot[] = [
     comparisonPrice: "",
     isLoadingOptions: false,
     error: "",
-  },
-  {
-    id: "slot-2",
-    projectId: "",
-    unitTypeId: "",
-    layoutPlanId: "",
-    packageId: "",
-    spaPrice: "",
-    comparisonPrice: "",
-    isLoadingOptions: false,
-    error: "",
-  },
-];
+  };
+}
+
+const initialSlots: ComparisonSlot[] = [createBlankSlot(0), createBlankSlot(1)];
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidLike(value: string | null): value is string {
+  return Boolean(value && uuidPattern.test(value));
+}
+
+function parseFinderHandoffPairs(searchParams: URLSearchParams) {
+  const pairs: HandoffPair[] = [];
+  const seenProjectIds = new Set<string>();
+
+  for (const index of [1, 2, 3]) {
+    const projectId = searchParams.get(`project${index}`);
+    const unitTypeId = searchParams.get(`unit${index}`);
+
+    if (!isUuidLike(projectId) || !isUuidLike(unitTypeId)) continue;
+    if (seenProjectIds.has(projectId as string)) continue;
+
+    pairs.push({
+      projectId,
+      unitTypeId,
+    });
+    seenProjectIds.add(projectId);
+  }
+
+  return pairs;
+}
+
+function getValidHandoffNumber({
+  value,
+  currentValue,
+  isValid,
+}: {
+  value: string | null;
+  currentValue: string;
+  isValid: (parsed: number) => boolean;
+}) {
+  if (value === null || !value.trim()) return currentValue;
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && isValid(parsed) ? String(parsed) : currentValue;
+}
 
 const currencyFormatter = new Intl.NumberFormat("en-MY", {
   style: "currency",
@@ -2341,6 +2381,7 @@ export default function ProjectComparisonPage() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [selectedExportSections, setSelectedExportSections] =
     useState<ExportSectionId[]>(allExportSectionIds);
+  const handoffHydratedRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -2375,6 +2416,204 @@ export default function ProjectComparisonPage() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (handoffHydratedRef.current || isLoadingProjects) return;
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const hasFinderHandoffParams = [
+      "project1",
+      "unit1",
+      "project2",
+      "unit2",
+      "project3",
+      "unit3",
+      "loanMargin",
+      "interestRate",
+      "loanTenure",
+    ].some((key) => searchParams.has(key));
+
+    if (!hasFinderHandoffParams) {
+      handoffHydratedRef.current = true;
+      return;
+    }
+
+    handoffHydratedRef.current = true;
+
+    const incomingPairs = parseFinderHandoffPairs(searchParams);
+    const accessibleProjectIds = new Set(projects.map((project) => project.id));
+    const pairsToHydrate = incomingPairs
+      .filter((pair) => accessibleProjectIds.has(pair.projectId))
+      .slice(0, 3);
+
+    setLoanMarginPercent((currentValue) =>
+      getValidHandoffNumber({
+        value: searchParams.get("loanMargin"),
+        currentValue,
+        isValid: (value) => value > 0 && value <= 100,
+      }),
+    );
+    setAnnualInterestRatePercent((currentValue) =>
+      getValidHandoffNumber({
+        value: searchParams.get("interestRate"),
+        currentValue,
+        isValid: (value) => value >= 0,
+      }),
+    );
+    setLoanTenureYears((currentValue) =>
+      getValidHandoffNumber({
+        value: searchParams.get("loanTenure"),
+        currentValue,
+        isValid: (value) => value > 0,
+      }),
+    );
+
+    function cleanFinderHandoffUrl() {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.hash}`,
+      );
+    }
+
+    if (pairsToHydrate.length === 0) {
+      cleanFinderHandoffUrl();
+      return;
+    }
+
+    let isMounted = true;
+
+    async function hydrateFinderSelections() {
+      setSlots(() => {
+        const loadingSlots = pairsToHydrate.map((pair, index) => ({
+          ...createBlankSlot(index),
+          projectId: pair.projectId,
+          isLoadingOptions: true,
+        }));
+
+        while (loadingSlots.length < 2) {
+          loadingSlots.push(createBlankSlot(loadingSlots.length));
+        }
+
+        return loadingSlots;
+      });
+
+      const loadedOptions = await Promise.all(
+        pairsToHydrate.map(async (pair) => {
+          const cachedOptions = projectOptionsById[pair.projectId];
+
+          if (cachedOptions) {
+            return {
+              pair,
+              options: cachedOptions,
+              error: "",
+            };
+          }
+
+          try {
+            const response = await fetch(
+              `/api/tools/project-comparison/projects/${pair.projectId}/options`,
+            );
+
+            if (!response.ok) {
+              throw new Error("Unable to load Project options");
+            }
+
+            return {
+              pair,
+              options: (await response.json()) as ProjectOptions,
+              error: "",
+            };
+          } catch {
+            return {
+              pair,
+              options: null,
+              error: "Unable to load this Project. Please select it again.",
+            };
+          }
+        }),
+      );
+
+      if (!isMounted) return;
+
+      const nextProjectOptionsById: Record<string, ProjectOptions> = {};
+      const completeSlots: ComparisonSlot[] = [];
+      const incompleteSlots: ComparisonSlot[] = [];
+
+      loadedOptions.forEach((loadedItem, index) => {
+        if (!loadedItem.options) {
+          incompleteSlots.push({
+            ...createBlankSlot(index),
+            projectId: loadedItem.pair.projectId,
+            error: loadedItem.error,
+          });
+          return;
+        }
+
+        nextProjectOptionsById[loadedItem.pair.projectId] = loadedItem.options;
+
+        const unitType = loadedItem.options.unit_types.find(
+          (item) => item.id === loadedItem.pair.unitTypeId,
+        );
+
+        if (!unitType) {
+          incompleteSlots.push({
+            ...createBlankSlot(index),
+            projectId: loadedItem.pair.projectId,
+            error: "Selected Unit Type is no longer available. Please choose another Unit Type.",
+          });
+          return;
+        }
+
+        const eligibleLayoutPlans = getEligibleLayoutPlans(
+          loadedItem.options,
+          loadedItem.pair.unitTypeId,
+        );
+
+        completeSlots.push({
+          ...createBlankSlot(index),
+          projectId: loadedItem.pair.projectId,
+          unitTypeId: loadedItem.pair.unitTypeId,
+          layoutPlanId: eligibleLayoutPlans.length === 1 ? eligibleLayoutPlans[0].id : "",
+        });
+      });
+
+      const hydratedSlots =
+        completeSlots.length >= 2 ? completeSlots : [...completeSlots, ...incompleteSlots];
+      const nextSlots = hydratedSlots.slice(0, 3).map((slot, index) => ({
+        ...slot,
+        id: `slot-${index + 1}`,
+        packageId: "",
+        spaPrice: "",
+        comparisonPrice: "",
+        isLoadingOptions: false,
+      }));
+
+      while (nextSlots.length < 2) {
+        nextSlots.push(createBlankSlot(nextSlots.length));
+      }
+
+      setProjectOptionsById((current) => ({
+        ...current,
+        ...nextProjectOptionsById,
+      }));
+      setSlots(nextSlots);
+      setHasCompared(false);
+      setComparisonConfigChanged(false);
+      setAgentInsights("");
+      cleanFinderHandoffUrl();
+    }
+
+    void hydrateFinderSelections();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    isLoadingProjects,
+    projectOptionsById,
+    projects,
+  ]);
 
   const assumptions: ComparisonAssumptions = useMemo(
     () => ({
@@ -2655,17 +2894,7 @@ export default function ProjectComparisonPage() {
 
     setSlots((current) => [
       ...current,
-      {
-        id: `slot-${current.length + 1}`,
-        projectId: "",
-        unitTypeId: "",
-        layoutPlanId: "",
-        packageId: "",
-        spaPrice: "",
-        comparisonPrice: "",
-        isLoadingOptions: false,
-        error: "",
-      },
+      createBlankSlot(current.length),
     ]);
     setComparisonConfigChanged(true);
     setHasCompared(false);

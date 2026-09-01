@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   findSmartProjectMatches,
   type SmartFinderBedroomFilterResult,
@@ -35,6 +36,13 @@ type FinderForm = {
   loanMarginPercent: string;
   interestRatePercent: string;
   loanTenureYears: string;
+};
+
+type SelectedComparisonItem = {
+  projectId: string;
+  unitTypeId: string;
+  projectName: string;
+  unitTypeLabel: string;
 };
 
 const initialForm: FinderForm = {
@@ -286,7 +294,12 @@ function countResults(result: SmartFinderResult | null) {
   };
 }
 
+function getSelectedItemKey(projectId: string, unitTypeId: string) {
+  return `${projectId}:${unitTypeId}`;
+}
+
 export default function SmartProjectFinderPage() {
+  const router = useRouter();
   const [form, setForm] = useState<FinderForm>(initialForm);
   const [finderData, setFinderData] = useState<SmartFinderDataSet | null>(null);
   const [areaOptions, setAreaOptions] = useState<string[]>([]);
@@ -298,6 +311,8 @@ export default function SmartProjectFinderPage() {
   const [result, setResult] = useState<SmartFinderResult | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [showFinancingAssumptions, setShowFinancingAssumptions] = useState(false);
+  const [selectedComparisons, setSelectedComparisons] = useState<SelectedComparisonItem[]>([]);
+  const [selectionMessage, setSelectionMessage] = useState("");
   const areaPickerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -343,6 +358,17 @@ export default function SmartProjectFinderPage() {
   }, []);
 
   const resultCount = useMemo(() => countResults(result), [result]);
+  const currentResultSelectionKeys = useMemo(() => {
+    const keys = new Set<string>();
+
+    for (const projectResult of result?.projects ?? []) {
+      for (const match of projectResult.matchingUnitTypes) {
+        keys.add(getSelectedItemKey(projectResult.project.id, match.unitType.id));
+      }
+    }
+
+    return keys;
+  }, [result]);
   const filteredAreaOptions = useMemo(() => {
     const query = areaSearch.trim().toLowerCase();
 
@@ -362,6 +388,99 @@ export default function SmartProjectFinderPage() {
       ...current,
       [key]: value,
     }));
+  }
+
+  function getSelectionForProject(projectId: string) {
+    return selectedComparisons.find((item) => item.projectId === projectId) ?? null;
+  }
+
+  function isSelectionOutsideCurrentSearch(selection: SelectedComparisonItem) {
+    return (
+      hasSearched &&
+      !currentResultSelectionKeys.has(
+        getSelectedItemKey(selection.projectId, selection.unitTypeId),
+      )
+    );
+  }
+
+  function selectComparisonUnit({
+    projectId,
+    unitTypeId,
+    projectName,
+    unitTypeLabel,
+  }: SelectedComparisonItem) {
+    setSelectionMessage("");
+    const existingProjectSelection = selectedComparisons.find(
+      (item) => item.projectId === projectId,
+    );
+
+    if (existingProjectSelection) {
+      if (existingProjectSelection.unitTypeId === unitTypeId) return;
+
+      setSelectionMessage(`${projectName} selection updated to ${unitTypeLabel}.`);
+      setSelectedComparisons((current) =>
+        current.map((item) =>
+          item.projectId === projectId
+            ? { projectId, unitTypeId, projectName, unitTypeLabel }
+            : item,
+        ),
+      );
+
+      return;
+    }
+
+    if (selectedComparisons.length >= 3) {
+      setSelectionMessage("Maximum 3 projects can be compared.");
+
+      return;
+    }
+
+    setSelectedComparisons((current) => [
+      ...current,
+      { projectId, unitTypeId, projectName, unitTypeLabel },
+    ]);
+  }
+
+  function removeComparisonSelection(projectId: string) {
+    setSelectionMessage("");
+    setSelectedComparisons((current) =>
+      current.filter((item) => item.projectId !== projectId),
+    );
+  }
+
+  function handleCompareSelected() {
+    if (selectedComparisons.length < 2) return;
+
+    const loanMargin = parseOptionalNumber(form.loanMarginPercent);
+    const interestRate = parseOptionalNumber(form.interestRatePercent);
+    const loanTenure = parseOptionalNumber(form.loanTenureYears);
+
+    if (
+      loanMargin === null ||
+      interestRate === null ||
+      loanTenure === null ||
+      !Number.isFinite(loanMargin) ||
+      !Number.isFinite(interestRate) ||
+      !Number.isFinite(loanTenure)
+    ) {
+      setSelectionMessage("Complete financing assumptions before comparing.");
+
+      return;
+    }
+
+    const params = new URLSearchParams();
+
+    selectedComparisons.slice(0, 3).forEach((selection, index) => {
+      const slotNumber = index + 1;
+
+      params.set(`project${slotNumber}`, selection.projectId);
+      params.set(`unit${slotNumber}`, selection.unitTypeId);
+    });
+    params.set("loanMargin", String(loanMargin));
+    params.set("interestRate", String(interestRate));
+    params.set("loanTenure", String(loanTenure));
+
+    router.push(`/tools/project-comparison?${params.toString()}`);
   }
 
   function selectArea(area: string) {
@@ -480,6 +599,8 @@ export default function SmartProjectFinderPage() {
     setResult(null);
     setHasSearched(false);
     setShowFinancingAssumptions(false);
+    setSelectedComparisons([]);
+    setSelectionMessage("");
   }
 
   function retryOptions() {
@@ -497,7 +618,7 @@ export default function SmartProjectFinderPage() {
         </div>
       </header>
 
-      <main className="p-6 lg:p-8">
+      <main className={`p-6 lg:p-8 ${selectedComparisons.length ? "pb-48 lg:pb-40" : ""}`}>
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
@@ -903,6 +1024,15 @@ export default function SmartProjectFinderPage() {
                       const budgetBadge = getBudgetBadge(match.hardFilters.budget.status);
                       const primaryFacts = getPrimaryUnitFacts(match.unitType);
                       const secondaryFacts = getSecondaryUnitFacts(match.unitType);
+                      const unitTypeLabel = getUnitTypeLabel(match.unitType);
+                      const projectSelection = getSelectionForProject(projectResult.project.id);
+                      const isSelected = projectSelection?.unitTypeId === match.unitType.id;
+                      const isReplacingSameProject =
+                        Boolean(projectSelection) && !isSelected;
+                      const isCompareDisabled =
+                        !isSelected &&
+                        !isReplacingSameProject &&
+                        selectedComparisons.length >= 3;
                       const requirementRows = getRequirementRows({
                         budget: match.hardFilters.budget,
                         bedrooms: match.hardFilters.bedrooms,
@@ -914,15 +1044,50 @@ export default function SmartProjectFinderPage() {
                         <div key={match.unitType.id} className="py-4">
                           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.9fr)]">
                             <div>
-                              <div>
-                                <h3 className="text-lg font-semibold text-zinc-900">
-                                  {getUnitTypeLabel(match.unitType)}
-                                </h3>
-                                {primaryFacts.length ? (
-                                  <p className="mt-1 text-sm font-medium text-zinc-600">
-                                    {primaryFacts.join(" · ")}
-                                  </p>
-                                ) : null}
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <h3 className="text-lg font-semibold text-zinc-900">
+                                    {unitTypeLabel}
+                                  </h3>
+                                  {primaryFacts.length ? (
+                                    <p className="mt-1 text-sm font-medium text-zinc-600">
+                                      {primaryFacts.join(" · ")}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      selectComparisonUnit({
+                                        projectId: projectResult.project.id,
+                                        unitTypeId: match.unitType.id,
+                                        projectName: projectResult.project.name,
+                                        unitTypeLabel,
+                                      })
+                                    }
+                                    disabled={isSelected || isCompareDisabled}
+                                    aria-label={
+                                      isSelected
+                                        ? `${projectResult.project.name} ${unitTypeLabel} selected for comparison`
+                                        : `Select ${projectResult.project.name} ${unitTypeLabel} for comparison`
+                                    }
+                                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                      isSelected
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                        : isCompareDisabled
+                                          ? "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400"
+                                          : "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
+                                    }`}
+                                  >
+                                    {isSelected ? "✓ Selected" : "+ Compare"}
+                                  </button>
+                                  {isCompareDisabled ? (
+                                    <p className="mt-1 max-w-36 text-right text-[11px] leading-4 text-zinc-500">
+                                      Maximum 3 projects can be compared.
+                                    </p>
+                                  ) : null}
+                                </div>
                               </div>
 
                               <div className="mt-4">
@@ -936,13 +1101,13 @@ export default function SmartProjectFinderPage() {
                                       match.unitType.price_to,
                                     )}
                                   </p>
-                                {budgetBadge ? (
-                                  <span
-                                    className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${budgetBadge.className}`}
-                                  >
-                                    {budgetBadge.label}
-                                  </span>
-                                ) : null}
+                                  {budgetBadge ? (
+                                    <span
+                                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${budgetBadge.className}`}
+                                    >
+                                      {budgetBadge.label}
+                                    </span>
+                                  ) : null}
                                 </div>
                               </div>
 
@@ -1037,6 +1202,72 @@ export default function SmartProjectFinderPage() {
             })}
           </section>
         )}
+
+        {selectedComparisons.length ? (
+          <section className="fixed inset-x-3 bottom-3 z-30 rounded-[24px] border border-zinc-200 bg-white/95 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.18)] backdrop-blur lg:left-[19rem] lg:right-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+                  Compare Projects
+                </p>
+                <p className="mt-1 text-sm font-semibold text-zinc-900">
+                  {selectedComparisons.length} of 3 selected
+                </p>
+                {selectionMessage ? (
+                  <p className="mt-1 text-xs text-zinc-500">{selectionMessage}</p>
+                ) : selectedComparisons.length < 2 ? (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Select at least 2 projects to compare.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-3">
+                {selectedComparisons.map((selection) => {
+                  const isOutsideCurrentSearch = isSelectionOutsideCurrentSearch(selection);
+
+                  return (
+                    <div
+                      key={selection.projectId}
+                      className="flex min-w-0 items-start justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-zinc-900">
+                          {selection.projectName}
+                        </p>
+                        <p className="truncate text-xs text-zinc-600">
+                          {selection.unitTypeLabel}
+                        </p>
+                        {isOutsideCurrentSearch ? (
+                          <p className="mt-1 text-[11px] font-medium text-amber-700">
+                            Outside Current Search
+                          </p>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeComparisonSelection(selection.projectId)}
+                        className="shrink-0 rounded-full px-2 text-lg leading-6 text-zinc-400 transition hover:bg-white hover:text-zinc-900"
+                        aria-label={`Remove ${selection.projectName} ${selection.unitTypeLabel} from comparison`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCompareSelected}
+                disabled={selectedComparisons.length < 2}
+                className="rounded-2xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              >
+                Compare Selected
+              </button>
+            </div>
+          </section>
+        ) : null}
       </main>
     </>
   );
