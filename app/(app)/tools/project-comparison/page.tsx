@@ -61,7 +61,22 @@ type UnitTypeOption = {
   estimated_rental_to: number | null;
   has_balcony: boolean | null;
   is_dual_key: boolean | null;
+  layout: UnitLayoutMedia | null;
   furnishing_package: FurnishingPackage | null;
+};
+
+type UnitLayoutMedia = {
+  title: string;
+  media_type: string;
+  mime_type: string | null;
+  description: string | null;
+  signed_url: string | null;
+};
+
+type LayoutPlanOption = {
+  id: string;
+  name: string;
+  media: UnitLayoutMedia;
 };
 
 type CommercialPackageOption = {
@@ -127,6 +142,7 @@ type ComparisonSlot = {
   id: string;
   projectId: string;
   unitTypeId: string;
+  layoutPlanId: string;
   packageId: string;
   spaPrice: string;
   comparisonPrice: string;
@@ -138,6 +154,7 @@ type ComparedOption = {
   slot: ComparisonSlot;
   project: ProjectOptions["project"];
   unitType: UnitTypeOption;
+  layoutPlan: LayoutPlanOption | null;
   commercialPackage: CommercialPackageOption | null;
   connectivity: ConnectivityPoint[];
   unitMetrics: ProjectComparisonMetrics;
@@ -178,11 +195,43 @@ type InvestmentComparisonSummary = {
   cashOnCashReturnPercent: InvestmentValueRange | null;
 };
 
+type ExportSectionId =
+  | "quick"
+  | "ownership"
+  | "investment"
+  | "overview"
+  | "unit"
+  | "connectivity";
+
+type PdfTableRow = {
+  label: string;
+  values: string[];
+};
+
+type PdfTableSection = {
+  id: ExportSectionId;
+  title: string;
+  description: string;
+  rows: PdfTableRow[];
+};
+
+const exportSectionOptions: Array<{ id: ExportSectionId; label: string }> = [
+  { id: "quick", label: "Quick Comparison" },
+  { id: "ownership", label: "Ownership Cost" },
+  { id: "investment", label: "Investment Comparison" },
+  { id: "overview", label: "Project Overview" },
+  { id: "unit", label: "Unit Comparison" },
+  { id: "connectivity", label: "Connectivity" },
+];
+
+const allExportSectionIds = exportSectionOptions.map((section) => section.id);
+
 const initialSlots: ComparisonSlot[] = [
   {
     id: "slot-1",
     projectId: "",
     unitTypeId: "",
+    layoutPlanId: "",
     packageId: "",
     spaPrice: "",
     comparisonPrice: "",
@@ -193,6 +242,7 @@ const initialSlots: ComparisonSlot[] = [
     id: "slot-2",
     projectId: "",
     unitTypeId: "",
+    layoutPlanId: "",
     packageId: "",
     spaPrice: "",
     comparisonPrice: "",
@@ -367,6 +417,39 @@ function getUnitTypeLabel(unitType: UnitTypeOption) {
   const name = [unitType.type_code, unitType.type_name].filter(Boolean).join(" - ");
 
   return details.length ? `${name} · ${details.join(" · ")}` : name;
+}
+
+function getLayoutPlanLabel(layoutPlan: LayoutPlanOption) {
+  return layoutPlan.name;
+}
+
+function getEligibleLayoutPlans(
+  projectOptions: ProjectOptions | undefined,
+  unitTypeId: string,
+) {
+  if (!projectOptions || !unitTypeId) return [];
+
+  const unitType = projectOptions.unit_types.find((item) => item.id === unitTypeId);
+
+  if (!unitType?.layout) return [];
+
+  return [
+    {
+      id: `${unitType.id}:unit-layout`,
+      name: unitType.layout.title || `${getUnitTypeLabel(unitType)} Layout Plan`,
+      media: unitType.layout,
+    },
+  ];
+}
+
+function getSelectedLayoutPlan(
+  projectOptions: ProjectOptions | undefined,
+  unitTypeId: string,
+  layoutPlanId: string,
+) {
+  const eligibleLayoutPlans = getEligibleLayoutPlans(projectOptions, unitTypeId);
+
+  return eligibleLayoutPlans.find((floorPlan) => floorPlan.id === layoutPlanId) ?? null;
 }
 
 function formatEstimatedCompletion(project: ProjectOptions["project"]) {
@@ -907,6 +990,967 @@ const purchaseCostLabels: Record<PurchaseCostKey, string> = {
   valuation_fee: "Valuation Fee",
 };
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatGeneratedDate() {
+  return new Intl.DateTimeFormat("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "Asia/Kuala_Lumpur",
+  }).format(new Date());
+}
+
+function formatPurchaseCostPdfValue(purchaseCost: OwnershipCostRow) {
+  if (purchaseCost.treatment === null) return "—";
+  if (purchaseCost.treatment === "not_applicable") return "N/A";
+
+  const amount = formatOptionalMoney(purchaseCost.amount);
+
+  if (purchaseCost.treatment === "developer_absorbed") {
+    return `${amount} · FREE`;
+  }
+
+  return `${amount} · ${formatPurchaseCostTreatment(purchaseCost.treatment)}`;
+}
+
+function formatSignedMoneyText(value: number | null, suffix = "") {
+  if (value === null || !Number.isFinite(value)) return "—";
+
+  return `${formatCurrency(value)}${suffix}`;
+}
+
+function formatSignedMoneyRangeText(range: InvestmentValueRange | null, suffix = "") {
+  if (!range) return "—";
+  if (range.low === range.high) return formatSignedMoneyText(range.low, suffix);
+
+  return `${formatCurrency(range.low)} – ${formatCurrency(range.high)}${suffix}`;
+}
+
+function renderPdfTable(section: PdfTableSection, comparedOptions: ComparedOption[]) {
+  return `
+    <section class="pdf-section">
+      <div class="section-heading">
+        <h2>${escapeHtml(section.title)}</h2>
+        <p>${escapeHtml(section.description)}</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Detail</th>
+            ${comparedOptions
+              .map((option) => `<th>${escapeHtml(option.project.name)}</th>`)
+              .join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${section.rows
+            .map(
+              (row) => `
+                <tr>
+                  <th>${escapeHtml(row.label)}</th>
+                  ${row.values.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}
+                </tr>
+              `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderPdfSectionGroup(
+  sections: PdfTableSection[],
+  comparedOptions: ComparedOption[],
+  startsNewPage: boolean,
+) {
+  if (sections.length === 0) return "";
+
+  return `
+    <div class="pdf-section-group${startsNewPage ? " pdf-section-group-new-page" : ""}">
+      ${sections.map((section) => renderPdfTable(section, comparedOptions)).join("")}
+    </div>
+  `;
+}
+
+function buildComparisonPdfSections({
+  comparedOptions,
+  assumptions,
+  activeConnectivityGroups,
+}: {
+  comparedOptions: ComparedOption[];
+  assumptions: ComparisonAssumptions;
+  activeConnectivityGroups: typeof connectivityGroups;
+}): PdfTableSection[] {
+  return [
+    {
+      id: "quick",
+      title: "Quick Comparison",
+      description:
+        "Factual comparison using SPA Price for financing and Final Net Price for price/yield context.",
+      rows: [
+        {
+          label: "Project",
+          values: comparedOptions.map((option) => option.project.name),
+        },
+        {
+          label: "Unit Type",
+          values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
+        },
+        {
+          label: "Final Net Price",
+          values: comparedOptions.map((option) =>
+            formatScenarioPrice(option.effectiveComparisonPrice, option.comparisonPriceSource),
+          ),
+        },
+        {
+          label: "Size",
+          values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
+        },
+        {
+          label: "PSF",
+          values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.psf, " psf")),
+        },
+        {
+          label: "SPA Price",
+          values: comparedOptions.map((option) =>
+            formatScenarioPrice(option.effectiveSpaPrice, option.spaPriceSource),
+          ),
+        },
+        {
+          label: "Est. Monthly Instalment",
+          values: comparedOptions.map((option) =>
+            formatMoneyRange(option.metrics.estimatedMonthlyInstalment, " / month"),
+          ),
+        },
+        {
+          label: "Est. Rental",
+          values: comparedOptions.map((option) => formatMoneyRange(option.metrics.estimatedRental)),
+        },
+        {
+          label: "Est. Gross Yield",
+          values: comparedOptions.map((option) =>
+            formatPercentRange(option.metrics.estimatedGrossRentalYieldPercent),
+          ),
+        },
+        {
+          label: "Tenure",
+          values: comparedOptions.map((option) => formatText(option.project.tenure)),
+        },
+        {
+          label: "Estimated Completion",
+          values: comparedOptions.map((option) => formatEstimatedCompletion(option.project)),
+        },
+        {
+          label: "Sales Package",
+          values: comparedOptions.map((option) => option.commercialPackage?.package_name ?? "No Package"),
+        },
+      ],
+    },
+    {
+      id: "ownership",
+      title: "Ownership Cost",
+      description: "Estimated financing and upfront purchase costs based on the selected scenario.",
+      rows: [
+        {
+          label: "SPA Price",
+          values: comparedOptions.map((option) =>
+            formatScenarioPrice(option.effectiveSpaPrice, option.spaPriceSource),
+          ),
+        },
+        {
+          label: "Final Net Price",
+          values: comparedOptions.map((option) =>
+            formatScenarioPrice(option.effectiveComparisonPrice, option.comparisonPriceSource),
+          ),
+        },
+        {
+          label: "Loan Margin",
+          values: comparedOptions.map(() => formatPercentValue(assumptions.loanMarginPercent)),
+        },
+        {
+          label: "Estimated Loan Amount",
+          values: comparedOptions.map((option) => formatMoneyRange(option.metrics.loanAmount)),
+        },
+        {
+          label: "Cash Downpayment",
+          values: comparedOptions.map((option) =>
+            formatOptionalMoney(option.ownershipCost.cashDownpayment),
+          ),
+        },
+        {
+          label: "Est. Monthly Instalment",
+          values: comparedOptions.map((option) =>
+            formatMoneyRange(option.metrics.estimatedMonthlyInstalment, " / month"),
+          ),
+        },
+        ...purchaseCostKeys.map((costKey) => ({
+          label: purchaseCostLabels[costKey],
+          values: comparedOptions.map((option) => {
+            const purchaseCost = option.ownershipCost.purchaseCosts.find(
+              (item) => item.costKey === costKey,
+            );
+
+            return purchaseCost ? formatPurchaseCostPdfValue(purchaseCost) : "—";
+          }),
+        })),
+        {
+          label: "Estimated Total Cash Required",
+          values: comparedOptions.map((option) =>
+            formatOptionalMoney(option.ownershipCost.estimatedTotalCashRequired),
+          ),
+        },
+        {
+          label: "Total Savings",
+          values: comparedOptions.map((option) =>
+            formatOptionalMoney(option.ownershipCost.totalSavings),
+          ),
+        },
+      ],
+    },
+    {
+      id: "investment",
+      title: "Investment Comparison",
+      description: "Estimated rental performance and cash returns based on the selected unit.",
+      rows: [
+        {
+          label: "Estimated Monthly Rental",
+          values: comparedOptions.map((option) => formatRentalDisplay(option.unitType)),
+        },
+        {
+          label: "Monthly Maintenance",
+          values: comparedOptions.map((option) =>
+            formatOptionalMonthlyMoney(option.investment.monthlyMaintenance),
+          ),
+        },
+        {
+          label: "Estimated Monthly Cash Flow",
+          values: comparedOptions.map((option) =>
+            formatSignedMoneyRangeText(option.investment.monthlyCashFlow, " / month"),
+          ),
+        },
+        {
+          label: "Estimated Annual Cash Flow",
+          values: comparedOptions.map((option) =>
+            formatSignedMoneyRangeText(option.investment.annualCashFlow),
+          ),
+        },
+        {
+          label: "Net Rental Yield",
+          values: comparedOptions.map((option) =>
+            formatPercentValueRange(option.investment.netRentalYieldPercent),
+          ),
+        },
+        {
+          label: "Cash-on-Cash Return (CoC)",
+          values: comparedOptions.map((option) =>
+            formatPercentValueRange(option.investment.cashOnCashReturnPercent),
+          ),
+        },
+      ],
+    },
+    {
+      id: "overview",
+      title: "Project Overview",
+      description: "High-level project facts from the customer-safe comparison data.",
+      rows: [
+        {
+          label: "Developer",
+          values: comparedOptions.map((option) => formatText(option.project.developer)),
+        },
+        {
+          label: "Location",
+          values: comparedOptions.map((option) => formatText(option.project.location)),
+        },
+        {
+          label: "Tenure",
+          values: comparedOptions.map((option) => formatText(option.project.tenure)),
+        },
+        {
+          label: "Property Type",
+          values: comparedOptions.map((option) => formatText(option.project.property_type)),
+        },
+        {
+          label: "Title Type",
+          values: comparedOptions.map((option) => formatText(option.project.title_type)),
+        },
+        {
+          label: "Total Units",
+          values: comparedOptions.map((option) => formatNumber(option.project.total_units)),
+        },
+        {
+          label: "Estimated Completion",
+          values: comparedOptions.map((option) => formatEstimatedCompletion(option.project)),
+        },
+      ],
+    },
+    {
+      id: "unit",
+      title: "Unit Comparison",
+      description: "Selected Unit Type facts and calculated metrics using the shared assumptions.",
+      rows: [
+        {
+          label: "Unit Type",
+          values: comparedOptions.map((option) => getUnitTypeLabel(option.unitType)),
+        },
+        {
+          label: "SPA Price Range",
+          values: comparedOptions.map((option) =>
+            formatStoredPriceRange(option.unitType.spa_price_from, option.unitType.spa_price_to),
+          ),
+        },
+        {
+          label: "Final Net Price Range",
+          values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.finalNetPrice)),
+        },
+        {
+          label: "Size",
+          values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
+        },
+        {
+          label: "Bedrooms",
+          values: comparedOptions.map((option) => formatNumber(option.unitType.bedrooms)),
+        },
+        {
+          label: "Bathrooms",
+          values: comparedOptions.map((option) => formatNumber(option.unitType.bathrooms)),
+        },
+        {
+          label: "Car Parks",
+          values: comparedOptions.map((option) => formatCarParks(option.unitType)),
+        },
+        {
+          label: "PSF",
+          values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.psf, " psf")),
+        },
+        {
+          label: "Balcony",
+          values: comparedOptions.map((option) => formatBoolean(option.unitType.has_balcony)),
+        },
+        {
+          label: "Dual Key",
+          values: comparedOptions.map((option) => formatBoolean(option.unitType.is_dual_key)),
+        },
+        {
+          label: "Furnishing",
+          values: comparedOptions.map((option) =>
+            getFurnishingSummaryText(option.unitType, option.commercialPackage),
+          ),
+        },
+      ],
+    },
+    {
+      id: "connectivity",
+      title: "Connectivity",
+      description: "Customer-facing connectivity facts grouped by category.",
+      rows: activeConnectivityGroups.length
+        ? activeConnectivityGroups.map((group) => ({
+            label: group.label,
+            values: comparedOptions.map((option) =>
+              formatConnectivityItemsText(
+                getConnectivityItemsForGroup(option, group.categories),
+              ),
+            ),
+          }))
+        : [
+            {
+              label: "Connectivity",
+              values: comparedOptions.map(() => "No connectivity information added yet."),
+            },
+          ],
+    },
+  ];
+}
+
+function getFurnishingSummaryText(
+  unitType: UnitTypeOption,
+  commercialPackage: CommercialPackageOption | null,
+) {
+  const furnishingPackage = commercialPackage?.furnishing_package ?? unitType.furnishing_package;
+
+  if (!furnishingPackage) return "—";
+
+  const items = furnishingPackage.items
+    .slice(0, 4)
+    .map((item) => (item.quantity ? `${item.item_name} x ${item.quantity}` : item.item_name));
+  const suffix =
+    furnishingPackage.items.length > 4 ? ` + ${furnishingPackage.items.length - 4} more` : "";
+
+  return items.length
+    ? `${furnishingPackage.package_name}: ${items.join(", ")}${suffix}`
+    : furnishingPackage.package_name;
+}
+
+function formatConnectivityItemsText(items: ConnectivityPoint[]) {
+  if (!items.length) return "—";
+
+  return items
+    .map((point) => {
+      const description = point.customer_description?.trim();
+      const meta = formatConnectivityMeta(point);
+
+      return description ? `${point.name} (${meta}) - ${description}` : `${point.name} (${meta})`;
+    })
+    .join("; ");
+}
+
+function buildComparisonProposalHtml({
+  comparedOptions,
+  assumptions,
+  activeConnectivityGroups,
+  selectedSectionIds,
+  agentInsights,
+}: {
+  comparedOptions: ComparedOption[];
+  assumptions: ComparisonAssumptions;
+  activeConnectivityGroups: typeof connectivityGroups;
+  selectedSectionIds: ExportSectionId[];
+  agentInsights: string;
+}) {
+  const sections = buildComparisonPdfSections({
+    comparedOptions,
+    assumptions,
+    activeConnectivityGroups,
+  }).filter((section) => selectedSectionIds.includes(section.id));
+  const sectionById = new Map(sections.map((section) => [section.id, section]));
+  const sectionGroups = [
+    ["quick", "investment"],
+    ["ownership"],
+    ["overview", "unit"],
+    ["connectivity"],
+  ].map((group) =>
+    group
+      .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
+      .filter((section): section is PdfTableSection => Boolean(section)),
+  );
+  const generatedDate = formatGeneratedDate();
+  const trimmedAgentInsights = agentInsights.trim();
+
+  return `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Project Comparison Proposal</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 10mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            background: #ffffff;
+            color: #18181b;
+            font-family: Arial, Helvetica, sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          .proposal {
+            width: 100%;
+          }
+
+          .opening-page {
+            break-after: page;
+            min-height: 270mm;
+          }
+
+          .proposal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 24px;
+            border-bottom: 2px solid #0f766e;
+            padding-bottom: 12px;
+          }
+
+          .eyebrow {
+            margin: 0 0 4px;
+            color: #0f766e;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+          }
+
+          h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: -0.02em;
+          }
+
+          .prepared-date {
+            margin: 0;
+            color: #52525b;
+            font-size: 11px;
+            line-height: 1.5;
+            text-align: right;
+          }
+
+          .project-grid {
+            display: grid;
+            grid-template-columns: repeat(${Math.max(comparedOptions.length, 1)}, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+          }
+
+          .project-card {
+            border: 1px solid #e4e4e7;
+            border-radius: 10px;
+            overflow: hidden;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .project-cover {
+            width: 100%;
+            aspect-ratio: 16 / 8;
+            background: #f4f4f5;
+            object-fit: cover;
+            display: block;
+          }
+
+          .project-cover-placeholder {
+            align-items: center;
+            color: #71717a;
+            display: flex;
+            font-size: 10px;
+            font-weight: 700;
+            justify-content: center;
+            min-height: 86px;
+            text-transform: uppercase;
+          }
+
+          .project-card-body {
+            padding: 8px 10px 10px;
+          }
+
+          .project-name {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+          }
+
+          .project-meta,
+          .project-package {
+            margin: 4px 0 0;
+            color: #52525b;
+            font-size: 10px;
+            line-height: 1.4;
+          }
+
+          .layout-section {
+            margin-top: 14px;
+          }
+
+          .layout-grid {
+            display: grid;
+            grid-template-columns: repeat(${Math.max(comparedOptions.length, 1)}, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+          }
+
+          .layout-card {
+            border: 1px solid #e4e4e7;
+            border-radius: 10px;
+            padding: 8px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .layout-name {
+            margin: 0 0 6px;
+            color: #18181b;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.35;
+          }
+
+          .layout-image-frame {
+            align-items: center;
+            background: #fafafa;
+            border: 1px solid #e4e4e7;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            min-height: ${comparedOptions.length > 2 ? "88px" : "118px"};
+            overflow: hidden;
+          }
+
+          .layout-image {
+            display: block;
+            max-height: ${comparedOptions.length > 2 ? "155px" : "205px"};
+            max-width: 100%;
+            object-fit: contain;
+          }
+
+          .layout-placeholder {
+            color: #71717a;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 28px 10px;
+            text-align: center;
+            text-transform: uppercase;
+          }
+
+          .insights {
+            border: 1px solid #e4e4e7;
+            border-radius: 10px;
+            margin-top: 14px;
+            padding: 10px 12px;
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+
+          .insights p {
+            margin: 4px 0 0;
+            color: #71717a;
+            font-size: 10px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+          }
+
+          .insights-page-one-body {
+            max-height: 42mm;
+            overflow: hidden;
+          }
+
+          .insights-continuation {
+            break-after: page;
+            page-break-after: always;
+            padding-top: 0;
+          }
+
+          .insights-continuation[hidden] {
+            display: none;
+          }
+
+          .insights-continuation h2 {
+            border-bottom: 2px solid #0f766e;
+            padding-bottom: 8px;
+          }
+
+          .insights-continuation h2 span {
+            color: #71717a;
+            display: block;
+            font-size: 10px;
+            letter-spacing: 0.16em;
+            margin-top: 3px;
+          }
+
+          .insights-continuation p {
+            color: #3f3f46;
+            font-size: 11px;
+            line-height: 1.7;
+            margin-top: 12px;
+            white-space: pre-wrap;
+          }
+
+          .pdf-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            margin-top: 12px;
+          }
+
+          .pdf-section-group {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+
+          .pdf-section-group-new-page {
+            break-before: page;
+            page-break-before: always;
+          }
+
+          .section-heading {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 6px;
+          }
+
+          h2 {
+            margin: 0;
+            color: #083f3a;
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+
+          .section-heading p {
+            margin: 0;
+            color: #71717a;
+            font-size: 9px;
+            text-align: right;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5px;
+          }
+
+          th,
+          td {
+            border: 1px solid #e4e4e7;
+            padding: 5px 7px;
+            text-align: left;
+            vertical-align: top;
+          }
+
+          thead th {
+            background: #0f766e;
+            color: #ffffff;
+            font-size: 9px;
+            text-transform: uppercase;
+          }
+
+          tbody th {
+            width: 18%;
+            background: #f8fafc;
+            color: #3f3f46;
+            font-size: 8.5px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+          }
+
+          tbody td {
+            color: #18181b;
+            font-weight: 600;
+            line-height: 1.35;
+          }
+
+          tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .footer {
+            border-top: 1px solid #e4e4e7;
+            color: #71717a;
+            display: flex;
+            justify-content: space-between;
+            margin-top: 14px;
+            padding-top: 8px;
+            font-size: 9px;
+          }
+
+          @media screen {
+            body {
+              background: #f4f4f5;
+              padding: 24px;
+            }
+
+            .proposal {
+              background: #ffffff;
+              box-shadow: 0 18px 50px rgba(15, 23, 42, 0.14);
+              margin: 0 auto;
+              max-width: 794px;
+              padding: 38px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <template id="agent-insights-source">${escapeHtml(trimmedAgentInsights)}</template>
+        <main class="proposal">
+          <div class="opening-page">
+            <header class="proposal-header">
+              <div>
+                <p class="eyebrow">Project Comparison</p>
+                <h1>Property Comparison Proposal</h1>
+              </div>
+              <p class="prepared-date">
+                Prepared on<br />
+                <strong>${escapeHtml(generatedDate)}</strong>
+              </p>
+            </header>
+
+            <section class="project-grid">
+              ${comparedOptions
+                .map(
+                  (option) => `
+                    <article class="project-card">
+                      ${
+                        option.project.cover_media?.signed_url
+                          ? `<img class="project-cover" src="${escapeHtml(option.project.cover_media.signed_url)}" alt="${escapeHtml(option.project.name)} cover" />`
+                          : `<div class="project-cover project-cover-placeholder">No Cover</div>`
+                      }
+                      <div class="project-card-body">
+                        <p class="project-name">${escapeHtml(option.project.name)}</p>
+                        <p class="project-meta">${escapeHtml(formatText(option.project.location))}</p>
+                        <p class="project-meta">Unit Type: ${escapeHtml(getUnitTypeLabel(option.unitType))}</p>
+                        <p class="project-package">Sales Package: ${escapeHtml(option.commercialPackage?.package_name ?? "No Package")}</p>
+                      </div>
+                    </article>
+                  `,
+                )
+                .join("")}
+            </section>
+
+            <section class="layout-section">
+              <div class="section-heading">
+                <h2>Selected Layout Plan</h2>
+                <p>Customer-visible layout selected for this comparison.</p>
+              </div>
+              <div class="layout-grid">
+                ${comparedOptions
+                  .map(
+                    (option) => `
+                      <article class="layout-card">
+                        <p class="layout-name">${escapeHtml(option.project.name)}<br />${escapeHtml(option.layoutPlan ? getLayoutPlanLabel(option.layoutPlan) : "No Layout Plan available")}</p>
+                        <div class="layout-image-frame">
+                          ${
+                            option.layoutPlan?.media.signed_url
+                              ? `<img class="layout-image" src="${escapeHtml(option.layoutPlan.media.signed_url)}" alt="${escapeHtml(option.project.name)} selected layout plan" />`
+                              : `<div class="layout-placeholder">No Layout Plan available</div>`
+                          }
+                        </div>
+                      </article>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </section>
+
+            <section class="insights">
+              <h2>Agent Insights &amp; Recommendation</h2>
+              <p id="agent-insights-page-one" class="insights-page-one-body"></p>
+            </section>
+          </div>
+
+          <section id="agent-insights-continuation" class="insights-continuation" hidden>
+            <h2>Agent Insights &amp; Recommendation <span>Continued</span></h2>
+            <p id="agent-insights-continuation-body"></p>
+          </section>
+
+          ${sectionGroups
+            .map((group, index) =>
+              renderPdfSectionGroup(group, comparedOptions, index > 0),
+            )
+            .join("")}
+
+          <footer class="footer">
+            <span>Generated with Falcon Hub</span>
+            <span>Figures are estimates and subject to final developer, bank, and documentation confirmation.</span>
+          </footer>
+        </main>
+        <script>
+          (() => {
+            const source = document.getElementById("agent-insights-source");
+            const pageOneBody = document.getElementById("agent-insights-page-one");
+            const continuation = document.getElementById("agent-insights-continuation");
+            const continuationBody = document.getElementById("agent-insights-continuation-body");
+
+            if (!source || !pageOneBody || !continuation || !continuationBody) return;
+
+            const fullText = source.content.textContent || "";
+
+            if (!fullText.trim()) {
+              pageOneBody.textContent = "No agent recommendation added.";
+              continuation.hidden = true;
+              return;
+            }
+
+            pageOneBody.textContent = fullText;
+
+            if (pageOneBody.scrollHeight <= pageOneBody.clientHeight + 1) {
+              continuation.hidden = true;
+              return;
+            }
+
+            let low = 0;
+            let high = fullText.length;
+            let best = 0;
+
+            while (low <= high) {
+              const mid = Math.floor((low + high) / 2);
+
+              pageOneBody.textContent = fullText.slice(0, mid).trimEnd();
+
+              if (pageOneBody.scrollHeight <= pageOneBody.clientHeight + 1) {
+                best = mid;
+                low = mid + 1;
+              } else {
+                high = mid - 1;
+              }
+            }
+
+            const firstCandidate = fullText.slice(0, best);
+            const whitespaceSplit = Math.max(
+              firstCandidate.lastIndexOf(" "),
+              firstCandidate.lastIndexOf("\\n"),
+              firstCandidate.lastIndexOf("\\t"),
+            );
+            const splitIndex =
+              whitespaceSplit > Math.max(20, best - 120) ? whitespaceSplit : best;
+            const pageOneText = fullText.slice(0, splitIndex).trimEnd();
+            const continuationText = fullText.slice(splitIndex).trimStart();
+
+            pageOneBody.textContent = pageOneText || fullText.slice(0, best).trimEnd();
+            continuationBody.textContent = pageOneText
+              ? continuationText
+              : fullText.slice(best).trimStart();
+            continuation.hidden = continuationBody.textContent.trim().length === 0;
+          })();
+        </script>
+      </body>
+    </html>`;
+}
+
+function printComparisonWhenImagesAreReady(proposalWindow: Window) {
+  const images = Array.from(proposalWindow.document.images);
+
+  if (images.length === 0) {
+    proposalWindow.print();
+    return;
+  }
+
+  let pendingImages = images.filter((image) => !image.complete).length;
+
+  if (pendingImages === 0) {
+    proposalWindow.print();
+    return;
+  }
+
+  let hasPrinted = false;
+  const printOnce = () => {
+    if (hasPrinted) return;
+
+    hasPrinted = true;
+    proposalWindow.print();
+  };
+  const markImageDone = () => {
+    pendingImages -= 1;
+
+    if (pendingImages <= 0) {
+      printOnce();
+    }
+  };
+
+  for (const image of images) {
+    if (image.complete) continue;
+
+    image.addEventListener("load", markImageDone, { once: true });
+    image.addEventListener("error", markImageDone, { once: true });
+  }
+
+  window.setTimeout(printOnce, 5000);
+}
+
 type ComparisonRow = {
   label: string;
   values: ReactNode[];
@@ -999,6 +2043,11 @@ export default function ProjectComparisonPage() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [projectListError, setProjectListError] = useState("");
   const [hasCompared, setHasCompared] = useState(false);
+  const [comparisonConfigChanged, setComparisonConfigChanged] = useState(false);
+  const [agentInsights, setAgentInsights] = useState("");
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportSections, setSelectedExportSections] =
+    useState<ExportSectionId[]>(allExportSectionIds);
 
   useEffect(() => {
     let isMounted = true;
@@ -1080,6 +2129,7 @@ export default function ProjectComparisonPage() {
         const effectiveComparisonPrice = getEffectiveComparisonPrice(slot, unitType);
         const commercialPackage =
           options.commercial_packages.find((item) => item.id === slot.packageId) ?? null;
+        const layoutPlan = getSelectedLayoutPlan(options, slot.unitTypeId, slot.layoutPlanId);
         const unitMetrics = calculateProjectComparisonMetrics(
           {
             price_from: unitType.price_from,
@@ -1130,6 +2180,7 @@ export default function ProjectComparisonPage() {
           slot,
           project: options.project,
           unitType,
+          layoutPlan,
           commercialPackage,
           connectivity: options.connectivity ?? [],
           unitMetrics,
@@ -1197,6 +2248,7 @@ export default function ProjectComparisonPage() {
     setSlots((current) =>
       current.map((slot) => (slot.id === slotId ? { ...slot, ...updates } : slot)),
     );
+    setComparisonConfigChanged(true);
     setHasCompared(false);
   }
 
@@ -1204,6 +2256,7 @@ export default function ProjectComparisonPage() {
     updateSlot(slotId, {
       projectId,
       unitTypeId: "",
+      layoutPlanId: "",
       packageId: "",
       spaPrice: "",
       comparisonPrice: "",
@@ -1216,12 +2269,25 @@ export default function ProjectComparisonPage() {
   }
 
   function handleUnitTypeChange(slotId: string, unitTypeId: string) {
-    updateSlot(slotId, {
-      unitTypeId,
-      packageId: "",
-      spaPrice: "",
-      comparisonPrice: "",
-    });
+    setSlots((current) =>
+      current.map((slot) => {
+        if (slot.id !== slotId) return slot;
+
+        const projectOptions = projectOptionsById[slot.projectId];
+        const eligibleLayoutPlans = getEligibleLayoutPlans(projectOptions, unitTypeId);
+
+        return {
+          ...slot,
+          unitTypeId,
+          layoutPlanId: eligibleLayoutPlans.length === 1 ? eligibleLayoutPlans[0].id : "",
+          packageId: "",
+          spaPrice: "",
+          comparisonPrice: "",
+        };
+      }),
+    );
+    setComparisonConfigChanged(true);
+    setHasCompared(false);
   }
 
   function addSlot() {
@@ -1233,6 +2299,7 @@ export default function ProjectComparisonPage() {
         id: `slot-${current.length + 1}`,
         projectId: "",
         unitTypeId: "",
+        layoutPlanId: "",
         packageId: "",
         spaPrice: "",
         comparisonPrice: "",
@@ -1240,6 +2307,7 @@ export default function ProjectComparisonPage() {
         error: "",
       },
     ]);
+    setComparisonConfigChanged(true);
     setHasCompared(false);
   }
 
@@ -1247,6 +2315,7 @@ export default function ProjectComparisonPage() {
     if (slots.length <= 2) return;
 
     setSlots((current) => current.filter((slot) => slot.id !== slotId));
+    setComparisonConfigChanged(true);
     setHasCompared(false);
   }
 
@@ -1271,7 +2340,60 @@ export default function ProjectComparisonPage() {
   function handleCompare() {
     if (!canCompare) return;
 
+    if (comparisonConfigChanged) {
+      setAgentInsights("");
+    }
+
+    setComparisonConfigChanged(false);
     setHasCompared(true);
+  }
+
+  function openExportModal() {
+    if (!hasCompared || comparedOptions.length === 0) return;
+
+    setSelectedExportSections(allExportSectionIds);
+    setIsExportModalOpen(true);
+  }
+
+  function toggleExportSection(sectionId: ExportSectionId) {
+    setSelectedExportSections((current) =>
+      current.includes(sectionId)
+        ? current.filter((item) => item !== sectionId)
+        : [...current, sectionId],
+    );
+  }
+
+  function toggleSelectAllExportSections() {
+    setSelectedExportSections((current) =>
+      current.length === allExportSectionIds.length ? [] : allExportSectionIds,
+    );
+  }
+
+  function handleGenerateComparisonPdf() {
+    if (selectedExportSections.length === 0 || comparedOptions.length === 0) return;
+
+    const proposalWindow = window.open("", "_blank");
+
+    if (!proposalWindow) {
+      window.alert("Please allow pop-ups to preview and export the PDF.");
+      return;
+    }
+
+    proposalWindow.document.open();
+    proposalWindow.document.write(
+      buildComparisonProposalHtml({
+        comparedOptions,
+        assumptions,
+        activeConnectivityGroups,
+        selectedSectionIds: selectedExportSections,
+        agentInsights,
+      }),
+    );
+    proposalWindow.document.close();
+    proposalWindow.focus();
+    setIsExportModalOpen(false);
+
+    printComparisonWhenImagesAreReady(proposalWindow);
   }
 
   const activeConnectivityGroups = hasCompared
@@ -1343,6 +2465,7 @@ export default function ProjectComparisonPage() {
                 value={loanMarginPercent}
                 onChange={(event) => {
                   setLoanMarginPercent(event.target.value);
+                  setComparisonConfigChanged(true);
                   setHasCompared(false);
                 }}
                 className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
@@ -1358,6 +2481,7 @@ export default function ProjectComparisonPage() {
                 value={annualInterestRatePercent}
                 onChange={(event) => {
                   setAnnualInterestRatePercent(event.target.value);
+                  setComparisonConfigChanged(true);
                   setHasCompared(false);
                 }}
                 className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
@@ -1373,6 +2497,7 @@ export default function ProjectComparisonPage() {
                 value={loanTenureYears}
                 onChange={(event) => {
                   setLoanTenureYears(event.target.value);
+                  setComparisonConfigChanged(true);
                   setHasCompared(false);
                 }}
                 className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
@@ -1394,6 +2519,7 @@ export default function ProjectComparisonPage() {
             const selectedUnitType = projectOptions?.unit_types.find(
               (unitType) => unitType.id === slot.unitTypeId,
             );
+            const eligibleLayoutPlans = getEligibleLayoutPlans(projectOptions, slot.unitTypeId);
             const applicablePackages = getApplicablePackages(projectOptions, slot.unitTypeId);
             const spaPriceWarning = getSpaPriceWarning(slot, selectedUnitType);
             const finalNetPriceWarning = getFinalNetPriceWarning(slot, selectedUnitType);
@@ -1485,6 +2611,35 @@ export default function ProjectComparisonPage() {
                       No Unit Types available for this Project.
                     </p>
                   ) : null}
+
+                  <label className="block text-sm">
+                    <span className="font-medium text-zinc-700">Layout Plan</span>
+                    <select
+                      value={slot.layoutPlanId}
+                      disabled={!slot.unitTypeId || eligibleLayoutPlans.length <= 1}
+                      onChange={(event) =>
+                        updateSlot(slot.id, { layoutPlanId: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                    >
+                      {eligibleLayoutPlans.length === 0 ? (
+                        <option value="">No Layout Plan available</option>
+                      ) : eligibleLayoutPlans.length === 1 ? (
+                        <option value={eligibleLayoutPlans[0].id}>
+                          {getLayoutPlanLabel(eligibleLayoutPlans[0])}
+                        </option>
+                      ) : (
+                        <>
+                          <option value="">Select Layout Plan</option>
+                          {eligibleLayoutPlans.map((layoutPlan) => (
+                            <option key={layoutPlan.id} value={layoutPlan.id}>
+                              {getLayoutPlanLabel(layoutPlan)}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                  </label>
 
                   <label className="block text-sm">
                     <span className="font-medium text-zinc-700">SPA Price</span>
@@ -1586,6 +2741,50 @@ export default function ProjectComparisonPage() {
 
         {hasCompared && comparedOptions.length > 0 ? (
           <>
+            <section className="mt-8 flex flex-col gap-3 rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">Customer Proposal Export</p>
+                <p className="text-sm text-zinc-500">
+                  Choose comparison sections and generate a customer-facing PDF.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openExportModal}
+                className="rounded-2xl bg-[#087F6B] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#066b5b]"
+              >
+                Export PDF
+              </button>
+            </section>
+
+            <section className="mt-6 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-zinc-900">
+                      Agent Insights & Recommendation
+                    </p>
+                    <span className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                      Optional
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Add your observations or recommendation before exporting the customer proposal.
+                  </p>
+                </div>
+                <p className="text-xs font-medium text-zinc-400">
+                  {agentInsights.length} / 1200
+                </p>
+              </div>
+              <textarea
+                value={agentInsights}
+                maxLength={1200}
+                onChange={(event) => setAgentInsights(event.target.value)}
+                placeholder="Add your recommendation, key observations, or notes for the customer..."
+                className="mt-4 min-h-44 w-full resize-y rounded-2xl border border-zinc-200 px-4 py-3 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400"
+              />
+            </section>
+
             <ComparisonTable
               title="Quick Comparison"
               description="Factual comparison using SPA Price for financing and Final Net Price for price/yield context. Sales Package discounts are not deducted again."
@@ -1897,6 +3096,66 @@ export default function ProjectComparisonPage() {
                 </p>
               </section>
             )}
+
+            {isExportModalOpen ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 py-6">
+                <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+                  <div>
+                    <p className="text-lg font-semibold text-zinc-950">Export Comparison PDF</p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      Choose which sections to include in the customer proposal.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 space-y-3">
+                    <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900">
+                      <input
+                        type="checkbox"
+                        checked={selectedExportSections.length === allExportSectionIds.length}
+                        onChange={toggleSelectAllExportSections}
+                        className="h-4 w-4 rounded border-zinc-300"
+                      />
+                      Select All
+                    </label>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {exportSectionOptions.map((section) => (
+                        <label
+                          key={section.id}
+                          className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedExportSections.includes(section.id)}
+                            onChange={() => toggleExportSection(section.id)}
+                            className="h-4 w-4 rounded border-zinc-300"
+                          />
+                          {section.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsExportModalOpen(false)}
+                      className="rounded-2xl border border-zinc-200 px-5 py-3 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleGenerateComparisonPdf}
+                      disabled={selectedExportSections.length === 0}
+                      className="rounded-2xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+                    >
+                      Generate PDF
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : null}
       </main>

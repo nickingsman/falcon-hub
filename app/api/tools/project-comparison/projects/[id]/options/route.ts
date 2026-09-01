@@ -37,6 +37,7 @@ type UnitTypeRow = {
   size_sqft: number | null;
   default_carparks: number | null;
   carpark_description: string | null;
+  layout_media_id: string | null;
   furnishing_package_id: string | null;
   spa_price_from: number | null;
   spa_price_to: number | null;
@@ -178,6 +179,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
           size_sqft,
           default_carparks,
           carpark_description,
+          layout_media_id,
           furnishing_package_id,
           spa_price_from,
           spa_price_to,
@@ -349,6 +351,47 @@ export async function GET(_request: Request, { params }: RouteContext) {
       (furnishingItemsData ?? []) as FurnishingItemRow[],
     );
     const activeUnitTypeIds = new Set(unitTypes.map((unitType) => unitType.id));
+    const layoutMediaIds = unitTypes
+      .map((unitType) => unitType.layout_media_id)
+      .filter((item): item is string => Boolean(item));
+    const layoutMediaResult = layoutMediaIds.length
+      ? await supabase
+          .from("project_media")
+          .select(`
+            id,
+            project_id,
+            title,
+            media_type,
+            storage_bucket,
+            storage_path,
+            mime_type,
+            file_size_bytes,
+            description,
+            visibility,
+            sort_order,
+            created_at,
+            updated_at
+          `)
+          .in("id", layoutMediaIds)
+          .eq("project_id", id)
+          .eq("media_type", "unit_layout")
+          .eq("visibility", "customer")
+          .eq("is_deleted", false)
+      : { data: [], error: null };
+
+    if (layoutMediaResult.error) throw layoutMediaResult.error;
+
+    const layoutMediaResponses = await Promise.all(
+      ((layoutMediaResult.data ?? []) as ProjectMediaRow[]).map((media) =>
+        toProjectMediaResponse(supabase, media),
+      ),
+    );
+    const layoutMediaMap = new Map(
+      layoutMediaResponses
+        .filter((media): media is NonNullable<typeof media> => Boolean(media))
+        .map((media) => [media.id, media]),
+    );
+
     const packageItems = (commercialPackageItemsResult.data ?? []) as CommercialPackageItemRow[];
     const purchaseCosts =
       (commercialPackagePurchaseCostsResult.data ?? []) as CommercialPackagePurchaseCostRow[];
@@ -379,29 +422,44 @@ export async function GET(_request: Request, { params }: RouteContext) {
             }
           : null,
       },
-      unit_types: unitTypes.map((unitType) => ({
-        id: unitType.id,
-        type_code: unitType.type_code,
-        type_name: unitType.type_name,
-        bedrooms: unitType.bedrooms,
-        additional_rooms: unitType.additional_rooms,
-        bathrooms: unitType.bathrooms,
-        display_configuration: unitType.display_configuration,
-        size_sqft: unitType.size_sqft,
-        default_carparks: unitType.default_carparks,
-        carpark_description: unitType.carpark_description,
-        spa_price_from: normalizeNullableNumber(unitType.spa_price_from),
-        spa_price_to: normalizeNullableNumber(unitType.spa_price_to),
-        price_from: unitType.price_from,
-        price_to: unitType.price_to,
-        estimated_rental_from: unitType.estimated_rental_from,
-        estimated_rental_to: unitType.estimated_rental_to,
-        has_balcony: unitType.has_balcony,
-        is_dual_key: unitType.is_dual_key,
-        furnishing_package: unitType.furnishing_package_id
-          ? furnishingPackageMap.get(unitType.furnishing_package_id) ?? null
-          : null,
-      })),
+      unit_types: unitTypes.map((unitType) => {
+        const layout = unitType.layout_media_id
+          ? layoutMediaMap.get(unitType.layout_media_id) ?? null
+          : null;
+
+        return {
+          id: unitType.id,
+          type_code: unitType.type_code,
+          type_name: unitType.type_name,
+          bedrooms: unitType.bedrooms,
+          additional_rooms: unitType.additional_rooms,
+          bathrooms: unitType.bathrooms,
+          display_configuration: unitType.display_configuration,
+          size_sqft: unitType.size_sqft,
+          default_carparks: unitType.default_carparks,
+          carpark_description: unitType.carpark_description,
+          spa_price_from: normalizeNullableNumber(unitType.spa_price_from),
+          spa_price_to: normalizeNullableNumber(unitType.spa_price_to),
+          price_from: unitType.price_from,
+          price_to: unitType.price_to,
+          estimated_rental_from: unitType.estimated_rental_from,
+          estimated_rental_to: unitType.estimated_rental_to,
+          has_balcony: unitType.has_balcony,
+          is_dual_key: unitType.is_dual_key,
+          layout: layout
+            ? {
+                title: layout.title,
+                media_type: layout.media_type,
+                mime_type: layout.mime_type,
+                description: layout.description,
+                signed_url: layout.signed_url,
+              }
+            : null,
+          furnishing_package: unitType.furnishing_package_id
+            ? furnishingPackageMap.get(unitType.furnishing_package_id) ?? null
+            : null,
+        };
+      }),
       connectivity: (connectivityResult.data ?? []).map((point) =>
         shapeConnectivityPoint(point, true),
       ),
