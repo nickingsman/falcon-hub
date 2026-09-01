@@ -361,7 +361,7 @@ function proposalRow(
 
 function proposalSummaryRow(label: string, value: string, className: string) {
   return `
-    <div class="row ${className}">
+    <div class="row summary-row ${className}">
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
     </div>
@@ -1122,7 +1122,7 @@ function buildRoiProposalHtml({
       }
       .section {
         break-inside: avoid;
-        border: 1px solid #e4e4e7;
+        border: 1px solid #d4d4d8;
         border-radius: 12px;
         padding: 9px;
       }
@@ -1130,10 +1130,15 @@ function buildRoiProposalHtml({
       .section.compact-list { padding-bottom: 5px; }
       .package-validity {
         display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
         margin: -2px 0 5px;
         color: #9A6B1F;
-        font-size: 9px;
+        font-size: 8.5px;
         font-weight: 800;
+      }
+      .package-validity strong {
+        font-size: 10px;
       }
       .row {
         display: flex;
@@ -1164,10 +1169,30 @@ function buildRoiProposalHtml({
         color: #087F6B;
         font-weight: 800;
       }
+      .summary-row {
+        margin-top: 3px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 5px 7px;
+      }
+      .summary-row strong {
+        font-size: 10.8px;
+      }
+      .savings-row {
+        border-color: #b7e6dc;
+        background: #f1fbf8;
+      }
       .cash-required-row span,
       .cash-required-row strong {
         color: #8B3A3A;
-        font-weight: 800;
+        font-weight: 700;
+      }
+      .cash-required-row {
+        border-color: #f0dddd;
+        background: #fffdfd;
+      }
+      .cash-required-row strong {
+        font-size: 10px;
       }
       .compact-fields {
         display: grid;
@@ -1176,7 +1201,7 @@ function buildRoiProposalHtml({
         margin-top: 8px;
       }
       .compact-field {
-        border: 1px solid #e4e4e7;
+        border: 1px solid #d4d4d8;
         border-radius: 10px;
         padding: 7px;
       }
@@ -1257,10 +1282,10 @@ function buildRoiProposalHtml({
       }
       .calculation-divider {
         margin: 4px 0;
-        border-top: 1px solid #d4d4d8;
+        border-top: 1px solid #c9c9d1;
       }
       .calculation-divider.strong {
-        border-top-color: #99d8cd;
+        border-top-color: #68c4b4;
       }
       .calculation-empty {
         padding: 2px 0 4px;
@@ -1695,7 +1720,7 @@ function buildRoiProposalHtml({
           <h2>Purchase Package</h2>
           ${
             formatDisplayDate(form.packageValidUntil)
-              ? `<div class="package-validity">Package Valid Until: ${escapeHtml(formatDisplayDate(form.packageValidUntil))}</div>`
+              ? `<div class="package-validity"><span>Package Valid Until:</span><strong>${escapeHtml(formatDisplayDate(form.packageValidUntil))}</strong></div>`
               : ""
           }
           ${purchasePackageRows}
@@ -1831,15 +1856,17 @@ function ResultRow({
   label,
   value,
   valueClassName = "text-zinc-900",
+  rowClassName = "",
   children,
 }: Readonly<{
   label: string;
   value: string;
   valueClassName?: string;
+  rowClassName?: string;
   children?: React.ReactNode;
 }>) {
   return (
-    <div className="border-b border-zinc-100 py-3 last:border-0">
+    <div className={`border-b border-zinc-100 py-3 last:border-0 ${rowClassName}`}>
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-zinc-500">{label}</p>
         <p className={`text-right text-sm font-semibold ${valueClassName}`}>{value}</p>
@@ -2473,8 +2500,8 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
+            <section className="rounded-[28px] border border-zinc-300 bg-white p-6 shadow-[0_12px_34px_rgba(15,23,42,0.05)]">
+              <h2 className="border-b border-zinc-100 pb-3 text-lg font-semibold text-zinc-950">
                 Property & Unit
               </h2>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -2501,7 +2528,7 @@ export default function RoiCalculatorPage() {
                   />
                 </label>
                 {selectedProjectId ? (
-                  <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-sm md:col-span-2">
+                  <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-4 text-sm md:col-span-2">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -2737,17 +2764,22 @@ export default function RoiCalculatorPage() {
                 </div>
               </div>
 
-              <label className="mt-5 block max-w-xs text-sm text-zinc-600">
-                <span className="mb-1 block font-medium text-zinc-900">
+              <label className="mt-5 block max-w-xs rounded-2xl border border-[#e4d3ad] bg-[#fffaf0] p-3 text-sm text-zinc-600">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9A6B1F]">
                   Package Valid Until
                 </span>
+                {formatDisplayDate(form.packageValidUntil) ? (
+                  <span className="mt-1 block text-base font-semibold text-[#9A6B1F]">
+                    {formatDisplayDate(form.packageValidUntil)}
+                  </span>
+                ) : null}
                 <input
                   type="date"
                   value={form.packageValidUntil}
                   onChange={(event) =>
                     updateField("packageValidUntil", event.target.value)
                   }
-                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                  className="mt-2 w-full rounded-2xl border border-[#d8c18d] bg-white px-3 py-2 outline-none"
                 />
               </label>
 
@@ -3209,7 +3241,7 @@ export default function RoiCalculatorPage() {
                 <ResultRow
                   label="Final Price After Benefits"
                   value={formatCurrency(result.finalPriceAfterBenefits)}
-                  valueClassName="text-lg font-bold text-[#087F6B]"
+                  valueClassName="text-xl font-bold text-[#087F6B]"
                 />
                 <ResultRow
                   label="Total Cashback"
@@ -3219,7 +3251,8 @@ export default function RoiCalculatorPage() {
                 <ResultRow
                   label="Total Savings"
                   value={formatCurrencyDetailed(purchaseCostSummary.developerAbsorbedPurchaseCosts)}
-                  valueClassName="font-bold text-[#087F6B]"
+                  valueClassName="text-lg font-bold text-[#087F6B]"
+                  rowClassName="rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] px-4"
                 />
               </div>
             </section>
@@ -3232,7 +3265,7 @@ export default function RoiCalculatorPage() {
                 {result.processedDiscounts.map((discount) => (
                   <div
                     key={discount.id}
-                    className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                    className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3"
                   >
                     <p className="text-sm font-medium text-zinc-900">
                       {discount.description}
@@ -3245,7 +3278,7 @@ export default function RoiCalculatorPage() {
                 {result.cashBenefits.map((benefit) => (
                   <div
                     key={benefit.id}
-                    className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                    className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3"
                   >
                     <p className="text-sm font-medium text-zinc-900">
                       {benefit.description}
@@ -3263,7 +3296,7 @@ export default function RoiCalculatorPage() {
                 {result.nonCashBenefits.map((benefit) => (
                   <div
                     key={benefit.id}
-                    className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                    className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3"
                   >
                     <p className="text-sm font-medium text-zinc-900">
                       {benefit.description}
@@ -3316,12 +3349,14 @@ export default function RoiCalculatorPage() {
                 <ResultRow
                   label="Total Savings"
                   value={formatCurrencyDetailed(purchaseCostSummary.developerAbsorbedPurchaseCosts)}
-                  valueClassName="font-bold text-[#087F6B]"
+                  valueClassName="text-lg font-bold text-[#087F6B]"
+                  rowClassName="mt-3 rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] px-4"
                 />
                 <ResultRow
                   label="Estimated Total Cash Required"
                   value={formatCurrencyDetailed(result.estimatedTotalCashRequired)}
                   valueClassName="font-bold text-[#8B3A3A]"
+                  rowClassName="mt-2 rounded-2xl border border-[#f0dddd] bg-[#fffdfd] px-4"
                 />
               </div>
             </section>
