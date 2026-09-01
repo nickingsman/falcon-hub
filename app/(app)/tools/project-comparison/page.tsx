@@ -8,6 +8,13 @@ import {
   type ProjectComparisonMetrics,
 } from "@/lib/project-comparison-engine";
 import {
+  generateProjectComparisonInsights,
+  type ComparableRange,
+  type ProjectComparisonInsight,
+  type ProjectComparisonInsightCategory,
+  type ProjectComparisonInsightType,
+} from "@/lib/project-comparison-insights";
+import {
   purchaseCostKeys,
   purchaseCostTreatments,
   type PurchaseCostKey,
@@ -197,6 +204,7 @@ type InvestmentComparisonSummary = {
 
 type ExportSectionId =
   | "quick"
+  | "objective"
   | "ownership"
   | "investment"
   | "overview"
@@ -217,6 +225,7 @@ type PdfTableSection = {
 
 const exportSectionOptions: Array<{ id: ExportSectionId; label: string }> = [
   { id: "quick", label: "Quick Comparison" },
+  { id: "objective", label: "Objective Insights" },
   { id: "ownership", label: "Ownership Cost" },
   { id: "investment", label: "Investment Comparison" },
   { id: "overview", label: "Project Overview" },
@@ -278,6 +287,27 @@ function formatMoneyRange(range: ComparisonRange, suffix = "") {
   if (range.kind === "single") return `${formatCurrency(range.value)}${suffix}`;
 
   return `${formatCurrency(range.from)} – ${formatCurrency(range.to)}${suffix}`;
+}
+
+function comparisonRangeToComparable(
+  range: ComparisonRange,
+  suffix = "",
+): ComparableRange | null {
+  if (range.kind === "unavailable") return null;
+
+  if (range.kind === "single") {
+    return {
+      min: range.value,
+      max: range.value,
+      label: `${formatCurrency(range.value)}${suffix}`,
+    };
+  }
+
+  return {
+    min: Math.min(range.from, range.to),
+    max: Math.max(range.from, range.to),
+    label: `${formatCurrency(range.from)} – ${formatCurrency(range.to)}${suffix}`,
+  };
 }
 
 function formatOptionalMoney(value: number | null) {
@@ -403,6 +433,29 @@ function formatPercentValueRange(range: InvestmentValueRange | null) {
   }
 
   return `${percentageFormatter.format(range.low)}% – ${percentageFormatter.format(range.high)}%`;
+}
+
+function investmentRangeToComparable(
+  range: InvestmentValueRange | null,
+  formatter: (range: InvestmentValueRange) => string,
+): ComparableRange | null {
+  if (!range) return null;
+
+  return {
+    min: Math.min(range.low, range.high),
+    max: Math.max(range.low, range.high),
+    label: formatter(range),
+  };
+}
+
+function numberToComparable(value: number | null, label: string): ComparableRange | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+
+  return {
+    min: value,
+    max: value,
+    label,
+  };
 }
 
 function formatPercentValue(value: number) {
@@ -931,6 +984,66 @@ function renderConnectivityItems(items: ConnectivityPoint[]) {
   );
 }
 
+const insightGroups: Array<{
+  label: string;
+  categories: ProjectComparisonInsightCategory[];
+}> = [
+  { label: "Price & Cost", categories: ["price"] },
+  { label: "Investment", categories: ["investment"] },
+  { label: "Property", categories: ["property"] },
+  { label: "Timeline & Connectivity", categories: ["timeline", "connectivity"] },
+];
+
+function getInsightTypeLabel(type: ProjectComparisonInsightType) {
+  if (type === "clear_advantage") return "Clear Advantage";
+  if (type === "feature_highlight") return "Feature Highlight";
+
+  return "Competitive";
+}
+
+function getInsightTypeClass(type: ProjectComparisonInsightType) {
+  if (type === "clear_advantage") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (type === "feature_highlight") return "border-teal-200 bg-teal-50 text-teal-700";
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function getInsightProjectNames(insight: ProjectComparisonInsight) {
+  const names = [
+    ...new Set(
+      insight.evidence
+        .filter((item) => insight.project_ids.includes(item.project_id))
+        .map((item) => item.project_name),
+    ),
+  ];
+
+  return names.length ? names.join(", ") : "Comparable projects";
+}
+
+function renderInsightEvidence(insight: ProjectComparisonInsight) {
+  return insight.evidence.slice(0, 4).map((item) => (
+    <p key={`${insight.id}-${item.project_id}-${item.value_label}`} className="text-xs text-zinc-500">
+      <span className="font-semibold text-zinc-700">{item.project_name}</span>
+      {": "}
+      {item.value_label}
+    </p>
+  ));
+}
+
+function renderPdfInsightEvidenceRows(insight: ProjectComparisonInsight) {
+  return insight.evidence
+    .slice(0, 4)
+    .map(
+      (item) => `
+        <div class="pdf-insight-value-row">
+          <span>${escapeHtml(item.project_name)}</span>
+          <strong>${escapeHtml(item.value_label)}</strong>
+        </div>
+      `,
+    )
+    .join("");
+}
+
 function getFurnishingSummary(
   unitType: UnitTypeOption,
   commercialPackage: CommercialPackageOption | null,
@@ -1067,15 +1180,69 @@ function renderPdfTable(section: PdfTableSection, comparedOptions: ComparedOptio
   `;
 }
 
+function renderPdfObjectiveInsights(insights: ProjectComparisonInsight[]) {
+  if (!insights.length) return "";
+
+  const groupsHtml = insightGroups
+    .map((group) => {
+      const groupInsights = insights.filter((insight) =>
+        group.categories.includes(insight.category),
+      );
+
+      if (!groupInsights.length) return "";
+
+      return `
+        <div class="pdf-insight-group">
+          <h3>${escapeHtml(group.label)}</h3>
+          <div class="pdf-insight-grid">
+            ${groupInsights
+              .map(
+                (insight) => `
+                  <article class="pdf-insight-card">
+                    <p class="pdf-insight-title">${escapeHtml(insight.title)}</p>
+                    <div class="pdf-insight-values">
+                      ${renderPdfInsightEvidenceRows(insight)}
+                    </div>
+                    <span class="pdf-insight-type">${escapeHtml(getInsightTypeLabel(insight.type))}</span>
+                    ${
+                      insight.explanation
+                        ? `<p class="pdf-insight-explanation">${escapeHtml(insight.explanation)}</p>`
+                        : ""
+                    }
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  if (!groupsHtml.trim()) return "";
+
+  return `
+    <section class="pdf-section pdf-objective-insights">
+      <div class="section-heading">
+        <h2>Objective Insights</h2>
+        <p>Data-driven highlights from the current comparison.</p>
+      </div>
+      ${groupsHtml}
+    </section>
+  `;
+}
+
 function renderPdfSectionGroup(
   sections: PdfTableSection[],
   comparedOptions: ComparedOption[],
   startsNewPage: boolean,
+  leadingHtml = "",
 ) {
-  if (sections.length === 0) return "";
+  if (sections.length === 0 && !leadingHtml.trim()) return "";
 
   return `
     <div class="pdf-section-group${startsNewPage ? " pdf-section-group-new-page" : ""}">
+      ${leadingHtml}
       ${sections.map((section) => renderPdfTable(section, comparedOptions)).join("")}
     </div>
   `;
@@ -1408,12 +1575,14 @@ function buildComparisonProposalHtml({
   activeConnectivityGroups,
   selectedSectionIds,
   agentInsights,
+  objectiveInsights,
 }: {
   comparedOptions: ComparedOption[];
   assumptions: ComparisonAssumptions;
   activeConnectivityGroups: typeof connectivityGroups;
   selectedSectionIds: ExportSectionId[];
   agentInsights: string;
+  objectiveInsights: ProjectComparisonInsight[];
 }) {
   const sections = buildComparisonPdfSections({
     comparedOptions,
@@ -1421,16 +1590,35 @@ function buildComparisonProposalHtml({
     activeConnectivityGroups,
   }).filter((section) => selectedSectionIds.includes(section.id));
   const sectionById = new Map(sections.map((section) => [section.id, section]));
+  const objectiveInsightsHtml = selectedSectionIds.includes("objective")
+    ? renderPdfObjectiveInsights(objectiveInsights)
+    : "";
   const sectionGroups = [
-    ["quick", "investment"],
-    ["ownership"],
-    ["overview", "unit"],
-    ["connectivity"],
-  ].map((group) =>
-    group
-      .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
-      .filter((section): section is PdfTableSection => Boolean(section)),
-  );
+    {
+      leadingHtml: objectiveInsightsHtml,
+      sections: ["quick", "investment"]
+        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
+        .filter((section): section is PdfTableSection => Boolean(section)),
+    },
+    {
+      leadingHtml: "",
+      sections: ["ownership"]
+        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
+        .filter((section): section is PdfTableSection => Boolean(section)),
+    },
+    {
+      leadingHtml: "",
+      sections: ["overview", "unit"]
+        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
+        .filter((section): section is PdfTableSection => Boolean(section)),
+    },
+    {
+      leadingHtml: "",
+      sections: ["connectivity"]
+        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
+        .filter((section): section is PdfTableSection => Boolean(section)),
+    },
+  ].filter((group) => group.leadingHtml.trim() || group.sections.length > 0);
   const generatedDate = formatGeneratedDate();
   const trimmedAgentInsights = agentInsights.trim();
 
@@ -1552,7 +1740,7 @@ function buildComparisonProposalHtml({
           }
 
           .layout-section {
-            margin-top: 14px;
+            margin-top: 12px;
           }
 
           .layout-grid {
@@ -1565,6 +1753,8 @@ function buildComparisonProposalHtml({
           .layout-card {
             border: 1px solid #e4e4e7;
             border-radius: 10px;
+            display: flex;
+            flex-direction: column;
             padding: 8px;
             break-inside: avoid;
             page-break-inside: avoid;
@@ -1584,14 +1774,15 @@ function buildComparisonProposalHtml({
             border: 1px solid #e4e4e7;
             border-radius: 8px;
             display: flex;
+            flex: 1;
             justify-content: center;
-            min-height: ${comparedOptions.length > 2 ? "88px" : "118px"};
+            min-height: ${comparedOptions.length > 2 ? "104px" : "136px"};
             overflow: hidden;
           }
 
           .layout-image {
             display: block;
-            max-height: ${comparedOptions.length > 2 ? "155px" : "205px"};
+            max-height: ${comparedOptions.length > 2 ? "178px" : "230px"};
             max-width: 100%;
             object-fit: contain;
           }
@@ -1674,6 +1865,101 @@ function buildComparisonProposalHtml({
             page-break-before: always;
           }
 
+          .pdf-objective-insights {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+
+          .pdf-insight-group {
+            margin-top: 9px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .pdf-insight-group h3 {
+            border-bottom: 1px solid #e4e4e7;
+            color: #334155;
+            font-size: 9px;
+            letter-spacing: 0.08em;
+            margin: 0 0 6px;
+            padding-bottom: 4px;
+            text-transform: uppercase;
+          }
+
+          .pdf-insight-grid {
+            display: grid;
+            align-items: stretch;
+            gap: 7px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .pdf-insight-card {
+            background: #fafafa;
+            border: 1px solid #e4e4e7;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            min-height: 66px;
+            padding: 8px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+
+          .pdf-insight-title {
+            color: #18181b;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.3;
+            margin: 0;
+          }
+
+          .pdf-insight-values {
+            display: grid;
+            gap: 3px;
+            margin-top: 6px;
+          }
+
+          .pdf-insight-value-row {
+            display: flex;
+            gap: 8px;
+            justify-content: space-between;
+            line-height: 1.25;
+          }
+
+          .pdf-insight-value-row span {
+            color: #334155;
+            font-size: 9px;
+            font-weight: 700;
+          }
+
+          .pdf-insight-value-row strong {
+            color: #0f766e;
+            font-size: 9px;
+            font-weight: 700;
+            text-align: right;
+          }
+
+          .pdf-insight-type {
+            align-self: flex-start;
+            border: 1px solid #d4d4d8;
+            border-radius: 999px;
+            color: #3f3f46;
+            font-size: 7.5px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-top: 6px;
+            padding: 2px 5px;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+
+          .pdf-insight-explanation {
+            color: #52525b;
+            font-size: 8.5px;
+            line-height: 1.4;
+            margin: 5px 0 0;
+          }
+
           .section-heading {
             display: flex;
             align-items: baseline;
@@ -1701,6 +1987,7 @@ function buildComparisonProposalHtml({
             width: 100%;
             border-collapse: collapse;
             font-size: 9.5px;
+            table-layout: fixed;
           }
 
           th,
@@ -1719,7 +2006,7 @@ function buildComparisonProposalHtml({
           }
 
           tbody th {
-            width: 18%;
+            width: 20%;
             background: #f8fafc;
             color: #3f3f46;
             font-size: 8.5px;
@@ -1731,6 +2018,7 @@ function buildComparisonProposalHtml({
             color: #18181b;
             font-weight: 600;
             line-height: 1.35;
+            overflow-wrap: anywhere;
           }
 
           tr {
@@ -1839,7 +2127,12 @@ function buildComparisonProposalHtml({
 
           ${sectionGroups
             .map((group, index) =>
-              renderPdfSectionGroup(group, comparedOptions, index > 0),
+              renderPdfSectionGroup(
+                group.sections,
+                comparedOptions,
+                index > 0,
+                group.leadingHtml,
+              ),
             )
             .join("")}
 
@@ -2205,6 +2498,73 @@ export default function ProjectComparisonPage() {
       })
       .filter((item): item is ComparedOption => Boolean(item));
   }, [assumptions, canCompare, hasCompared, projectOptionsById, selectedSlots]);
+  const objectiveInsights = useMemo(
+    () =>
+      generateProjectComparisonInsights(
+        comparedOptions.map((option) => {
+          const completion =
+            option.project.estimated_vp_year && option.project.estimated_vp_quarter
+              ? {
+                  sortValue:
+                    option.project.estimated_vp_year * 4 + option.project.estimated_vp_quarter,
+                  label: formatEstimatedCompletion(option.project),
+                }
+              : null;
+
+          return {
+            projectId: option.project.id,
+            projectName: option.project.name,
+            finalNetPrice: numberToComparable(
+              option.effectiveComparisonPrice,
+              formatScenarioPrice(option.effectiveComparisonPrice, option.comparisonPriceSource),
+            ),
+            psf: comparisonRangeToComparable(option.unitMetrics.psf, " psf"),
+            monthlyInstalment: comparisonRangeToComparable(
+              option.metrics.estimatedMonthlyInstalment,
+              " / month",
+            ),
+            estimatedCashRequired: numberToComparable(
+              option.ownershipCost.estimatedTotalCashRequired,
+              formatOptionalMoney(option.ownershipCost.estimatedTotalCashRequired),
+            ),
+            estimatedRental: investmentRangeToComparable(getRentalRange(option.unitType), (range) =>
+              range.low === range.high
+                ? formatCurrency(range.low)
+                : `${formatCurrency(range.low)} – ${formatCurrency(range.high)}`,
+            ),
+            netRentalYield: investmentRangeToComparable(
+              option.investment.netRentalYieldPercent,
+              formatPercentValueRange,
+            ),
+            monthlyCashFlow: investmentRangeToComparable(
+              option.investment.monthlyCashFlow,
+              (range) => formatSignedMoneyRangeText(range, " / month"),
+            ),
+            cashOnCashReturn: investmentRangeToComparable(
+              option.investment.cashOnCashReturnPercent,
+              formatPercentValueRange,
+            ),
+            monthlyMaintenance: numberToComparable(
+              option.investment.monthlyMaintenance,
+              formatOptionalMonthlyMoney(option.investment.monthlyMaintenance),
+            ),
+            unitSizeSqft: option.unitType.size_sqft,
+            unitSizeLabel: formatSize(option.unitType.size_sqft),
+            tenure: option.project.tenure,
+            isDualKey: option.unitType.is_dual_key,
+            estimatedCompletion: completion,
+            connectivity: option.connectivity.map((point) => ({
+              category: point.category,
+              name: point.name,
+              distanceMeters: point.distance_meters,
+              connectionMode: point.connection_mode,
+              label: formatConnectivityMeta(point),
+            })),
+          };
+        }),
+      ),
+    [comparedOptions],
+  );
 
   async function loadProjectOptions(slotId: string, projectId: string) {
     if (projectOptionsById[projectId]) return;
@@ -2387,6 +2747,7 @@ export default function ProjectComparisonPage() {
         activeConnectivityGroups,
         selectedSectionIds: selectedExportSections,
         agentInsights,
+        objectiveInsights,
       }),
     );
     proposalWindow.document.close();
@@ -2783,6 +3144,71 @@ export default function ProjectComparisonPage() {
                 placeholder="Add your recommendation, key observations, or notes for the customer..."
                 className="mt-4 min-h-44 w-full resize-y rounded-2xl border border-zinc-200 px-4 py-3 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400"
               />
+            </section>
+
+            <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">Objective Insights</p>
+                <p className="text-sm text-zinc-500">
+                  Data-driven highlights from the current comparison.
+                </p>
+              </div>
+
+              {objectiveInsights.length ? (
+                <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                  {insightGroups.map((group) => {
+                    const groupInsights = objectiveInsights.filter((insight) =>
+                      group.categories.includes(insight.category),
+                    );
+
+                    if (!groupInsights.length) return null;
+
+                    return (
+                      <div key={group.label} className="rounded-2xl border border-zinc-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                          {group.label}
+                        </p>
+                        <div className="mt-3 space-y-3">
+                          {groupInsights.map((insight) => (
+                            <article
+                              key={insight.id}
+                              className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4"
+                            >
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <p className="text-sm font-semibold text-zinc-900">
+                                    {insight.title}
+                                  </p>
+                                  <p className="mt-1 text-xs font-medium text-zinc-500">
+                                    {getInsightProjectNames(insight)}
+                                  </p>
+                                </div>
+                                <span
+                                  className={`w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getInsightTypeClass(insight.type)}`}
+                                >
+                                  {getInsightTypeLabel(insight.type)}
+                                </span>
+                              </div>
+                              <div className="mt-3 space-y-1">
+                                {renderInsightEvidence(insight)}
+                              </div>
+                              {insight.explanation ? (
+                                <p className="mt-3 text-xs leading-5 text-zinc-500">
+                                  {insight.explanation}
+                                </p>
+                              ) : null}
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                  No objective insights available from the current comparison yet.
+                </p>
+              )}
             </section>
 
             <ComparisonTable
