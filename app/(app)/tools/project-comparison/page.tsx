@@ -2,6 +2,12 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  getCustomerPdfBrandingStyles,
+  renderCustomerPdfBranding,
+  renderCustomerPdfWatermark,
+  type CustomerPdfBranding,
+} from "@/lib/customer-pdf-branding";
+import {
   calculateProjectComparisonMetrics,
   type ComparisonAssumptions,
   type ComparisonRange,
@@ -21,6 +27,7 @@ import {
   type PurchaseCostTreatment,
 } from "@/lib/project-comparison-options";
 import { getPurchaseCostEstimates } from "@/lib/purchase-costs";
+import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type ProjectOption = {
   id: string;
@@ -1616,6 +1623,7 @@ function buildComparisonProposalHtml({
   selectedSectionIds,
   agentInsights,
   objectiveInsights,
+  branding,
 }: {
   comparedOptions: ComparedOption[];
   assumptions: ComparisonAssumptions;
@@ -1623,6 +1631,7 @@ function buildComparisonProposalHtml({
   selectedSectionIds: ExportSectionId[];
   agentInsights: string;
   objectiveInsights: ProjectComparisonInsight[];
+  branding: CustomerPdfBranding;
 }) {
   const sections = buildComparisonPdfSections({
     comparedOptions,
@@ -1670,7 +1679,7 @@ function buildComparisonProposalHtml({
         <style>
           @page {
             size: A4 portrait;
-            margin: 10mm;
+            margin: 10mm 10mm 16mm;
           }
 
           * {
@@ -2066,15 +2075,7 @@ function buildComparisonProposalHtml({
             page-break-inside: avoid;
           }
 
-          .footer {
-            border-top: 1px solid #e4e4e7;
-            color: #71717a;
-            display: flex;
-            justify-content: space-between;
-            margin-top: 14px;
-            padding-top: 8px;
-            font-size: 9px;
-          }
+          ${getCustomerPdfBrandingStyles()}
 
           @media screen {
             body {
@@ -2093,6 +2094,7 @@ function buildComparisonProposalHtml({
         </style>
       </head>
       <body>
+        ${renderCustomerPdfWatermark(branding)}
         <template id="agent-insights-source">${escapeHtml(trimmedAgentInsights)}</template>
         <main class="proposal">
           <div class="opening-page">
@@ -2176,10 +2178,7 @@ function buildComparisonProposalHtml({
             )
             .join("")}
 
-          <footer class="footer">
-            <span>Generated with Falcon Hub</span>
-            <span>Figures are estimates and subject to final developer, bank, and documentation confirmation.</span>
-          </footer>
+          ${renderCustomerPdfBranding(branding)}
         </main>
         <script>
           (() => {
@@ -2367,6 +2366,7 @@ function ComparisonTable({
 }
 
 export default function ProjectComparisonPage() {
+  const { displayName, phone } = useAppPermissions();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectOptionsById, setProjectOptionsById] = useState<Record<string, ProjectOptions>>({});
   const [slots, setSlots] = useState<ComparisonSlot[]>(initialSlots);
@@ -2977,6 +2977,10 @@ export default function ProjectComparisonPage() {
         selectedSectionIds: selectedExportSections,
         agentInsights,
         objectiveInsights,
+        branding: {
+          agentName: displayName,
+          agentPhone: phone,
+        },
       }),
     );
     proposalWindow.document.close();

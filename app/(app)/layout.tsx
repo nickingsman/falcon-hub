@@ -8,7 +8,7 @@ import {
   canManageUserApprovals,
   canManageUsers,
 } from "@/lib/permissions";
-import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
 import AppSidebar from "./components/AppSidebar";
 
@@ -43,12 +43,13 @@ export default async function AppLayout({
 
   let memberDisplayName: string | null = null;
   let memberCode: number | null = null;
+  let memberPhone: string | null = null;
 
   if (profile?.member_id) {
-    const supabase = await createSupabaseSsrClient();
+    const supabase = createSupabaseAdminClient();
     const { data: member } = await supabase
       .from("users")
-      .select("full_name, member_code")
+      .select("full_name, member_code, phone")
       .eq("id", profile.member_id)
       .maybeSingle();
 
@@ -57,6 +58,10 @@ export default async function AppLayout({
         ? member.full_name.trim()
         : null;
     memberCode = parseMemberCode(member?.member_code);
+    memberPhone =
+      typeof member?.phone === "string" && member.phone.trim()
+        ? member.phone.trim()
+        : null;
   }
 
   const metadataFullName = authContext?.user.user_metadata?.full_name;
@@ -74,6 +79,7 @@ export default async function AppLayout({
   const permissions = {
     displayName,
     memberCode,
+    phone: memberPhone,
     email: authContext?.user.email ?? null,
     role: profile?.role ?? null,
     isActive: profile?.status === "active",

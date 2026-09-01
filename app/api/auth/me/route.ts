@@ -6,6 +6,7 @@ import {
   canManageUserApprovals,
   canManageUsers,
 } from "@/lib/permissions";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 
 function getMetadataValue(user: User, key: string) {
@@ -54,11 +55,13 @@ export async function GET() {
 
     let memberDisplayName: string | null = null;
     let memberCode: number | null = null;
+    let memberPhone: string | null = null;
 
     if (profile?.member_id) {
-      const { data: member } = await supabase
+      const adminSupabase = createSupabaseAdminClient();
+      const { data: member } = await adminSupabase
         .from("users")
-        .select("full_name, member_code")
+        .select("full_name, member_code, phone")
         .eq("id", profile.member_id)
         .maybeSingle();
 
@@ -67,6 +70,10 @@ export async function GET() {
           ? member.full_name.trim()
           : null;
       memberCode = parseMemberCode(member?.member_code);
+      memberPhone =
+        typeof member?.phone === "string" && member.phone.trim()
+          ? member.phone.trim()
+          : null;
     }
 
     const displayName = memberDisplayName || getFallbackDisplayName(userData.user);
@@ -75,6 +82,7 @@ export async function GET() {
     return NextResponse.json({
       displayName,
       memberCode,
+      phone: memberPhone,
       email: userData.user.email ?? null,
       role: userProfile?.role ?? null,
       status: userProfile?.status ?? null,
@@ -90,6 +98,7 @@ export async function GET() {
     return NextResponse.json({
       displayName: "User",
       memberCode: null,
+      phone: null,
       email: null,
       role: null,
       status: null,

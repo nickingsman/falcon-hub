@@ -2,6 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  getCustomerPdfBrandingStyles,
+  renderCustomerPdfBranding,
+  renderCustomerPdfWatermark,
+  type CustomerPdfBranding,
+} from "@/lib/customer-pdf-branding";
+import {
   calculateRoi,
   type CashBenefitTreatment,
   type DiscountMethod,
@@ -14,7 +20,6 @@ import {
   type PurchaseCostEstimate,
   type PurchaseCostEstimateKey,
 } from "@/lib/purchase-costs";
-import { formatMemberDisplayName } from "@/lib/member-display";
 import {
   normalizeTowerCode,
   parseUnitNumber,
@@ -817,7 +822,7 @@ function buildRoiProposalHtml({
   form,
   numericInput,
   result,
-  preparedBy,
+  branding,
   unitPresentation,
   floorPlanPresentation,
   purchaseCosts,
@@ -831,7 +836,7 @@ function buildRoiProposalHtml({
     otherUpfrontCosts: number;
   };
   result: RoiCalculatorResult;
-  preparedBy: string;
+  branding: CustomerPdfBranding;
   unitPresentation: UnitPresentationSnapshot | null;
   floorPlanPresentation: FloorPlanPresentationSnapshot | null;
   purchaseCosts: ResolvedPurchaseCostItem[];
@@ -1053,7 +1058,7 @@ function buildRoiProposalHtml({
     <meta charset="utf-8" />
     <title>${escapeHtml(projectName)} - ROI Proposal</title>
     <style>
-      @page { size: A4; margin: 10mm; }
+      @page { size: A4; margin: 10mm 10mm 16mm; }
       * { box-sizing: border-box; }
       body {
         margin: 0;
@@ -1068,7 +1073,7 @@ function buildRoiProposalHtml({
         min-height: 297mm;
         margin: 0 auto;
         background: #ffffff;
-        padding: 10mm;
+        padding: 10mm 10mm 15mm;
       }
       .page-break {
         break-before: page;
@@ -1315,33 +1320,13 @@ function buildRoiProposalHtml({
         font-size: 16px;
         line-height: 1.1;
       }
-      .prepared {
-        break-inside: avoid;
-        margin-top: 9px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-top: 1px solid #e4e4e7;
-        padding-top: 8px;
-        font-size: 10px;
-      }
-      .prepared span {
-        display: block;
-        color: #71717a;
-        font-size: 8px;
-      }
-      .prepared strong {
-        display: block;
-        margin-top: 2px;
-        color: #18181b;
-        font-size: 11px;
-      }
       .disclaimer {
         margin: 7px 0 0;
         color: #71717a;
         font-size: 8px;
         line-height: 1.35;
       }
+      ${getCustomerPdfBrandingStyles()}
       .unit-info-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
@@ -1652,10 +1637,6 @@ function buildRoiProposalHtml({
         margin-top: 3px;
         font-size: 14px;
       }
-      .proposal-page-one .prepared {
-        margin-top: 6px;
-        padding-top: 5px;
-      }
       .proposal-page-one .disclaimer {
         margin-top: 4px;
         font-size: 7.4px;
@@ -1688,6 +1669,7 @@ function buildRoiProposalHtml({
     </style>
   </head>
   <body>
+    ${renderCustomerPdfWatermark(branding)}
     <main class="page proposal-page-one">
       <section class="header">
         <div>
@@ -1788,17 +1770,10 @@ function buildRoiProposalHtml({
         </div>
       </section>
 
-      <section class="prepared">
-        <div>
-          <span>Prepared by</span>
-          <strong>${escapeHtml(preparedBy)}</strong>
-        </div>
-        <div class="eyebrow">Customer Proposal</div>
-      </section>
-
       <p class="disclaimer">
         Figures shown are estimates for discussion purposes only. Actual financing, rebates, benefits, package terms, legal costs, and final purchase documentation are subject to bank approval, developer approval, and the signed final documents.
       </p>
+      ${renderCustomerPdfBranding(branding)}
     </main>
     ${proposalPage2}
   </body>
@@ -1875,7 +1850,7 @@ function ResultRow({
 }
 
 export default function RoiCalculatorPage() {
-  const { displayName, memberCode } = useAppPermissions();
+  const { displayName, phone } = useAppPermissions();
   const [form, setForm] = useState<CalculatorForm>({
     projectName: "",
     unitNumber: "",
@@ -2368,10 +2343,10 @@ export default function RoiCalculatorPage() {
         form,
         numericInput,
         result,
-        preparedBy: formatMemberDisplayName({
-          full_name: displayName,
-          member_code: memberCode,
-        }),
+        branding: {
+          agentName: displayName,
+          agentPhone: phone,
+        },
         unitPresentation: freshUnitPresentation,
         floorPlanPresentation: freshFloorPlanPresentation,
         purchaseCosts: resolvedPurchaseCosts,
