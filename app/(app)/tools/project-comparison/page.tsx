@@ -147,6 +147,7 @@ type ComparedOption = {
   comparisonPriceSource: "manual" | "from_price" | "unavailable";
   metrics: ProjectComparisonMetrics;
   ownershipCost: OwnershipCostSummary;
+  investment: InvestmentComparisonSummary;
 };
 
 type OwnershipCostRow = {
@@ -161,6 +162,20 @@ type OwnershipCostSummary = {
   purchaseCosts: OwnershipCostRow[];
   estimatedTotalCashRequired: number | null;
   totalSavings: number | null;
+};
+
+type InvestmentValueRange = {
+  low: number;
+  high: number;
+};
+
+type InvestmentComparisonSummary = {
+  rentalRange: InvestmentValueRange | null;
+  monthlyMaintenance: number | null;
+  monthlyCashFlow: InvestmentValueRange | null;
+  annualCashFlow: InvestmentValueRange | null;
+  netRentalYieldPercent: InvestmentValueRange | null;
+  cashOnCashReturnPercent: InvestmentValueRange | null;
 };
 
 const initialSlots: ComparisonSlot[] = [
@@ -219,6 +234,12 @@ function formatOptionalMoney(value: number | null) {
   return typeof value === "number" && Number.isFinite(value) ? formatCurrency(value) : "—";
 }
 
+function formatOptionalMonthlyMoney(value: number | null) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${formatCurrency(value)} / month`
+    : "—";
+}
+
 function formatStoredPriceRange(from: number | null, to: number | null) {
   if (typeof from !== "number" || !Number.isFinite(from)) {
     return "—";
@@ -251,8 +272,70 @@ function formatScenarioPrice(value: number | null, source: "manual" | "from_pric
   return source === "from_price" ? `${formatCurrency(value)} (from)` : formatCurrency(value);
 }
 
+function formatRentalDisplay(unitType: UnitTypeOption) {
+  const rentalFrom =
+    typeof unitType.estimated_rental_from === "number" &&
+    Number.isFinite(unitType.estimated_rental_from) &&
+    unitType.estimated_rental_from >= 0
+      ? unitType.estimated_rental_from
+      : null;
+  const rentalTo =
+    typeof unitType.estimated_rental_to === "number" &&
+    Number.isFinite(unitType.estimated_rental_to) &&
+    unitType.estimated_rental_to >= 0
+      ? unitType.estimated_rental_to
+      : null;
+
+  if (rentalFrom !== null && rentalTo !== null && rentalTo !== rentalFrom) {
+    return `${formatCurrency(rentalFrom)} – ${formatCurrency(rentalTo)}`;
+  }
+
+  if (rentalFrom !== null) return formatCurrency(rentalFrom);
+  if (rentalTo !== null) return formatCurrency(rentalTo);
+
+  return "—";
+}
+
 function getSingleRangeValue(range: ComparisonRange) {
   return range.kind === "single" ? range.value : null;
+}
+
+function getRentalRange(unitType: UnitTypeOption): InvestmentValueRange | null {
+  const rentalFrom =
+    typeof unitType.estimated_rental_from === "number" &&
+    Number.isFinite(unitType.estimated_rental_from) &&
+    unitType.estimated_rental_from >= 0
+      ? unitType.estimated_rental_from
+      : null;
+  const rentalTo =
+    typeof unitType.estimated_rental_to === "number" &&
+    Number.isFinite(unitType.estimated_rental_to) &&
+    unitType.estimated_rental_to >= 0
+      ? unitType.estimated_rental_to
+      : null;
+
+  if (rentalFrom !== null && rentalTo !== null) {
+    return {
+      low: Math.min(rentalFrom, rentalTo),
+      high: Math.max(rentalFrom, rentalTo),
+    };
+  }
+
+  if (rentalFrom !== null) {
+    return {
+      low: rentalFrom,
+      high: rentalFrom,
+    };
+  }
+
+  if (rentalTo !== null) {
+    return {
+      low: rentalTo,
+      high: rentalTo,
+    };
+  }
+
+  return null;
 }
 
 function formatPercentRange(range: ComparisonRange) {
@@ -260,6 +343,16 @@ function formatPercentRange(range: ComparisonRange) {
   if (range.kind === "single") return `${percentageFormatter.format(range.value)}%`;
 
   return `${percentageFormatter.format(range.from)}% – ${percentageFormatter.format(range.to)}%`;
+}
+
+function formatPercentValueRange(range: InvestmentValueRange | null) {
+  if (!range) return "—";
+
+  if (range.low === range.high) {
+    return `${percentageFormatter.format(range.low)}%`;
+  }
+
+  return `${percentageFormatter.format(range.low)}% – ${percentageFormatter.format(range.high)}%`;
 }
 
 function formatPercentValue(value: number) {
@@ -532,6 +625,67 @@ function calculateOwnershipCost({
   };
 }
 
+function calculateInvestmentComparison({
+  unitType,
+  effectiveFinalNetPrice,
+  estimatedMonthlyInstalment,
+  monthlyMaintenance,
+  estimatedTotalCashRequired,
+}: {
+  unitType: UnitTypeOption;
+  effectiveFinalNetPrice: number | null;
+  estimatedMonthlyInstalment: number | null;
+  monthlyMaintenance: number | null;
+  estimatedTotalCashRequired: number | null;
+}): InvestmentComparisonSummary {
+  const rentalRange = getRentalRange(unitType);
+  const canCalculateCashFlow =
+    rentalRange !== null &&
+    estimatedMonthlyInstalment !== null &&
+    monthlyMaintenance !== null;
+  const monthlyCashFlow = canCalculateCashFlow
+    ? {
+        low: rentalRange.low - estimatedMonthlyInstalment - monthlyMaintenance,
+        high: rentalRange.high - estimatedMonthlyInstalment - monthlyMaintenance,
+      }
+    : null;
+  const annualCashFlow =
+    monthlyCashFlow !== null
+      ? {
+          low: monthlyCashFlow.low * 12,
+          high: monthlyCashFlow.high * 12,
+        }
+      : null;
+  const netRentalYieldPercent =
+    rentalRange !== null &&
+    monthlyMaintenance !== null &&
+    effectiveFinalNetPrice !== null &&
+    effectiveFinalNetPrice > 0
+      ? {
+          low: (((rentalRange.low - monthlyMaintenance) * 12) / effectiveFinalNetPrice) * 100,
+          high: (((rentalRange.high - monthlyMaintenance) * 12) / effectiveFinalNetPrice) * 100,
+        }
+      : null;
+  const cashOnCashReturnPercent =
+    annualCashFlow !== null &&
+    estimatedTotalCashRequired !== null &&
+    estimatedTotalCashRequired > 0
+      ? {
+          low: (annualCashFlow.low / estimatedTotalCashRequired) * 100,
+          high: (annualCashFlow.high / estimatedTotalCashRequired) * 100,
+        }
+      : null;
+
+  return {
+    rentalRange,
+    monthlyMaintenance,
+    monthlyCashFlow,
+    annualCashFlow,
+    netRentalYieldPercent,
+    cashOnCashReturnPercent,
+  };
+}
+
 function formatPurchaseCostTreatment(treatment: PurchaseCostTreatment | null) {
   if (treatment === "customer_pay") return "Customer Pay";
   if (treatment === "developer_absorbed") return "FREE";
@@ -563,6 +717,39 @@ function renderPurchaseCostValue(purchaseCost: OwnershipCostRow) {
       <span className="block text-xs font-semibold uppercase tracking-wide text-zinc-400">
         {formatPurchaseCostTreatment(purchaseCost.treatment)}
       </span>
+    </span>
+  );
+}
+
+function renderSignedMoney(value: number | null, suffix = "") {
+  if (value === null || !Number.isFinite(value)) return "—";
+
+  const colorClass =
+    value > 0 ? "text-emerald-700" : value < 0 ? "text-[#8B3A3A]" : "text-zinc-900";
+
+  return (
+    <span className={`font-semibold ${colorClass}`}>
+      {formatCurrency(value)}
+      {suffix}
+    </span>
+  );
+}
+
+function renderSignedMoneyRange(range: InvestmentValueRange | null, suffix = "") {
+  if (!range) return "—";
+  if (range.low === range.high) return renderSignedMoney(range.low, suffix);
+
+  const colorClass =
+    range.low > 0 && range.high > 0
+      ? "text-emerald-700"
+      : range.low < 0 && range.high < 0
+        ? "text-[#8B3A3A]"
+        : "text-zinc-900";
+
+  return (
+    <span className={`font-semibold ${colorClass}`}>
+      {formatCurrency(range.low)} – {formatCurrency(range.high)}
+      {suffix}
     </span>
   );
 }
@@ -928,6 +1115,16 @@ export default function ProjectComparisonPage() {
           assumptions,
         );
         const loanAmount = getSingleRangeValue(spaScenarioMetrics.loanAmount);
+        const estimatedMonthlyInstalment = getSingleRangeValue(
+          spaScenarioMetrics.estimatedMonthlyInstalment,
+        );
+        const monthlyMaintenance = getSingleRangeValue(finalNetScenarioMetrics.monthlyMaintenance);
+        const ownershipCost = calculateOwnershipCost({
+          commercialPackage,
+          effectiveSpaPrice: effectiveSpaPrice.value,
+          effectiveFinalNetPrice: effectiveComparisonPrice.value,
+          loanAmount,
+        });
 
         return {
           slot,
@@ -945,11 +1142,13 @@ export default function ProjectComparisonPage() {
             loanAmount: spaScenarioMetrics.loanAmount,
             estimatedMonthlyInstalment: spaScenarioMetrics.estimatedMonthlyInstalment,
           },
-          ownershipCost: calculateOwnershipCost({
-            commercialPackage,
-            effectiveSpaPrice: effectiveSpaPrice.value,
+          ownershipCost,
+          investment: calculateInvestmentComparison({
+            unitType,
             effectiveFinalNetPrice: effectiveComparisonPrice.value,
-            loanAmount,
+            estimatedMonthlyInstalment,
+            monthlyMaintenance,
+            estimatedTotalCashRequired: ownershipCost.estimatedTotalCashRequired,
           }),
         };
       })
@@ -1529,6 +1728,52 @@ export default function ProjectComparisonPage() {
                       {formatOptionalMoney(option.ownershipCost.totalSavings)}
                     </span>
                   )),
+                },
+              ]}
+            />
+
+            <ComparisonTable
+              title="Investment Comparison"
+              description="Estimated rental performance and cash returns based on the selected unit and financing scenario."
+              comparedOptions={comparedOptions}
+              rows={[
+                {
+                  label: "Estimated Monthly Rental",
+                  values: comparedOptions.map((option) => formatRentalDisplay(option.unitType)),
+                },
+                {
+                  label: "Monthly Maintenance",
+                  values: comparedOptions.map((option) =>
+                    formatOptionalMonthlyMoney(option.investment.monthlyMaintenance),
+                  ),
+                },
+                {
+                  label: "Estimated Monthly Cash Flow",
+                  values: comparedOptions.map((option) => (
+                    <span key={`${option.slot.id}-monthly-cash-flow`}>
+                      {renderSignedMoneyRange(option.investment.monthlyCashFlow, " / month")}
+                    </span>
+                  )),
+                },
+                {
+                  label: "Estimated Annual Cash Flow",
+                  values: comparedOptions.map((option) => (
+                    <span key={`${option.slot.id}-annual-cash-flow`}>
+                      {renderSignedMoneyRange(option.investment.annualCashFlow)}
+                    </span>
+                  )),
+                },
+                {
+                  label: "Net Rental Yield",
+                  values: comparedOptions.map((option) =>
+                    formatPercentValueRange(option.investment.netRentalYieldPercent),
+                  ),
+                },
+                {
+                  label: "Cash-on-Cash Return (CoC)",
+                  values: comparedOptions.map((option) =>
+                    formatPercentValueRange(option.investment.cashOnCashReturnPercent),
+                  ),
                 },
               ]}
             />
