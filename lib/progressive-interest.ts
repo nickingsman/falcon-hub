@@ -22,8 +22,6 @@ export type ScheduleHStageId =
 export type ProgressiveInterestCalculationStatus =
   | "buyer_equity_stage"
   | "system_estimate"
-  | "manual_override"
-  | "manual_release_required"
   | "not_progressive_interest_stage"
   | "invalid_input";
 
@@ -42,13 +40,13 @@ export type ProgressiveInterestInput = {
   spaPrice: number;
   loanMarginPercent: number;
   annualInterestRatePercent: number;
-  bankReleaseOverridesByStageId?: Partial<Record<ScheduleHStageId, number>>;
 };
 
 export type ProgressiveInterestStageResult = {
   stage: ScheduleHStageDefinition;
   stagePercentage: number;
   stageAmount: number;
+  buyerFundedForStage: number;
   cumulativeSchedulePercentage: number;
   estimatedBankReleaseForStage: number | null;
   cumulativeEstimatedBankDisbursement: number | null;
@@ -216,10 +214,6 @@ function normalizeMoney(value: number) {
   return Math.max(value, 0);
 }
 
-function isStandardNinetyPercentLoan(loanMarginPercent: number) {
-  return Math.abs(loanMarginPercent - 90) < 0.000001;
-}
-
 function getValidationErrors(input: ProgressiveInterestInput) {
   const validationErrors: string[] = [];
 
@@ -239,104 +233,7 @@ function getValidationErrors(input: ProgressiveInterestInput) {
     validationErrors.push("Annual interest rate must be 0 or greater.");
   }
 
-  for (const [stageId, override] of Object.entries(input.bankReleaseOverridesByStageId ?? {})) {
-    if (!scheduleHStages.some((stage) => stage.id === stageId)) {
-      validationErrors.push(`Unknown bank release override stage: ${stageId}.`);
-      continue;
-    }
-
-    if (override !== undefined && (!Number.isFinite(override) || override < 0)) {
-      validationErrors.push("Bank release overrides must be non-negative numbers.");
-    }
-  }
-
   return validationErrors;
-}
-
-function resolveStageBankRelease({
-  input,
-  stage,
-  stageAmount,
-  isValid,
-}: {
-  input: ProgressiveInterestInput;
-  stage: ScheduleHStageDefinition;
-  stageAmount: number;
-  isValid: boolean;
-}) {
-  if (!isValid) {
-    return {
-      amount: null,
-      status: "invalid_input",
-      assumption: "Input values must be valid before estimating progressive interest.",
-    } satisfies {
-      amount: number | null;
-      status: ProgressiveInterestCalculationStatus;
-      assumption: string;
-    };
-  }
-
-  const override = input.bankReleaseOverridesByStageId?.[stage.id];
-
-  if (override !== undefined && Number.isFinite(override) && override >= 0) {
-    return {
-      amount: normalizeMoney(override),
-      status: "manual_override",
-      assumption: "Manual bank release override supplied for this stage.",
-    } satisfies {
-      amount: number | null;
-      status: ProgressiveInterestCalculationStatus;
-      assumption: string;
-    };
-  }
-
-  if (stage.category === "signing") {
-    return {
-      amount: 0,
-      status: "buyer_equity_stage",
-      assumption: "SPA signing 10% is treated as buyer initial payment with no progressive interest.",
-    } satisfies {
-      amount: number | null;
-      status: ProgressiveInterestCalculationStatus;
-      assumption: string;
-    };
-  }
-
-  if (stage.category === "construction") {
-    if (isStandardNinetyPercentLoan(input.loanMarginPercent)) {
-      return {
-        amount: stageAmount,
-        status: "system_estimate",
-        assumption:
-          "System estimate for the locked V1 90% loan reference schedule, excluding the SPA signing 10%.",
-      } satisfies {
-        amount: number | null;
-        status: ProgressiveInterestCalculationStatus;
-        assumption: string;
-      };
-    }
-
-    return {
-      amount: null,
-      status: "manual_release_required",
-      assumption:
-        "Non-90% loan margins require manual bank release confirmation to avoid false precision.",
-    } satisfies {
-      amount: number | null;
-      status: ProgressiveInterestCalculationStatus;
-      assumption: string;
-    };
-  }
-
-  return {
-    amount: null,
-    status: "not_progressive_interest_stage",
-    assumption: "This Schedule H stage is shown for payment-stage context only.",
-  } satisfies {
-    amount: number | null;
-    status: ProgressiveInterestCalculationStatus;
-    assumption: string;
-  };
 }
 
 export function getScheduleHPercentageTotal() {
@@ -358,57 +255,68 @@ export function calculateProgressiveInterest(
   const loanAmount = isValid ? spaPrice * (loanMarginPercent / 100) : 0;
   const buyerEquity = isValid ? Math.max(spaPrice - loanAmount, 0) : 0;
   let cumulativeSchedulePercentage = 0;
+  let cumulativeBuyerFunded = 0;
   let cumulativeBankDisbursement = 0;
-  let cumulativeBankDisbursementIsKnown = true;
 
   const stages = scheduleHStages.map((stage) => {
     cumulativeSchedulePercentage += stage.percentage;
     const stageAmount = spaPrice * (stage.percentage / 100);
-    const bankRelease = resolveStageBankRelease({
-      input,
-      stage,
-      stageAmount,
-      isValid,
-    });
 
-    if (bankRelease.amount === null) {
-      if (constructionStageIds.has(stage.id)) {
-        cumulativeBankDisbursementIsKnown = false;
-      }
-
+    if (!isValid) {
       return {
         stage,
         stagePercentage: stage.percentage,
         stageAmount,
+        buyerFundedForStage: 0,
         cumulativeSchedulePercentage,
         estimatedBankReleaseForStage: null,
         cumulativeEstimatedBankDisbursement: null,
         estimatedMonthlyProgressiveInterest: null,
-        calculationStatus: bankRelease.status,
-        assumption: bankRelease.assumption,
+        calculationStatus: "invalid_input",
+        assumption: "Input values must be valid before estimating progressive interest.",
       } satisfies ProgressiveInterestStageResult;
     }
 
-    cumulativeBankDisbursement += bankRelease.amount;
-    const cappedCumulativeBankDisbursement = Math.min(cumulativeBankDisbursement, loanAmount);
-    const cumulativeEstimatedBankDisbursement = cumulativeBankDisbursementIsKnown
-      ? cappedCumulativeBankDisbursement
-      : null;
+    const remainingBuyerEquityBeforeStage = Math.max(buyerEquity - cumulativeBuyerFunded, 0);
+    const buyerFundedForStage = Math.min(stageAmount, remainingBuyerEquityBeforeStage);
+    const remainingLoanAmount = Math.max(loanAmount - cumulativeBankDisbursement, 0);
+    const estimatedBankReleaseForStage = Math.min(
+      Math.max(stageAmount - buyerFundedForStage, 0),
+      remainingLoanAmount,
+    );
+
+    cumulativeBuyerFunded += buyerFundedForStage;
+    cumulativeBankDisbursement += estimatedBankReleaseForStage;
+
+    const cumulativeEstimatedBankDisbursement = Math.min(cumulativeBankDisbursement, loanAmount);
     const estimatedMonthlyProgressiveInterest =
-      cumulativeEstimatedBankDisbursement === null || stage.category !== "construction"
+      cumulativeEstimatedBankDisbursement <= 0 || stage.category !== "construction"
         ? null
         : cumulativeEstimatedBankDisbursement * (annualInterestRatePercent / 100) / 12;
+    const calculationStatus =
+      stage.category === "construction" && estimatedBankReleaseForStage > 0
+        ? "system_estimate"
+        : stage.category === "construction" || stage.category === "signing"
+          ? "buyer_equity_stage"
+          : "not_progressive_interest_stage";
+    const assumption =
+      calculationStatus === "system_estimate"
+        ? "Automatic estimate using buyer-equity-first funding followed by progressive bank financing."
+        : calculationStatus === "buyer_equity_stage"
+          ? "This stage is funded by the buyer's required equity before progressive bank financing begins."
+          : "This Schedule H stage is shown for payment-stage context only.";
 
     return {
       stage,
       stagePercentage: stage.percentage,
       stageAmount,
+      buyerFundedForStage,
       cumulativeSchedulePercentage,
-      estimatedBankReleaseForStage: bankRelease.amount,
+      estimatedBankReleaseForStage,
       cumulativeEstimatedBankDisbursement,
       estimatedMonthlyProgressiveInterest,
-      calculationStatus: bankRelease.status,
-      assumption: bankRelease.assumption,
+      calculationStatus,
+      assumption,
     } satisfies ProgressiveInterestStageResult;
   });
 

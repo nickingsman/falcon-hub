@@ -1,13 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  getCustomerPdfBrandingStyles,
+  renderCustomerPdfBranding,
+  renderCustomerPdfWatermark,
+  type CustomerPdfBranding,
+} from "@/lib/customer-pdf-branding";
 import { calculateMonthlyInstalment } from "@/lib/property-finance";
 import {
   calculateProgressiveInterest,
   scheduleHStages,
   type ProgressiveInterestStageResult,
+  type ProgressiveInterestResult,
   type ScheduleHStageId,
 } from "@/lib/progressive-interest";
+import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type ProjectOption = {
   id: string;
@@ -36,17 +44,6 @@ const timelineStageIds: TimelineStageId[] = [
   "vp",
 ];
 
-const constructionStageIds: TimelineStageId[] = [
-  "2a",
-  "2b",
-  "2c",
-  "2d",
-  "2e",
-  "2f",
-  "2g",
-  "2h",
-];
-
 const quarterOptions = ["Q1", "Q2", "Q3", "Q4"];
 
 const journeyStageLabels: Record<TimelineStageId, { english: string; chinese: string }> = {
@@ -59,6 +56,21 @@ const journeyStageLabels: Record<TimelineStageId, { english: string; chinese: st
   "2g": { english: "Drainage", chinese: "排水" },
   "2h": { english: "Roads", chinese: "道路" },
   vp: { english: "VP", chinese: "交屋" },
+};
+
+const pdfStageLabels: Record<ScheduleHStageId, { english: string; chinese: string }> = {
+  spa: { english: "Signing", chinese: "签约" },
+  "2a": { english: "Foundation", chinese: "地基工程" },
+  "2b": { english: "Structural Framework", chinese: "主体结构" },
+  "2c": { english: "Walls & Frames", chinese: "墙体及门窗框" },
+  "2d": { english: "M&E / Services", chinese: "水电及管线" },
+  "2e": { english: "Finishes", chinese: "室内外饰面" },
+  "2f": { english: "Sewerage", chinese: "排污系统" },
+  "2g": { english: "Drainage", chinese: "排水系统" },
+  "2h": { english: "Road Works", chinese: "道路工程" },
+  vp: { english: "Vacant Possession", chinese: "正式交屋" },
+  strata: { english: "Strata Title & Transfer", chinese: "分层地契与转让" },
+  stakeholder: { english: "Stakeholder Retention", chinese: "缺陷责任期保留款" },
 };
 
 function createInitialStageTimings() {
@@ -104,6 +116,95 @@ function formatPercent(value: number | null | undefined) {
   return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
 }
 
+function formatSplitPercent(value: number) {
+  if (!Number.isFinite(value)) return "—";
+
+  const rounded = Math.round(value * 10) / 10;
+
+  return `${rounded.toFixed(Math.abs(rounded % 1) < 0.000001 ? 0 : 1)}%`;
+}
+
+function getStageSplit(result: ProgressiveInterestStageResult, spaPrice: number) {
+  const buyerAmount = Number.isFinite(result.buyerFundedForStage)
+    ? result.buyerFundedForStage
+    : 0;
+  const bankAmount =
+    result.estimatedBankReleaseForStage !== null &&
+    Number.isFinite(result.estimatedBankReleaseForStage)
+      ? result.estimatedBankReleaseForStage
+      : 0;
+  const stageAmount = Number.isFinite(result.stageAmount) ? result.stageAmount : 0;
+  const buyerPercent = spaPrice > 0 ? (buyerAmount / spaPrice) * 100 : 0;
+  const bankPercent = spaPrice > 0 ? (bankAmount / spaPrice) * 100 : 0;
+  const buyerStageShare = stageAmount > 0 ? (buyerAmount / stageAmount) * 100 : 0;
+  const bankStageShare = stageAmount > 0 ? (bankAmount / stageAmount) * 100 : 0;
+
+  return {
+    buyerAmount,
+    bankAmount,
+    buyerPercent,
+    bankPercent,
+    buyerStageShare,
+    bankStageShare,
+    isSplit: buyerAmount > 0 && bankAmount > 0,
+  };
+}
+
+function getSplitLabel(result: ProgressiveInterestStageResult, spaPrice: number) {
+  const split = getStageSplit(result, spaPrice);
+
+  return `Buyer ${formatSplitPercent(split.buyerPercent)} · Bank ${formatSplitPercent(split.bankPercent)}`;
+}
+
+function getChineseSplitLabel(result: ProgressiveInterestStageResult, spaPrice: number) {
+  const split = getStageSplit(result, spaPrice);
+
+  return `买家 ${formatSplitPercent(split.buyerPercent)} · 银行 ${formatSplitPercent(split.bankPercent)}`;
+}
+
+function getPdfBankReleaseDisplay(result: ProgressiveInterestStageResult, spaPrice: number) {
+  const split = getStageSplit(result, spaPrice);
+
+  return `
+    <strong>${escapeHtml(formatSplitPercent(split.bankPercent))}</strong>
+    <span>(${escapeHtml(formatCurrency(split.bankAmount))})</span>
+  `;
+}
+
+function PaymentSplit({
+  result,
+  spaPrice,
+}: {
+  result: ProgressiveInterestStageResult;
+  spaPrice: number;
+}) {
+  const split = getStageSplit(result, spaPrice);
+
+  return (
+    <div className="min-w-52">
+      <div className="flex h-2 overflow-hidden rounded-full bg-zinc-100">
+        <div
+          className="bg-zinc-300"
+          style={{ width: `${Math.max(0, Math.min(split.buyerStageShare, 100))}%` }}
+        />
+        <div
+          className="bg-[#087F6B]"
+          style={{ width: `${Math.max(0, Math.min(split.bankStageShare, 100))}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs font-semibold text-zinc-800">
+        {getSplitLabel(result, spaPrice)}
+      </p>
+      <p className="mt-1 text-xs text-zinc-500">
+        {getChineseSplitLabel(result, spaPrice)}
+      </p>
+      <p className="mt-1 text-xs text-zinc-500">
+        Buyer {formatCurrency(split.buyerAmount)} · Bank {formatCurrency(split.bankAmount)}
+      </p>
+    </div>
+  );
+}
+
 function getStageTimingLabel(stageId: ScheduleHStageId, timings: Record<TimelineStageId, StageTiming>) {
   if (stageId === "spa") return "Upon Signing";
   if (!timelineStageIds.includes(stageId as TimelineStageId)) return "—";
@@ -124,10 +225,6 @@ function getProgressiveInterestDisplay(
   }
 
   if (result.stage.category !== "construction") return "—";
-
-  if (result.calculationStatus === "manual_release_required") {
-    return "Custom bank release required";
-  }
 
   return formatCurrencyDetailed(result.estimatedMonthlyProgressiveInterest);
 }
@@ -151,9 +248,512 @@ function getInputStateClass(isInvalid: boolean) {
   return isInvalid ? "border-red-300 bg-red-50" : "border-zinc-200 bg-zinc-50";
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function compactField(label: string, value: string | null | undefined) {
+  if (!value?.trim()) return "";
+
+  return `
+    <div class="compact-field">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `;
+}
+
+function getPdfInterestDisplay(
+  result: ProgressiveInterestStageResult,
+  fullMonthlyInstalment: number | null,
+) {
+  if (result.stage.id === "vp") {
+    return fullMonthlyInstalment === null
+      ? "Full Instalment —"
+      : `Full Instalment ${formatCurrencyDetailed(fullMonthlyInstalment)}/mo`;
+  }
+
+  if (result.stage.category !== "construction") return "—";
+
+  return result.estimatedMonthlyProgressiveInterest === null
+    ? "—"
+    : `${formatCurrencyDetailed(result.estimatedMonthlyProgressiveInterest)}/mo`;
+}
+
+function getPdfDateLabel(stageId: ScheduleHStageId, timings: Record<TimelineStageId, StageTiming>) {
+  if (stageId === "spa") return "Upon Signing / 签约时";
+  if (stageId === "stakeholder") return "8 / 24 months after VP";
+
+  return getStageTimingLabel(stageId, timings);
+}
+
+function printProgressiveInterestProposal(proposalWindow: Window) {
+  proposalWindow.setTimeout(() => {
+    proposalWindow.print();
+  }, 100);
+}
+
+function buildProgressiveInterestProposalHtml({
+  projectName,
+  unitNo,
+  stageTimings,
+  result,
+  fullMonthlyInstalment,
+  peakProgressiveInterest,
+  branding,
+}: {
+  projectName: string;
+  unitNo: string;
+  stageTimings: Record<TimelineStageId, StageTiming>;
+  result: ProgressiveInterestResult;
+  fullMonthlyInstalment: number | null;
+  peakProgressiveInterest: number | null;
+  branding: CustomerPdfBranding;
+}) {
+  const estimatedVp = getStageTimingLabel("vp", stageTimings);
+  const constructionJourneyRows = [
+    timelineStageIds.slice(0, 5),
+    timelineStageIds.slice(5),
+  ];
+  const journeyHtml = constructionJourneyRows
+    .map(
+      (row, rowIndex) => `
+        <div class="journey-row ${rowIndex === 1 ? "journey-row-second" : ""}">
+          ${row
+            .map((stageId) => {
+              const stageResult = result.stages.find((stage) => stage.stage.id === stageId);
+              const label = journeyStageLabels[stageId];
+
+              if (!stageResult) return "";
+
+              return `
+                <article class="journey-node ${stageId === "vp" ? "journey-node-vp" : ""}">
+                  <div class="journey-code">${escapeHtml(stageResult.stage.code)}</div>
+                  <p>${escapeHtml(label.english)}</p>
+                  <span>${escapeHtml(label.chinese)}</span>
+                  <em>${escapeHtml(getStageTimingLabel(stageId, stageTimings))}</em>
+                  <strong>${
+                    stageId === "vp"
+                      ? escapeHtml(formatCurrencyDetailed(fullMonthlyInstalment))
+                      : escapeHtml(
+                          stageResult.estimatedMonthlyProgressiveInterest === null
+                            ? "—"
+                            : formatCurrencyDetailed(stageResult.estimatedMonthlyProgressiveInterest),
+                        )
+                  }</strong>
+                  <small>${stageId === "vp" ? "Full instalment / mo" : "Progressive interest / mo"}</small>
+                </article>
+              `;
+            })
+            .join("")}
+        </div>
+      `,
+    )
+    .join("");
+  const scheduleRows = result.stages
+    .map((stageResult) => {
+      const label = pdfStageLabels[stageResult.stage.id];
+
+      return `
+        <tr>
+          <td class="stage-code">${escapeHtml(stageResult.stage.code)}</td>
+          <td>
+            <strong>${escapeHtml(label.english)}</strong>
+            <span>${escapeHtml(label.chinese)}</span>
+          </td>
+          <td>${escapeHtml(formatPercent(stageResult.stagePercentage))}</td>
+          <td>${escapeHtml(formatCurrency(stageResult.stageAmount))}</td>
+          <td class="bank-release">${getPdfBankReleaseDisplay(stageResult, result.spaPrice)}</td>
+          <td class="interest">${escapeHtml(getPdfInterestDisplay(stageResult, fullMonthlyInstalment))}</td>
+          <td>${escapeHtml(getPdfDateLabel(stageResult.stage.id, stageTimings))}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Progressive Interest Estimate</title>
+    <style>
+      @page { size: A4 portrait; margin: 10mm 10mm 16mm; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #ffffff;
+        color: #18181b;
+        font-family: Arial, Helvetica, sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .page {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 10mm 10mm 15mm;
+        position: relative;
+      }
+      .header {
+        border-bottom: 2px solid #0f766e;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding-bottom: 7px;
+      }
+      .eyebrow {
+        color: #0f766e;
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 0.18em;
+        margin: 0 0 3px;
+        text-transform: uppercase;
+      }
+      h1 {
+        color: #09090b;
+        font-size: 21px;
+        line-height: 1.08;
+        margin: 0;
+        text-transform: uppercase;
+      }
+      .subtitle {
+        color: #71717a;
+        font-size: 9px;
+        font-weight: 700;
+        margin: 4px 0 0;
+      }
+      .project-line {
+        color: #3f3f46;
+        font-size: 10px;
+        font-weight: 700;
+        margin: 4px 0 0;
+      }
+      .compact-fields {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 5px;
+        margin-top: 8px;
+      }
+      .compact-field {
+        border: 1px solid #e4e4e7;
+        border-radius: 8px;
+        min-height: 34px;
+        padding: 5px 6px;
+      }
+      .compact-field span {
+        color: #71717a;
+        display: block;
+        font-size: 6.8px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .compact-field strong {
+        color: #18181b;
+        display: block;
+        font-size: 9px;
+        line-height: 1.15;
+        margin-top: 3px;
+      }
+      .journey {
+        margin-top: 10px;
+      }
+      .section-title {
+        align-items: baseline;
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 6px;
+      }
+      h2 {
+        color: #083f3a;
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        line-height: 1.2;
+        margin: 0;
+        text-transform: uppercase;
+      }
+      .section-title span {
+        color: #71717a;
+        font-size: 8px;
+        font-weight: 700;
+      }
+      .journey-panel {
+        border: 1px solid #b7e6dc;
+        border-radius: 12px;
+        padding: 7px 8px;
+      }
+      .journey-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 7px;
+        position: relative;
+      }
+      .journey-row-second {
+        grid-template-columns: repeat(4, 1fr);
+        margin-top: 7px;
+        padding-left: 20mm;
+      }
+      .journey-row::before {
+        background: #c9d8d5;
+        content: "";
+        height: 1px;
+        left: 8%;
+        position: absolute;
+        right: 8%;
+        top: 15px;
+      }
+      .journey-node {
+        background: #ffffff;
+        border: 1px solid #d4d4d8;
+        border-radius: 10px;
+        min-height: 58px;
+        padding: 5px;
+        position: relative;
+        text-align: center;
+        z-index: 2;
+      }
+      .journey-code {
+        align-items: center;
+        background: #ffffff;
+        border: 1.5px solid #0f766e;
+        border-radius: 999px;
+        color: #0f766e;
+        display: inline-flex;
+        font-size: 7px;
+        font-weight: 800;
+        height: 19px;
+        justify-content: center;
+        min-width: 26px;
+        padding: 0 5px;
+      }
+      .journey-node p {
+        color: #18181b;
+        font-size: 8.4px;
+        font-weight: 800;
+        line-height: 1.08;
+        margin: 3px 0 0;
+      }
+      .journey-node span,
+      .journey-node em,
+      .journey-node small {
+        color: #71717a;
+        display: block;
+        font-size: 7px;
+        font-style: normal;
+        line-height: 1.1;
+        margin-top: 2px;
+      }
+      .journey-node strong {
+        color: #087F6B;
+        display: block;
+        font-size: 10px;
+        line-height: 1.08;
+        margin-top: 3px;
+      }
+      .journey-node-vp {
+        border-color: #0f766e;
+        background: #f1fbf8;
+      }
+      .schedule {
+        margin-top: 8px;
+      }
+      table {
+        border-collapse: collapse;
+        table-layout: fixed;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #e4e4e7;
+        padding: 3.2px 4px;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: #0f766e;
+        color: #ffffff;
+        font-size: 7.1px;
+        font-weight: 800;
+        line-height: 1.1;
+        text-transform: uppercase;
+      }
+      td {
+        color: #18181b;
+        font-size: 7.9px;
+        font-weight: 600;
+        line-height: 1.15;
+      }
+      td span {
+        color: #71717a;
+        display: block;
+        font-size: 7px;
+        font-weight: 500;
+        margin-top: 1px;
+      }
+      .stage-code {
+        color: #09090b;
+        font-weight: 800;
+        width: 12mm;
+      }
+      .bank-release strong {
+        color: #18181b;
+        display: block;
+        font-size: 8px;
+        font-weight: 800;
+        line-height: 1.05;
+      }
+      .bank-release span {
+        color: #71717a;
+        display: block;
+        font-size: 6.7px;
+        font-weight: 700;
+        margin-top: 1px;
+      }
+      .interest {
+        color: #087F6B;
+        font-weight: 800;
+      }
+      .highlights {
+        margin-top: 9px;
+      }
+      .highlight {
+        border: 1px solid #b7e6dc;
+        border-radius: 10px;
+        background: #f1fbf8;
+        display: inline-block;
+        min-width: 72mm;
+        padding: 7px 9px;
+      }
+      .highlight span {
+        color: #087F6B;
+        display: block;
+        font-size: 7.4px;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .highlight strong {
+        color: #087F6B;
+        display: block;
+        font-size: 13px;
+        line-height: 1.1;
+        margin-top: 3px;
+      }
+      .disclaimer {
+        color: #71717a;
+        font-size: 7.4px;
+        line-height: 1.28;
+        margin: 8px 0 0;
+      }
+      .disclaimer strong {
+        color: #3f3f46;
+      }
+      ${getCustomerPdfBrandingStyles()}
+      @media print {
+        body { background: #ffffff; }
+        .page { width: auto; min-height: auto; margin: 0; padding: 0; }
+        tr { break-inside: avoid; page-break-inside: avoid; }
+      }
+    </style>
+  </head>
+  <body>
+    ${renderCustomerPdfWatermark(branding)}
+    <main class="page">
+      <header class="header">
+        <div>
+          <p class="eyebrow">Progressive Interest Estimate</p>
+          <h1>Progressive Interest Estimate</h1>
+          <p class="subtitle">Schedule H · Under Construction Property</p>
+          ${
+            projectName || unitNo
+              ? `<p class="project-line">${escapeHtml(
+                  [projectName, unitNo ? `Unit ${unitNo}` : ""].filter(Boolean).join(" · "),
+                )}</p>`
+              : ""
+          }
+        </div>
+      </header>
+
+      <section class="compact-fields">
+        ${compactField("SPA Price", formatCurrency(result.spaPrice))}
+        ${compactField("Loan Margin", formatPercent(result.loanMarginPercent))}
+        ${compactField("Loan Amount", formatCurrency(result.loanAmount))}
+        ${compactField("Interest Rate", formatPercent(result.annualInterestRatePercent))}
+        ${compactField("Estimated VP", estimatedVp)}
+        ${compactField("Est. Full Instalment", `${formatCurrencyDetailed(fullMonthlyInstalment)}/mo`)}
+      </section>
+
+      <section class="journey">
+        <div class="section-title">
+          <h2>Your Payment Journey / 你的供款时间线</h2>
+          <span>Lower progressive interest → full instalment after VP</span>
+        </div>
+        <div class="journey-panel">${journeyHtml}</div>
+      </section>
+
+      <section class="schedule">
+        <div class="section-title">
+          <h2>Schedule H Breakdown / 建筑阶段明细</h2>
+          <span>Estimated monthly interest by stage</span>
+        </div>
+        <table>
+          <colgroup>
+            <col style="width: 10%;" />
+            <col style="width: 29%;" />
+            <col style="width: 7%;" />
+            <col style="width: 12%;" />
+            <col style="width: 15%;" />
+            <col style="width: 18%;" />
+            <col style="width: 9%;" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Stage</th>
+              <th>Construction Stage / 建筑阶段</th>
+              <th>%</th>
+              <th>Stage Amount</th>
+              <th>Bank Release % / 银行放款 %</th>
+              <th>Est. Progressive Interest</th>
+              <th>Est. Date</th>
+            </tr>
+          </thead>
+          <tbody>${scheduleRows}</tbody>
+        </table>
+      </section>
+
+      <section class="highlights">
+        <div class="highlight">
+          <span>Est. Full Instalment After VP</span>
+          <strong>${escapeHtml(formatCurrencyDetailed(fullMonthlyInstalment))} / month</strong>
+        </div>
+      </section>
+
+      <p class="disclaimer">
+        <strong>Estimate only / 仅供估算.</strong>
+        Estimated bank releases assume the buyer's required equity is used first, followed by
+        progressive bank financing. 预计银行放款以买家先支付所需自付部分，之后才由银行逐步放款为估算基础。
+        Actual progressive interest depends on the actual timing and amount of loan disbursement by
+        the bank, construction progress, applicable interest rate and financing terms.
+        实际 Progressive Interest 将根据银行实际放款时间与金额、建筑进度、适用利率及贷款条件而有所不同。
+      </p>
+
+      ${renderCustomerPdfBranding(branding)}
+    </main>
+  </body>
+</html>`;
+}
+
 export default function ProgressiveInterestPage() {
+  const { displayName, phone } = useAppPermissions();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectsError, setProjectsError] = useState("");
+  const [exportError, setExportError] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [unitNo, setUnitNo] = useState("");
   const [spaPrice, setSpaPrice] = useState("");
@@ -162,9 +762,6 @@ export default function ProgressiveInterestPage() {
   const [loanTenureYears, setLoanTenureYears] = useState("35");
   const [stageTimings, setStageTimings] = useState(createInitialStageTimings);
   const [currentStageId, setCurrentStageId] = useState<TimelineStageId | "">("");
-  const [bankReleaseInputs, setBankReleaseInputs] = useState<
-    Partial<Record<TimelineStageId, string>>
-  >({});
   const [expandedStageIds, setExpandedStageIds] = useState<Set<ScheduleHStageId>>(
     () => new Set(),
   );
@@ -201,38 +798,14 @@ export default function ProgressiveInterestPage() {
     [annualInterestRatePercent, loanMarginPercent, loanTenureYears, spaPrice],
   );
 
-  const isCustomBankRelease = numericInput.loanMarginPercent !== 90;
-  const bankReleaseOverrides = useMemo(() => {
-    if (!isCustomBankRelease) return undefined;
-
-    return constructionStageIds.reduce(
-      (overrides, stageId) => {
-        const value = bankReleaseInputs[stageId];
-
-        if (!value?.trim()) return overrides;
-
-        const parsed = parseNumberInput(value);
-
-        if (Number.isFinite(parsed) && parsed >= 0) {
-          overrides[stageId] = parsed;
-        }
-
-        return overrides;
-      },
-      {} as Partial<Record<ScheduleHStageId, number>>,
-    );
-  }, [bankReleaseInputs, isCustomBankRelease]);
-
   const progressiveResult = useMemo(
     () =>
       calculateProgressiveInterest({
         spaPrice: numericInput.spaPrice,
         loanMarginPercent: numericInput.loanMarginPercent,
         annualInterestRatePercent: numericInput.annualInterestRatePercent,
-        bankReleaseOverridesByStageId: bankReleaseOverrides,
       }),
     [
-      bankReleaseOverrides,
       numericInput.annualInterestRatePercent,
       numericInput.loanMarginPercent,
       numericInput.spaPrice,
@@ -268,15 +841,7 @@ export default function ProgressiveInterestPage() {
     hasCompleteConstructionInterest && knownConstructionInterest.length
       ? Math.max(...knownConstructionInterest)
       : null;
-  const customReleaseTotal = constructionStageIds.reduce((sum, stageId) => {
-    const parsed = parseNumberInput(bankReleaseInputs[stageId] ?? "");
-
-    return Number.isFinite(parsed) && parsed >= 0 ? sum + parsed : sum;
-  }, 0);
-  const customReleaseExceedsLoan =
-    isCustomBankRelease &&
-    progressiveResult.isValid &&
-    customReleaseTotal > progressiveResult.loanAmount;
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const invalidSpaPrice = spaPrice.trim() !== "" && progressiveResult.validationErrors.some(
     (error) => error.startsWith("SPA Price"),
   );
@@ -314,11 +879,40 @@ export default function ProgressiveInterestPage() {
     });
   }
 
-  function updateBankRelease(stageId: TimelineStageId, value: string) {
-    setBankReleaseInputs((current) => ({
-      ...current,
-      [stageId]: value,
-    }));
+  function handleExportPdf() {
+    setExportError("");
+
+    if (!progressiveResult.isValid || fullMonthlyInstalment === null) {
+      setExportError("Complete valid financing inputs before exporting the customer PDF.");
+      return;
+    }
+
+    const proposalWindow = window.open("", "_blank");
+
+    if (!proposalWindow) {
+      window.alert("Please allow pop-ups to preview and export the PDF.");
+      return;
+    }
+
+    proposalWindow.document.open();
+    proposalWindow.document.write(
+      buildProgressiveInterestProposalHtml({
+        projectName: selectedProject?.project_name?.trim() || "",
+        unitNo: unitNo.trim(),
+        stageTimings,
+        result: progressiveResult,
+        fullMonthlyInstalment,
+        peakProgressiveInterest,
+        branding: {
+          agentName: displayName,
+          agentPhone: phone,
+        },
+      }),
+    );
+    proposalWindow.document.close();
+    proposalWindow.focus();
+
+    printProgressiveInterestProposal(proposalWindow);
   }
 
   return (
@@ -336,13 +930,27 @@ export default function ProgressiveInterestPage() {
               Estimate progressive interest throughout the construction period.
             </p>
           </div>
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-            <span className="block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">
-              Structure Total
-            </span>
-            <strong className="mt-1 block text-lg text-zinc-950">100%</strong>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+              <span className="block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">
+                Structure Total
+              </span>
+              <strong className="mt-1 block text-lg text-zinc-950">100%</strong>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportPdf}
+              className="rounded-full bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
+            >
+              Export PDF
+            </button>
           </div>
         </div>
+        {exportError ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-[#FFF9E8] px-4 py-3 text-sm font-medium text-amber-800">
+            {exportError}
+          </div>
+        ) : null}
       </section>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -440,6 +1048,13 @@ export default function ProgressiveInterestPage() {
                 </div>
               </label>
             </div>
+            <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-600">
+              Estimated bank releases assume the buyer&apos;s required equity is used first,
+              followed by progressive bank financing.
+              <span className="mt-1 block">
+                预计银行放款以买家先支付所需自付部分，之后才由银行逐步放款为估算基础。
+              </span>
+            </div>
           </section>
 
           <section className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
@@ -520,59 +1135,6 @@ export default function ProgressiveInterestPage() {
               })}
             </div>
           </section>
-
-          {isCustomBankRelease ? (
-            <section className="rounded-[28px] border border-amber-200 bg-[#FFF9E8] p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <div>
-                <h2 className="text-lg font-semibold text-zinc-950">
-                  Custom Bank Release Required
-                </h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-                  Actual bank disbursement may vary based on financing structure. Enter the estimated
-                  bank release for each construction stage to calculate progressive interest.
-                </p>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-                  需要输入银行预计放款金额。实际银行放款会根据贷款结构而有所不同。请输入各建筑阶段的预计银行放款金额，以计算 Progressive Interest。
-                </p>
-              </div>
-
-              {customReleaseExceedsLoan ? (
-                <div className="mt-4 rounded-2xl border border-amber-300 bg-white px-4 py-3 text-sm font-medium text-amber-800">
-                  Cumulative custom releases exceed the loan amount. Please review the stage release
-                  amounts.
-                </div>
-              ) : null}
-
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                {constructionStageIds.map((stageId) => {
-                  const stage = scheduleHStages.find((item) => item.id === stageId);
-                  const value = bankReleaseInputs[stageId] ?? "";
-                  const parsed = parseNumberInput(value);
-                  const invalid = value.trim() !== "" && (!Number.isFinite(parsed) || parsed < 0);
-
-                  if (!stage) return null;
-
-                  return (
-                    <label key={stage.id} className="block text-sm text-zinc-600">
-                      <span className="mb-1 block font-medium text-zinc-900">
-                        {stage.code} Estimated Bank Release
-                      </span>
-                      <div className={`flex rounded-2xl border ${getInputStateClass(invalid)}`}>
-                        <span className="border-r border-zinc-200 px-3 py-2 text-zinc-500">RM</span>
-                        <input
-                          inputMode="decimal"
-                          value={value}
-                          onChange={(event) => updateBankRelease(stageId, event.target.value)}
-                          placeholder="Release for this stage"
-                          className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
-                        />
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
 
         </div>
 
@@ -719,16 +1281,24 @@ export default function ProgressiveInterestPage() {
             <p className="mt-1 text-sm text-zinc-500">
               Schedule H stage details with bilingual explanations.
             </p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">
+              Schedule H percentage shows the stage billing amount. Progressive Interest is
+              calculated only on the portion released by the bank.
+              <span className="mt-1 block">
+                Schedule H 百分比代表该建筑阶段的付款比例。Progressive Interest
+                只根据银行实际放款的部分计算。
+              </span>
+            </p>
           </div>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-left text-sm">
+            <table className="w-full min-w-[1160px] border-separate border-spacing-0 text-left text-sm">
               <colgroup>
                 <col className="w-20" />
                 <col className="w-[280px]" />
                 <col className="w-20" />
                 <col className="w-40" />
-                <col className="w-44" />
+                <col className="w-60" />
                 <col className="w-56" />
                 <col className="w-32" />
               </colgroup>
@@ -747,7 +1317,7 @@ export default function ProgressiveInterestPage() {
                     Stage Amount
                   </th>
                   <th className="border-b border-zinc-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                    Est. Bank Release
+                    Payment Split / 付款分配
                   </th>
                   <th className="border-b border-zinc-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-[#087F6B]">
                     Est. Progressive Interest
@@ -798,11 +1368,8 @@ export default function ProgressiveInterestPage() {
                       <td className="border-b border-zinc-100 px-4 py-4 font-medium text-zinc-900">
                         {formatCurrency(result.stageAmount)}
                       </td>
-                      <td className="border-b border-zinc-100 px-4 py-4 font-medium text-zinc-900">
-                        {formatCurrency(result.estimatedBankReleaseForStage)}
-                        {result.calculationStatus === "manual_release_required" ? (
-                          <p className="mt-1 text-xs text-amber-700">Manual release required</p>
-                        ) : null}
+                      <td className="border-b border-zinc-100 px-4 py-4">
+                        <PaymentSplit result={result} spaPrice={progressiveResult.spaPrice} />
                       </td>
                       <td className="border-b border-zinc-100 px-4 py-4 text-base font-semibold text-[#087F6B]">
                         {getProgressiveInterestDisplay(result, fullMonthlyInstalment)}
