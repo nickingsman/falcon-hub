@@ -8,11 +8,16 @@ import {
 } from "@/lib/dsi";
 import {
   getMalaysiaTodayDateString,
+  getMalaysiaThisMonthRange,
+  getMalaysiaThisWeekRange,
+  getMalaysiaLastWeekRange,
   getMalaysiaYesterdayDateString,
 } from "@/lib/malaysia-date";
 
+type DsiView = "entry" | "history";
 type DsiDay = "today" | "yesterday";
 type DsiStatus = "loading" | "not_submitted" | "submitted" | "error";
+type HistoryPreset = "this_week" | "last_week" | "this_month" | "custom";
 
 type DsiApiEntry = {
   activityDate: string;
@@ -25,6 +30,13 @@ type DsiApiResponse = {
   status: "not_submitted" | "submitted";
   activityDate: string;
   entry: DsiApiEntry | null;
+};
+
+type DsiHistoryResponse = {
+  from: string;
+  to: string;
+  dates: string[];
+  entries: DsiApiEntry[];
 };
 
 const activityLabels: Record<
@@ -71,6 +83,29 @@ const activityGroups: Array<{
   },
 ];
 
+const funnelFields: DsiActivityField[] = [
+  "new_leads_contact",
+  "appointment_made",
+  "turn_up_appt",
+  "presented",
+  "unit_closed",
+  "unit_sold",
+  "unit_converted",
+];
+
+const funnelRates = [
+  { label: "Appointment Rate", numerator: "appointment_made", denominator: "new_leads_contact" },
+  { label: "Turn Up Rate", numerator: "turn_up_appt", denominator: "appointment_made" },
+  { label: "Presentation Rate", numerator: "presented", denominator: "turn_up_appt" },
+  { label: "Closing Rate", numerator: "unit_closed", denominator: "presented" },
+  { label: "Sold Rate", numerator: "unit_sold", denominator: "unit_closed" },
+  { label: "Converted Rate", numerator: "unit_converted", denominator: "unit_sold" },
+] satisfies Array<{
+  label: string;
+  numerator: DsiActivityField;
+  denominator: DsiActivityField;
+}>;
+
 function createZeroCounts(): DsiActivityCounts {
   return Object.fromEntries(dsiActivityFields.map((field) => [field, 0])) as DsiActivityCounts;
 }
@@ -95,6 +130,16 @@ function formatHeaderDate(value: string) {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function formatShortDate(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  return new Intl.DateTimeFormat("en-MY", {
+    day: "numeric",
+    month: "short",
     timeZone: "UTC",
   }).format(date);
 }
@@ -124,7 +169,37 @@ function parseCountInput(value: string) {
   return parsed;
 }
 
+function getPresetRange(preset: HistoryPreset) {
+  if (preset === "last_week") return getMalaysiaLastWeekRange();
+  if (preset === "this_month") return getMalaysiaThisMonthRange();
+
+  return getMalaysiaThisWeekRange();
+}
+
+function calculateTotals(entries: DsiApiEntry[]) {
+  const totals = createZeroCounts();
+
+  for (const entry of entries) {
+    for (const field of dsiActivityFields) {
+      totals[field] += entry.activities[field];
+    }
+  }
+
+  return totals;
+}
+
+function formatRate(numerator: number, denominator: number) {
+  if (denominator === 0) return "—";
+
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+function getFunnelRateAfterStage(index: number) {
+  return funnelRates[index] ?? null;
+}
+
 export default function DsiPage() {
+  const [activeView, setActiveView] = useState<DsiView>("entry");
   const [selectedDay, setSelectedDay] = useState<DsiDay>("today");
   const [status, setStatus] = useState<DsiStatus>("loading");
   const [counts, setCounts] = useState<DsiActivityCounts>(() => createZeroCounts());
@@ -135,7 +210,14 @@ export default function DsiPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [historyPreset, setHistoryPreset] = useState<HistoryPreset>("this_week");
+  const [customFrom, setCustomFrom] = useState(getPresetRange("this_week").from);
+  const [customTo, setCustomTo] = useState(getPresetRange("this_week").to);
+  const [historyResponse, setHistoryResponse] = useState<DsiHistoryResponse | null>(null);
+  const [historyError, setHistoryError] = useState("");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const requestIdRef = useRef(0);
+  const historyRequestIdRef = useRef(0);
 
   const activityDate = useMemo(() => getActivityDate(selectedDay), [selectedDay]);
   const isSubmitted = status === "submitted";
@@ -149,6 +231,20 @@ export default function DsiPage() {
     selectedDay === "today" ? "Today's" : "Yesterday's"
   } DSI`;
   const updatedTime = formatMalaysiaTime(updatedAt);
+  const selectedHistoryRange =
+    historyPreset === "custom"
+      ? { from: customFrom, to: customTo }
+      : getPresetRange(historyPreset);
+  const historyEntries = historyResponse?.entries ?? [];
+  const historyTotals = useMemo(() => calculateTotals(historyEntries), [historyEntries]);
+  const submittedDates = useMemo(
+    () => new Set(historyEntries.map((entry) => entry.activityDate)),
+    [historyEntries],
+  );
+  const entriesByDate = useMemo(
+    () => new Map(historyEntries.map((entry) => [entry.activityDate, entry])),
+    [historyEntries],
+  );
 
   const loadDsi = useCallback(async (day: DsiDay) => {
     const currentRequestId = requestIdRef.current + 1;
@@ -192,6 +288,39 @@ export default function DsiPage() {
     }
   }, []);
 
+  const loadHistory = useCallback(async (from: string, to: string) => {
+    const currentRequestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = currentRequestId;
+
+    setIsLoadingHistory(true);
+    setHistoryError("");
+
+    try {
+      const params = new URLSearchParams({ from, to });
+      const response = await fetch(`/api/dsi/history?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const result = (await response.json()) as DsiHistoryResponse & { error?: string };
+
+      if (historyRequestIdRef.current !== currentRequestId) return;
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load DSI history");
+      }
+
+      setHistoryResponse(result);
+    } catch (error) {
+      if (historyRequestIdRef.current !== currentRequestId) return;
+
+      setHistoryResponse(null);
+      setHistoryError(error instanceof Error ? error.message : "Unable to load DSI history");
+    } finally {
+      if (historyRequestIdRef.current === currentRequestId) {
+        setIsLoadingHistory(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadDsi(selectedDay);
@@ -199,6 +328,16 @@ export default function DsiPage() {
 
     return () => window.clearTimeout(timeoutId);
   }, [loadDsi, selectedDay]);
+
+  useEffect(() => {
+    if (activeView !== "history") return;
+
+    const timeoutId = window.setTimeout(() => {
+      void loadHistory(selectedHistoryRange.from, selectedHistoryRange.to);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [activeView, loadHistory, selectedHistoryRange.from, selectedHistoryRange.to]);
 
   function updateCount(field: DsiActivityField, nextValue: number) {
     setSuccessMessage("");
@@ -254,6 +393,26 @@ export default function DsiPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+      <div className="mb-4 inline-flex rounded-full border border-zinc-200 bg-white p-1">
+        {([
+          { id: "entry", label: "Daily Entry" },
+          { id: "history", label: "My DSI" },
+        ] as const).map((view) => (
+          <button
+            key={view.id}
+            type="button"
+            onClick={() => setActiveView(view.id)}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeView === view.id
+                ? "bg-zinc-900 text-white shadow-sm"
+                : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
+            }`}
+          >
+            {view.label}
+          </button>
+        ))}
+      </div>
+
       <section className="rounded-[28px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -261,12 +420,15 @@ export default function DsiPage() {
               Daily Sales Index
             </p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950 sm:text-3xl">
-              {formatHeaderDate(activityDate)}
+              {activeView === "entry" ? formatHeaderDate(activityDate) : "My DSI"}
             </h1>
             <p className="mt-2 text-sm text-zinc-600">
-              Keep your daily sales activity updated.
+              {activeView === "entry"
+                ? "Keep your daily sales activity updated."
+                : "Review your own activity totals and submission history."}
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {activeView === "entry" ? (
+              <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
               <span
                 className={`font-semibold ${
                   isSubmitted
@@ -290,10 +452,12 @@ export default function DsiPage() {
                   <span className="font-medium text-[#9A6B1F]">Unsaved changes</span>
                 </>
               ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
 
-          <div className="inline-flex rounded-full border border-zinc-200 bg-zinc-50 p-1">
+          {activeView === "entry" ? (
+            <div className="inline-flex rounded-full border border-zinc-200 bg-zinc-50 p-1">
             {(["today", "yesterday"] as const).map((day) => (
               <button
                 key={day}
@@ -309,7 +473,8 @@ export default function DsiPage() {
                 {day === "today" ? "Today" : "Yesterday"}
               </button>
             ))}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {errorMessage ? (
@@ -325,6 +490,8 @@ export default function DsiPage() {
         ) : null}
       </section>
 
+      {activeView === "entry" ? (
+        <>
       <section className="mt-4 space-y-3 pb-32 sm:pb-0">
         {activityGroups.map((group) => (
           <div
@@ -411,6 +578,220 @@ export default function DsiPage() {
           </button>
         </div>
       </div>
+        </>
+      ) : (
+        <section className="mt-4 space-y-4">
+          <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">Date Range</p>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Maximum 90 calendar days per request.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:flex">
+                {([
+                  { id: "this_week", label: "This Week" },
+                  { id: "last_week", label: "Last Week" },
+                  { id: "this_month", label: "This Month" },
+                  { id: "custom", label: "Custom Range" },
+                ] as const).map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setHistoryPreset(preset.id)}
+                    className={`rounded-full border px-3 py-2 text-sm font-medium transition ${
+                      historyPreset === preset.id
+                        ? "border-zinc-900 bg-zinc-900 text-white"
+                        : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {historyPreset === "custom" ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-zinc-700">
+                  From
+                  <input
+                    type="date"
+                    value={customFrom}
+                    max={getMalaysiaTodayDateString()}
+                    onChange={(event) => setCustomFrom(event.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+                  />
+                </label>
+                <label className="text-sm font-medium text-zinc-700">
+                  To
+                  <input
+                    type="date"
+                    value={customTo}
+                    max={getMalaysiaTodayDateString()}
+                    onChange={(event) => setCustomTo(event.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <p className="mt-4 text-sm text-zinc-600">
+              {formatHeaderDate(selectedHistoryRange.from)} to{" "}
+              {formatHeaderDate(selectedHistoryRange.to)}
+            </p>
+          </div>
+
+          {historyError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {historyError}
+            </div>
+          ) : null}
+
+          <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  DSI Submission
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">Selected period</p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-semibold text-zinc-950">
+                  {isLoadingHistory || !historyResponse
+                    ? "..."
+                    : `${submittedDates.size} / ${historyResponse.dates.length}`}
+                </p>
+                {!isLoadingHistory && historyResponse ? (
+                  <p className="mt-1 text-sm text-zinc-500">days submitted</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Activity Summary
+            </h2>
+            {isLoadingHistory ? (
+              <p className="mt-4 text-sm text-zinc-500">Loading My DSI...</p>
+            ) : historyEntries.length === 0 ? (
+              <p className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                No DSI submitted in this range.
+              </p>
+            ) : (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {activityGroups.map((group) => (
+                  <div key={group.title} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                      {group.title}
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {group.fields.map((field) => (
+                        <div key={field} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-zinc-600">{activityLabels[field].label}</span>
+                          <span className="font-semibold text-zinc-950">{historyTotals[field]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Sales Funnel
+            </h2>
+            <div className="mt-4 space-y-1.5">
+              {funnelFields.map((field, index) => {
+                const rate = getFunnelRateAfterStage(index);
+
+                return (
+                  <div key={field}>
+                    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5">
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-sm text-zinc-600">{activityLabels[field].label}</p>
+                        <p className="text-xl font-semibold text-zinc-950">
+                          {historyTotals[field]}
+                        </p>
+                      </div>
+                    </div>
+                    {rate ? (
+                      <div className="flex items-center justify-center gap-2 py-1 text-sm text-zinc-500">
+                        <span aria-hidden="true">↓</span>
+                        <span className="font-semibold text-zinc-700">
+                          {formatRate(
+                            historyTotals[rate.numerator],
+                            historyTotals[rate.denominator],
+                          )}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Daily History
+            </h2>
+            <div className="mt-4 space-y-3">
+              {(historyResponse?.dates ?? []).map((date) => {
+                const entry = entriesByDate.get(date);
+
+                return (
+                  <details
+                    key={date}
+                    className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3"
+                  >
+                    <summary className="cursor-pointer list-none">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-zinc-900">{formatShortDate(date)}</p>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {entry ? "Submitted" : "Not Submitted"}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 text-center sm:grid-cols-7">
+                          {funnelFields.map((field) => (
+                            <div key={field}>
+                              <p className="text-xs text-zinc-500">
+                                {activityLabels[field].label
+                                  .replace("New Leads Contact", "Leads")
+                                  .replace("Appointment Made", "Appt")
+                                  .replace("Turn Up Appt", "Turn Up")
+                                  .replace("Unit ", "")}
+                              </p>
+                              <p className="text-sm font-semibold text-zinc-950">
+                                {entry ? entry.activities[field] : "—"}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </summary>
+                    <div className="mt-3 grid gap-2 border-t border-zinc-200 pt-3 sm:grid-cols-2">
+                      {dsiActivityFields.map((field) => (
+                        <div key={field} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-zinc-600">{activityLabels[field].label}</span>
+                          <span className="font-semibold text-zinc-950">
+                            {entry ? entry.activities[field] : "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

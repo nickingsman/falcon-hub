@@ -22,6 +22,41 @@ function formatDateParts(year: number, month: number, day: number) {
     .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
 }
 
+function parseDateString(value: string) {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+export function addCalendarDays(value: string, days: number) {
+  const date = parseDateString(value);
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return formatDateParts(
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    date.getUTCDate(),
+  );
+}
+
+export function getInclusiveDateRange(from: string, to: string) {
+  const dates: string[] = [];
+  let current = from;
+
+  while (current <= to) {
+    dates.push(current);
+    current = addCalendarDays(current, 1);
+  }
+
+  return dates;
+}
+
+export function getInclusiveDayCount(from: string, to: string) {
+  const fromDate = parseDateString(from);
+  const toDate = parseDateString(to);
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+  return Math.floor((toDate.getTime() - fromDate.getTime()) / millisecondsPerDay) + 1;
+}
+
 export function getMalaysiaTodayDateString() {
   const { year, month, day } = getMalaysiaDateParts();
 
@@ -46,4 +81,32 @@ export function isValidDateString(value: string) {
   const parsed = new Date(`${value}T00:00:00.000Z`);
 
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+export function getMalaysiaThisWeekRange() {
+  const today = getMalaysiaTodayDateString();
+  const date = parseDateString(today);
+  const dayOfWeek = date.getUTCDay();
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const from = addCalendarDays(today, -daysFromMonday);
+
+  return { from, to: today };
+}
+
+export function getMalaysiaLastWeekRange() {
+  const { from: thisWeekFrom } = getMalaysiaThisWeekRange();
+  const from = addCalendarDays(thisWeekFrom, -7);
+  const to = addCalendarDays(thisWeekFrom, -1);
+
+  return { from, to };
+}
+
+export function getMalaysiaThisMonthRange() {
+  const today = getMalaysiaTodayDateString();
+  const { year, month } = getMalaysiaDateParts();
+
+  return {
+    from: formatDateParts(year, month, 1),
+    to: today,
+  };
 }

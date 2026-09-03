@@ -7,6 +7,8 @@ import {
 } from "@/lib/dsi";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import {
+  getInclusiveDateRange,
+  getInclusiveDayCount,
   getMalaysiaTodayDateString,
   getMalaysiaYesterdayDateString,
   isValidDateString,
@@ -108,6 +110,30 @@ function validateWritableDate(activityDate: string) {
   }
 
   return "Only today and yesterday can be submitted";
+}
+
+function validateHistoryRange(from: string | null, to: string | null) {
+  if (!from || !to) {
+    return "From and To dates are required";
+  }
+
+  if (!isValidDateString(from) || !isValidDateString(to)) {
+    return "Dates must use YYYY-MM-DD format";
+  }
+
+  if (from > to) {
+    return "From date must be before or equal to To date";
+  }
+
+  if (to > getMalaysiaTodayDateString()) {
+    return "Future DSI dates cannot be requested";
+  }
+
+  if (getInclusiveDayCount(from, to) > 90) {
+    return "DSI history range cannot exceed 90 days";
+  }
+
+  return null;
 }
 
 export async function getOwnDsiForDate(activityDate: string) {
@@ -263,5 +289,53 @@ export async function upsertOwnDsiForDate(request: Request, activityDate: string
     }
 
     return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function getOwnDsiHistory(request: Request) {
+  const url = new URL(request.url);
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const rangeError = validateHistoryRange(from, to);
+
+  if (rangeError) {
+    return badRequest(rangeError);
+  }
+
+  const authorization = await requireOwnDsiAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from("daily_sales_index_entries")
+      .select(dsiSelectFields)
+      .eq("member_id", authorization.context.memberId)
+      .gte("activity_date", from as string)
+      .lte("activity_date", to as string)
+      .order("activity_date", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data ?? []) as DsiEntryRow[];
+
+    return NextResponse.json({
+      from,
+      to,
+      dates: getInclusiveDateRange(from as string, to as string),
+      entries: rows.map(toSafeDsiEntry),
+    });
+  } catch (error) {
+    console.error("GET own DSI history error:", error);
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to load DSI history" },
+      { status: 500 },
+    );
   }
 }
