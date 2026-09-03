@@ -14,7 +14,7 @@ const sidebarItems = [
   { label: "DSR Calculator", href: "#" },
   { label: "Proposal Generator", href: "#" },
   { label: "Check In", href: "#" },
-  { label: "DSI", href: "#" },
+  { label: "DSI", href: "/dsi" },
   {
     label: "Team",
     href: "#",
@@ -59,6 +59,10 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 
   if (item.label === "Progressive Interest") {
     return pathname === "/tools/progressive-interest";
+  }
+
+  if (item.label === "DSI") {
+    return pathname === "/dsi";
   }
 
   return false;
