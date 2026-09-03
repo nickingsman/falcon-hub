@@ -6,6 +6,7 @@ import {
   type DsiEntryRow,
 } from "@/lib/dsi";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
+import type { UserProfile } from "@/lib/auth";
 import {
   getInclusiveDateRange,
   getInclusiveDayCount,
@@ -13,11 +14,28 @@ import {
   getMalaysiaYesterdayDateString,
   isValidDateString,
 } from "@/lib/malaysia-date";
+import {
+  getActiveMemberCount,
+  getScopedHierarchyMembers,
+  type HierarchyMember,
+} from "@/lib/member-hierarchy";
+import { canManageMembers } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 type DsiAuthContext = {
   userId: string;
   memberId: string;
+};
+
+type TeamDsiMemberRow = HierarchyMember & {
+  member_code: number | null;
+  full_name: string | null;
+  position: string | null;
+};
+
+type TeamDsiAuthContext = {
+  userId: string;
+  profile: UserProfile;
 };
 
 function unauthorized() {
@@ -80,6 +98,37 @@ async function requireOwnDsiAccess(): Promise<
   };
 }
 
+async function requireTeamDsiAccess(): Promise<
+  | { authorized: true; context: TeamDsiAuthContext }
+  | { authorized: false; response: NextResponse }
+> {
+  const authContext = await getAuthenticatedUserProfile();
+
+  if (!authContext) {
+    return { authorized: false, response: unauthorized() };
+  }
+
+  if (!authContext.profile || authContext.profile.status !== "active") {
+    return { authorized: false, response: forbidden() };
+  }
+
+  if (authContext.profile.role === "agent") {
+    return { authorized: false, response: forbidden("Team DSI is not available for this role") };
+  }
+
+  if (authContext.profile.role === "leader" && !authContext.profile.member_id) {
+    return { authorized: false, response: forbidden("Linked member profile is required") };
+  }
+
+  return {
+    authorized: true,
+    context: {
+      userId: authContext.user.id,
+      profile: authContext.profile,
+    },
+  };
+}
+
 function toSafeDsiEntry(row: DsiEntryRow) {
   return {
     id: row.id,
@@ -134,6 +183,20 @@ function validateHistoryRange(from: string | null, to: string | null) {
   }
 
   return null;
+}
+
+function toSafeTeamDsiEntry(row: DsiEntryRow) {
+  return {
+    id: row.id,
+    memberId: row.member_id,
+    activityDate: row.activity_date,
+    activities: Object.fromEntries(
+      dsiActivityFields.map((field) => [field, row[field]]),
+    ),
+    submittedAt: row.submitted_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 export async function getOwnDsiForDate(activityDate: string) {
@@ -335,6 +398,87 @@ export async function getOwnDsiHistory(request: Request) {
 
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unable to load DSI history" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function getTeamDsiHistory(request: Request) {
+  const url = new URL(request.url);
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const rangeError = validateHistoryRange(from, to);
+
+  if (rangeError) {
+    return badRequest(rangeError);
+  }
+
+  const authorization = await requireTeamDsiAccess();
+
+  if (!authorization.authorized) {
+    return authorization.response;
+  }
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: memberRows, error: memberError } = await supabase
+      .from("users")
+      .select("id, member_code, full_name, position, leader_id, status")
+      .eq("is_deleted", false)
+      .eq("status", "Active")
+      .order("full_name", { ascending: true });
+
+    if (memberError) {
+      throw memberError;
+    }
+
+    const activeMembers = (memberRows ?? []) as TeamDsiMemberRow[];
+    const visibleMembers = canManageMembers(authorization.context.profile)
+      ? activeMembers
+      : getScopedHierarchyMembers(
+          activeMembers,
+          authorization.context.profile.member_id as string,
+        );
+    const memberIds = visibleMembers.map((member) => member.id);
+    const { data: dsiRows, error: dsiError } = memberIds.length
+      ? await supabase
+          .from("daily_sales_index_entries")
+          .select(dsiSelectFields)
+          .in("member_id", memberIds)
+          .gte("activity_date", from as string)
+          .lte("activity_date", to as string)
+          .order("activity_date", { ascending: true })
+      : { data: [], error: null };
+
+    if (dsiError) {
+      throw dsiError;
+    }
+
+    const dates = getInclusiveDateRange(from as string, to as string);
+
+    return NextResponse.json({
+      from,
+      to,
+      dates,
+      members: visibleMembers.map((member) => ({
+        id: member.id,
+        memberCode: member.member_code,
+        fullName: member.full_name || "Unnamed member",
+        position: member.position,
+        leaderId: member.leader_id,
+      })),
+      summary: {
+        teamMembers: visibleMembers.length,
+        expectedMemberDays: visibleMembers.length * dates.length,
+        activeMembers: getActiveMemberCount(visibleMembers),
+      },
+      entries: ((dsiRows ?? []) as DsiEntryRow[]).map(toSafeTeamDsiEntry),
+    });
+  } catch (error) {
+    console.error("GET team DSI history error:", error);
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unable to load Team DSI" },
       { status: 500 },
     );
   }
