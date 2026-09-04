@@ -89,6 +89,7 @@ export default function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { displayName, role, canManageUserApprovals, canManageUsers } = useAppPermissions();
+  const canViewAttendance = role === "super_admin" || role === "admin" || role === "leader";
   const visibleSidebarItems = sidebarItems.map((item) => {
     if (item.label !== "Team") {
       return item;
@@ -102,6 +103,9 @@ export default function AppSidebar() {
 
           return true;
         })),
+        ...(canViewAttendance
+          ? [{ label: "Attendance", href: "/team/attendance" }]
+          : []),
         ...(canManageUserApprovals
           ? [{ label: "User Approvals", href: "/team/user-approvals" }]
           : []),
