@@ -44,6 +44,8 @@ type AgentDashboardResponse = {
 
 type LoadStatus = "loading" | "ready" | "error";
 
+const introSessionKey = "falcon-hub:intro-played";
+
 const quickTools = [
   {
     title: "ROI Calculator",
@@ -188,10 +190,93 @@ function LoadingDashboard() {
   );
 }
 
+function FalconIntroOverlay({
+  isExiting,
+  onSkip,
+}: {
+  isExiting: boolean;
+  onSkip: () => void;
+}) {
+  return (
+    <div
+      className={`fixed inset-0 z-50 flex min-h-dvh items-center justify-center bg-zinc-950 px-6 text-white transition-opacity duration-500 ${
+        isExiting ? "opacity-0" : "opacity-100"
+      }`}
+      aria-label="Falcon Hub intro"
+    >
+      <style>{`
+        @keyframes falconIntroMark {
+          0% { opacity: 0; transform: translateY(8px) scale(0.985); }
+          24% { opacity: 1; transform: translateY(0) scale(1); }
+          86% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @keyframes falconIntroLine {
+          0% { transform: scaleX(0); opacity: 0; }
+          20% { transform: scaleX(0); opacity: 0; }
+          44% { transform: scaleX(1); opacity: 1; }
+          86% { transform: scaleX(1); opacity: 1; }
+          100% { transform: scaleX(1); opacity: 1; }
+        }
+
+        @keyframes falconIntroTagline {
+          0% { opacity: 0; transform: translateY(6px); }
+          36% { opacity: 0; transform: translateY(6px); }
+          64% { opacity: 1; transform: translateY(0); }
+          86% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+
+        .falcon-intro-wordmark {
+          animation: falconIntroMark 4.3s ease both;
+        }
+
+        .falcon-intro-line {
+          animation: falconIntroLine 4.3s ease both;
+        }
+
+        .falcon-intro-tagline {
+          animation: falconIntroTagline 4.3s ease both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .falcon-intro-wordmark,
+          .falcon-intro-line,
+          .falcon-intro-tagline {
+            animation-duration: 700ms !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+
+      <div className="text-center">
+        <p className="falcon-intro-wordmark text-4xl font-semibold tracking-[0.08em] text-white sm:text-5xl">
+          Falcon Hub
+        </p>
+        <div className="mx-auto mt-6 h-px w-40 origin-center bg-white/70 falcon-intro-line sm:w-52" />
+        <p className="falcon-intro-tagline mt-6 text-sm font-medium tracking-[0.24em] text-zinc-300 sm:text-base">
+          One Team · One Goal · One Falcon
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onSkip}
+        className="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 rounded-full border border-white/15 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:border-white/30 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/40"
+      >
+        Skip
+      </button>
+    </div>
+  );
+}
+
 export default function Home() {
   const [dashboard, setDashboard] = useState<AgentDashboardResponse | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
+  const [showIntro, setShowIntro] = useState(false);
+  const [isIntroExiting, setIsIntroExiting] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     setStatus("loading");
@@ -231,7 +316,49 @@ export default function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [loadDashboard]);
 
+  useEffect(() => {
+    let exitTimeoutId: number | undefined;
+    let hideTimeoutId: number | undefined;
+
+    try {
+      if (window.sessionStorage.getItem(introSessionKey) === "played") {
+        return undefined;
+      }
+
+      window.sessionStorage.setItem(introSessionKey, "played");
+    } catch {
+      return undefined;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const totalDuration = prefersReducedMotion ? 800 : 5000;
+    const fadeDuration = prefersReducedMotion ? 180 : 450;
+
+    setShowIntro(true);
+
+    exitTimeoutId = window.setTimeout(() => {
+      setIsIntroExiting(true);
+    }, totalDuration - fadeDuration);
+
+    hideTimeoutId = window.setTimeout(() => {
+      setShowIntro(false);
+      setIsIntroExiting(false);
+    }, totalDuration);
+
+    return () => {
+      if (exitTimeoutId) window.clearTimeout(exitTimeoutId);
+      if (hideTimeoutId) window.clearTimeout(hideTimeoutId);
+    };
+  }, []);
+
   const greeting = useMemo(() => getMalaysiaGreeting(), []);
+  const dismissIntro = useCallback(() => {
+    setIsIntroExiting(true);
+    window.setTimeout(() => {
+      setShowIntro(false);
+      setIsIntroExiting(false);
+    }, 220);
+  }, []);
 
   if (status === "loading" && !dashboard) {
     return <LoadingDashboard />;
@@ -264,14 +391,18 @@ export default function Home() {
   const submittedAt = formatMalaysiaTime(dashboard.todayDsi.submittedAt);
 
   return (
-    <main className="p-5 sm:p-6 lg:p-8">
+    <main className="overflow-x-hidden p-4 sm:p-6 lg:p-8">
+      {showIntro ? (
+        <FalconIntroOverlay isExiting={isIntroExiting} onSkip={dismissIntro} />
+      ) : null}
+
       <div className="mx-auto max-w-6xl space-y-5">
         <section className="rounded-[24px] border border-zinc-200 bg-white px-5 py-4 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:px-6">
           <p className="text-sm font-medium text-zinc-500">
             {formatMalaysiaDate(dashboard.date)}
           </p>
           <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
+            <div className="min-w-0">
               <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-3xl">
                 {greeting}, {dashboard.user.memberName}
               </h1>
@@ -280,7 +411,7 @@ export default function Home() {
               </p>
             </div>
             {dashboard.user.position ? (
-              <span className="w-fit rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600">
+              <span className="max-w-full break-words rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 sm:w-fit">
                 {dashboard.user.position}
               </span>
             ) : null}
@@ -330,7 +461,7 @@ export default function Home() {
 
               <Link
                 href="/check-in"
-                className="mt-5 inline-flex min-h-11 items-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+                className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2 sm:w-auto"
               >
                 {attendanceCopy.action}
               </Link>
@@ -390,7 +521,7 @@ export default function Home() {
                 )}
                 <Link
                   href="/dsi"
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2 sm:w-auto"
                 >
                   Update DSI
                 </Link>
