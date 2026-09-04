@@ -38,6 +38,25 @@ type LocationPayload = {
 
 type ActionType = "check_in" | "update_location" | "check_out";
 
+type PresenceMember = {
+  sessionId: string;
+  memberId: string;
+  memberName: string;
+  position: string | null;
+  locationName: string;
+  locationSource: "falcon_location" | "reverse_geocoded" | "coordinates";
+  falconLocationId: string | null;
+  checkedInAt: string;
+  locationUpdatedAt: string;
+};
+
+type PresenceApiResponse = {
+  attendanceDate: string;
+  presence: PresenceMember[];
+};
+
+type PresenceStatus = "loading" | "ready" | "error";
+
 function formatMalaysiaDate(value: string) {
   const date = new Date(`${value}T00:00:00.000Z`);
 
@@ -150,20 +169,50 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function getPresenceGroupLabel(member: PresenceMember) {
+  if (member.locationSource === "falcon_location") {
+    return member.locationName.toUpperCase();
+  }
+
+  return "OTHER LOCATIONS";
+}
+
+function groupPresenceByLocation(presence: PresenceMember[]) {
+  const groups = new Map<string, PresenceMember[]>();
+
+  for (const member of presence) {
+    const label = getPresenceGroupLabel(member);
+    const members = groups.get(label) ?? [];
+    members.push(member);
+    groups.set(label, members);
+  }
+
+  return Array.from(groups.entries()).map(([label, members]) => ({
+    label,
+    members,
+  }));
+}
+
 export default function CheckInPage() {
   const [status, setStatus] = useState<AttendanceStatus>("loading");
   const [attendanceDate, setAttendanceDate] = useState(getMalaysiaTodayDateString());
   const [session, setSession] = useState<AttendanceSession | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeAction, setActiveAction] = useState<ActionType | null>(null);
+  const [presenceStatus, setPresenceStatus] = useState<PresenceStatus>("loading");
+  const [presence, setPresence] = useState<PresenceMember[]>([]);
+  const [presenceError, setPresenceError] = useState<string | null>(null);
   const latestRequestIdRef = useRef(0);
+  const latestPresenceRequestIdRef = useRef(0);
 
   const actionLabel = getActionLabel(activeAction);
   const isBusy = activeAction !== null || status === "loading";
+  const isPresenceLoading = presenceStatus === "loading";
   const formattedAttendanceDate = useMemo(
     () => formatMalaysiaDate(attendanceDate),
     [attendanceDate],
   );
+  const presenceGroups = useMemo(() => groupPresenceByLocation(presence), [presence]);
 
   const applyAttendanceResponse = useCallback((response: AttendanceApiResponse) => {
     setAttendanceDate(response.attendanceDate);
@@ -203,9 +252,47 @@ export default function CheckInPage() {
     }
   }, [applyAttendanceResponse]);
 
+  const loadPresence = useCallback(async () => {
+    const requestId = latestPresenceRequestIdRef.current + 1;
+    latestPresenceRequestIdRef.current = requestId;
+    setPresenceStatus("loading");
+    setPresenceError(null);
+
+    try {
+      const response = await fetch("/api/check-in/presence", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as PresenceApiResponse | { error?: string };
+
+      if (requestId !== latestPresenceRequestIdRef.current) return;
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in payload && payload.error ? payload.error : "Unable to load Team Presence",
+        );
+      }
+
+      setPresence((payload as PresenceApiResponse).presence);
+      setPresenceStatus("ready");
+    } catch (error) {
+      if (requestId !== latestPresenceRequestIdRef.current) return;
+
+      setPresenceStatus("error");
+      setPresenceError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load Team Presence. Please try again.",
+      );
+    }
+  }, []);
+
   useEffect(() => {
     void loadToday();
   }, [loadToday]);
+
+  useEffect(() => {
+    void loadPresence();
+  }, [loadPresence]);
 
   async function submitLocationAction(action: ActionType, endpoint: string) {
     if (activeAction) return;
@@ -236,6 +323,7 @@ export default function CheckInPage() {
       }
 
       applyAttendanceResponse(payload as AttendanceApiResponse);
+      void loadPresence();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -249,7 +337,7 @@ export default function CheckInPage() {
 
   return (
     <main className="min-h-screen bg-zinc-50 px-4 py-6 text-zinc-950 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
         <section className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_16px_50px_rgba(15,23,42,0.06)] sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -385,6 +473,102 @@ export default function CheckInPage() {
               >
                 Retry
               </button>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_16px_50px_rgba(15,23,42,0.05)] sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                Team Presence
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
+                Who&apos;s checked in now
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">
+                See teammates currently checked in so you can coordinate nearby showroom or appointment support.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadPresence()}
+              disabled={isPresenceLoading}
+              className="min-h-11 rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPresenceLoading ? "Refreshing..." : "Refresh"}
+            </button>
+          </div>
+
+          {presenceStatus === "error" ? (
+            <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
+              <p>{presenceError ?? "Unable to load Team Presence."}</p>
+            </div>
+          ) : isPresenceLoading ? (
+            <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-sm text-zinc-500">
+              Loading Team Presence...
+            </p>
+          ) : presence.length === 0 ? (
+            <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-sm text-zinc-500">
+              No teammates are currently checked in.
+            </p>
+          ) : (
+            <div className="mt-5 space-y-4">
+              {presenceGroups.map((group) => (
+                <div
+                  key={group.label}
+                  className="overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-50"
+                >
+                  <div className="flex items-center justify-between gap-4 border-b border-zinc-200 bg-white px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                      {group.label}
+                    </p>
+                    <p className="shrink-0 text-sm font-semibold text-zinc-700">
+                      {group.members.length} {group.members.length === 1 ? "person" : "people"}
+                    </p>
+                  </div>
+                  <div className="divide-y divide-zinc-200">
+                    {group.members.map((member) => {
+                      const isCurrentUser = session?.id === member.sessionId;
+
+                      return (
+                        <article
+                          key={member.sessionId}
+                          className="bg-zinc-50 px-4 py-4"
+                        >
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-zinc-950">
+                                  {member.memberName}
+                                </p>
+                                {isCurrentUser ? (
+                                  <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs font-semibold text-zinc-600">
+                                    You
+                                  </span>
+                                ) : null}
+                              </div>
+                              {member.position ? (
+                                <p className="mt-1 text-sm text-zinc-500">{member.position}</p>
+                              ) : null}
+                            </div>
+                            <div className="text-left sm:text-right">
+                              <p className="text-sm font-semibold text-zinc-900">
+                                {member.locationName}
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                                Checked in {formatMalaysiaTime(member.checkedInAt)}
+                                <br />
+                                Updated {formatMalaysiaTime(member.locationUpdatedAt)}
+                              </p>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
