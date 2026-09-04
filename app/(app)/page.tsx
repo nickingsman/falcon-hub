@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAppPermissions } from "./components/AppPermissionProvider";
 
 type AttendanceStatus = "not_checked_in" | "checked_in" | "completed";
 type DsiStatus = "not_submitted" | "submitted";
+type DashboardView = "my" | "team";
 
 type AgentDashboardResponse = {
   date: string;
@@ -39,6 +41,52 @@ type AgentDashboardResponse = {
       locationName: string;
       count: number;
     }[];
+  };
+};
+
+type AttentionMember = {
+  memberName: string;
+  position: string | null;
+};
+
+type LeaderDashboardResponse = {
+  date: string;
+  timezone: "Asia/Kuala_Lumpur";
+  user: {
+    memberName: string;
+    position: string | null;
+  };
+  teamToday: {
+    teamMembers: number;
+    dsiSubmitted: number;
+    checkedInToday: number;
+    currentlyCheckedIn: number;
+  };
+  todayActivity: {
+    newLeadsContact: number;
+    appointmentMade: number;
+    turnUpAppt: number;
+    unitClosed: number;
+  };
+  needsAttention: {
+    dsiNotSubmitted: AttentionMember[];
+    noCheckInRecord: AttentionMember[];
+    appointmentWithoutTurnUp: {
+      memberCount: number;
+    };
+  };
+  teamPresence: {
+    totalCheckedIn: number;
+    groups: {
+      locationName: string;
+      count: number;
+    }[];
+  };
+  teamWeek: {
+    recordedDsiDays: number;
+    appointmentMade: number;
+    turnUpAppt: number;
+    unitClosed: number;
   };
 };
 
@@ -172,6 +220,278 @@ function MetricCard({
   );
 }
 
+function TeamMetricGrid({
+  metrics,
+}: {
+  metrics: {
+    label: string;
+    value: number;
+    note?: string;
+  }[];
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {metrics.map((metric) => (
+        <MetricCard
+          key={metric.label}
+          label={metric.label}
+          value={metric.value}
+          note={metric.note}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AttentionList({
+  title,
+  members,
+}: {
+  title: string;
+  members: AttentionMember[];
+}) {
+  const visibleMembers = members.slice(0, 6);
+  const hiddenCount = Math.max(members.length - visibleMembers.length, 0);
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">{title}</p>
+          <p className="mt-1 text-sm text-zinc-500">{members.length} member{members.length === 1 ? "" : "s"}</p>
+        </div>
+        <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
+          {members.length}
+        </span>
+      </div>
+
+      {members.length === 0 ? (
+        <p className="mt-4 text-sm text-zinc-500">No one in this group right now.</p>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {visibleMembers.map((member) => (
+            <div
+              key={`${title}-${member.memberName}-${member.position ?? "member"}`}
+              className="rounded-xl border border-zinc-200 bg-white px-3 py-2"
+            >
+              <p className="text-sm font-medium text-zinc-900">{member.memberName}</p>
+              {member.position ? (
+                <p className="mt-0.5 text-xs text-zinc-500">{member.position}</p>
+              ) : null}
+            </div>
+          ))}
+          {hiddenCount > 0 ? (
+            <p className="text-xs font-medium text-zinc-500">
+              +{hiddenCount} more
+            </p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeamPresencePreview({
+  totalCheckedIn,
+  groups,
+}: LeaderDashboardResponse["teamPresence"]) {
+  return (
+    <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">Team Presence</p>
+          <p className="mt-1 text-sm text-zinc-500">{totalCheckedIn} checked in now</p>
+        </div>
+        <Link
+          href="/check-in"
+          className="shrink-0 rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+        >
+          View
+        </Link>
+      </div>
+
+      {groups.length === 0 ? (
+        <p className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+          No teammates are currently checked in.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {groups.map((group) => (
+            <div
+              key={group.locationName}
+              className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5"
+            >
+              <p className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-700">
+                {group.locationName}
+              </p>
+              <p className="shrink-0 text-sm font-semibold text-zinc-950">
+                {group.count}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function TeamDashboard({
+  dashboard,
+  status,
+  errorMessage,
+  onRetry,
+}: {
+  dashboard: LeaderDashboardResponse | null;
+  status: LoadStatus;
+  errorMessage: string;
+  onRetry: () => void;
+}) {
+  if (status === "loading" && !dashboard) {
+    return (
+      <section className="grid gap-4">
+        <div className="h-28 rounded-[24px] border border-zinc-200 bg-white" />
+        <div className="h-56 rounded-[24px] border border-zinc-200 bg-white" />
+      </section>
+    );
+  }
+
+  if (status === "error" && !dashboard) {
+    return (
+      <section className="rounded-[24px] border border-zinc-200 bg-white p-5">
+        <p className="text-sm font-semibold text-zinc-900">Team Dashboard unavailable</p>
+        <p className="mt-2 text-sm text-zinc-600">{errorMessage}</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-5 min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+        >
+          Retry
+        </button>
+      </section>
+    );
+  }
+
+  if (!dashboard) return null;
+
+  return (
+    <div className="space-y-5">
+      {status === "error" ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      <section>
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-zinc-900">Team Today</p>
+          <p className="text-sm text-zinc-500">Factual team status for today</p>
+        </div>
+        <TeamMetricGrid
+          metrics={[
+            { label: "Team Members", value: dashboard.teamToday.teamMembers },
+            { label: "DSI Submitted", value: dashboard.teamToday.dsiSubmitted },
+            { label: "Checked In Today", value: dashboard.teamToday.checkedInToday },
+            {
+              label: "Currently Checked In",
+              value: dashboard.teamToday.currentlyCheckedIn,
+            },
+          ]}
+        />
+      </section>
+
+      <section className="lg:hidden">
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-zinc-900">Needs Attention</p>
+          <p className="text-sm text-zinc-500">Neutral operational follow-up</p>
+        </div>
+        <div className="grid gap-3">
+          <AttentionList
+            title="DSI Not Submitted"
+            members={dashboard.needsAttention.dsiNotSubmitted}
+          />
+          <AttentionList
+            title="No Check-in Record"
+            members={dashboard.needsAttention.noCheckInRecord}
+          />
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+            <p className="text-sm font-semibold text-zinc-900">
+              Appointment Without Turn Up
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-zinc-950">
+              {dashboard.needsAttention.appointmentWithoutTurnUp.memberCount}
+            </p>
+            <p className="mt-1 text-sm text-zinc-500">
+              Members with appointments made and no turn up yet today.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-zinc-900">Today Activity</p>
+          <p className="text-sm text-zinc-500">Team totals from submitted DSI</p>
+        </div>
+        <TeamMetricGrid
+          metrics={[
+            { label: "New Leads Contact", value: dashboard.todayActivity.newLeadsContact },
+            { label: "Appointments Made", value: dashboard.todayActivity.appointmentMade },
+            { label: "Turn Ups", value: dashboard.todayActivity.turnUpAppt },
+            { label: "Units Closed", value: dashboard.todayActivity.unitClosed },
+          ]}
+        />
+      </section>
+
+      <section className="grid items-start gap-4 lg:grid-cols-[1.35fr_0.85fr]">
+        <article className="hidden rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)] lg:block">
+          <div className="mb-4">
+            <p className="text-sm font-semibold text-zinc-900">Needs Attention</p>
+            <p className="mt-1 text-sm text-zinc-500">Neutral operational follow-up</p>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-3">
+            <AttentionList
+              title="DSI Not Submitted"
+              members={dashboard.needsAttention.dsiNotSubmitted}
+            />
+            <AttentionList
+              title="No Check-in Record"
+              members={dashboard.needsAttention.noCheckInRecord}
+            />
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+              <p className="text-sm font-semibold text-zinc-900">
+                Appointment Without Turn Up
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-zinc-950">
+                {dashboard.needsAttention.appointmentWithoutTurnUp.memberCount}
+              </p>
+              <p className="mt-1 text-sm text-zinc-500">
+                Members with appointments made and no turn up yet today.
+              </p>
+            </div>
+          </div>
+        </article>
+
+        <TeamPresencePreview {...dashboard.teamPresence} />
+      </section>
+
+      <section>
+        <div className="mb-3">
+          <p className="text-sm font-semibold text-zinc-900">Team Week</p>
+          <p className="text-sm text-zinc-500">Submitted member-day DSI totals this week</p>
+        </div>
+        <TeamMetricGrid
+          metrics={[
+            { label: "Recorded DSI Days", value: dashboard.teamWeek.recordedDsiDays },
+            { label: "Appointments Made", value: dashboard.teamWeek.appointmentMade },
+            { label: "Turn Ups", value: dashboard.teamWeek.turnUpAppt },
+            { label: "Units Closed", value: dashboard.teamWeek.unitClosed },
+          ]}
+        />
+      </section>
+    </div>
+  );
+}
+
 function LoadingDashboard() {
   return (
     <main className="p-5 sm:p-6 lg:p-8">
@@ -272,11 +592,19 @@ function FalconIntroOverlay({
 }
 
 export default function Home() {
+  const { role } = useAppPermissions();
   const [dashboard, setDashboard] = useState<AgentDashboardResponse | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
+  const [leaderDashboard, setLeaderDashboard] = useState<LeaderDashboardResponse | null>(null);
+  const [leaderStatus, setLeaderStatus] = useState<LoadStatus>("ready");
+  const [leaderErrorMessage, setLeaderErrorMessage] = useState("");
+  const [activeView, setActiveView] = useState<DashboardView>("my");
   const [showIntro, setShowIntro] = useState(false);
   const [isIntroExiting, setIsIntroExiting] = useState(false);
+  const canViewLeaderDashboard =
+    role === "super_admin" || role === "admin" || role === "leader";
+  const visibleView = canViewLeaderDashboard ? activeView : "my";
 
   const loadDashboard = useCallback(async () => {
     setStatus("loading");
@@ -308,6 +636,36 @@ export default function Home() {
     }
   }, []);
 
+  const loadLeaderDashboard = useCallback(async () => {
+    setLeaderStatus("loading");
+    setLeaderErrorMessage("");
+
+    try {
+      const response = await fetch("/api/dashboard/leader", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as LeaderDashboardResponse | { error?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          "error" in payload && payload.error
+            ? payload.error
+            : "Unable to load team dashboard",
+        );
+      }
+
+      setLeaderDashboard(payload as LeaderDashboardResponse);
+      setLeaderStatus("ready");
+    } catch (error) {
+      setLeaderStatus("error");
+      setLeaderErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load team dashboard. Please try again.",
+      );
+    }
+  }, []);
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadDashboard();
@@ -317,8 +675,19 @@ export default function Home() {
   }, [loadDashboard]);
 
   useEffect(() => {
-    let exitTimeoutId: number | undefined;
-    let hideTimeoutId: number | undefined;
+    if (visibleView !== "team") {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadLeaderDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadLeaderDashboard, visibleView]);
+
+  useEffect(() => {
+    const timeoutIds: number[] = [];
 
     try {
       if (window.sessionStorage.getItem(introSessionKey) === "played") {
@@ -334,20 +703,21 @@ export default function Home() {
     const totalDuration = prefersReducedMotion ? 800 : 5000;
     const fadeDuration = prefersReducedMotion ? 180 : 450;
 
-    setShowIntro(true);
-
-    exitTimeoutId = window.setTimeout(() => {
-      setIsIntroExiting(true);
-    }, totalDuration - fadeDuration);
-
-    hideTimeoutId = window.setTimeout(() => {
-      setShowIntro(false);
-      setIsIntroExiting(false);
-    }, totalDuration);
+    timeoutIds.push(
+      window.setTimeout(() => {
+        setShowIntro(true);
+      }, 0),
+      window.setTimeout(() => {
+        setIsIntroExiting(true);
+      }, totalDuration - fadeDuration),
+      window.setTimeout(() => {
+        setShowIntro(false);
+        setIsIntroExiting(false);
+      }, totalDuration),
+    );
 
     return () => {
-      if (exitTimeoutId) window.clearTimeout(exitTimeoutId);
-      if (hideTimeoutId) window.clearTimeout(hideTimeoutId);
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
     };
   }, []);
 
@@ -401,23 +771,62 @@ export default function Home() {
           <p className="text-sm font-medium text-zinc-500">
             {formatMalaysiaDate(dashboard.date)}
           </p>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <h1 className="text-[26px] font-semibold leading-tight tracking-tight text-zinc-950 sm:text-3xl">
                 {greeting}, {dashboard.user.memberName}
               </h1>
               <p className="mt-1.5 text-sm text-zinc-600">
-                Here&apos;s where you are today.
+                {visibleView === "team"
+                  ? "Here's what is happening in your team today."
+                  : "Here's where you are today."}
               </p>
             </div>
-            {dashboard.user.position ? (
-              <span className="max-w-full break-words rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 sm:w-fit">
-                {dashboard.user.position}
-              </span>
-            ) : null}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
+              {canViewLeaderDashboard ? (
+                <div className="grid w-full grid-cols-2 gap-1 rounded-full border border-zinc-200 bg-zinc-100 p-1 sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("my")}
+                    className={`min-h-10 rounded-full border px-4 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2 ${
+                      activeView === "my"
+                        ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
+                        : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50"
+                    }`}
+                  >
+                    My Dashboard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveView("team")}
+                    className={`min-h-10 rounded-full border px-4 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2 ${
+                      activeView === "team"
+                        ? "border-zinc-950 bg-zinc-950 text-white shadow-sm"
+                        : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50"
+                    }`}
+                  >
+                    Team Dashboard
+                  </button>
+                </div>
+              ) : null}
+              {dashboard.user.position ? (
+                <span className="max-w-full break-words rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 sm:w-fit">
+                  {dashboard.user.position}
+                </span>
+              ) : null}
+            </div>
           </div>
         </section>
 
+        {visibleView === "team" ? (
+          <TeamDashboard
+            dashboard={leaderDashboard}
+            status={leaderStatus}
+            errorMessage={leaderErrorMessage}
+            onRetry={() => void loadLeaderDashboard()}
+          />
+        ) : (
+          <>
         {status === "error" ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {errorMessage}
@@ -637,6 +1046,8 @@ export default function Home() {
             )}
           </article>
         </section>
+          </>
+        )}
       </div>
     </main>
   );
