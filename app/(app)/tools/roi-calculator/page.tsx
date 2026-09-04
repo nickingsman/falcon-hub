@@ -398,7 +398,7 @@ function purchaseCostPdfRow(item: ResolvedPurchaseCostItem) {
     hasEnteredValue(item.resolvedAmount) && Number.isFinite(amount) && amount >= 0;
   const note =
     item.id === "mot-transfer-stamp-duty"
-      ? `<small>Only payable after VP</small>`
+      ? `<small class="vp-timing-note">Only payable after VP</small>`
       : item.estimate?.requiresManualConfirmation && item.estimate.note
         ? `<small>${escapeHtml(item.estimate.note)}</small>`
         : "";
@@ -1264,6 +1264,17 @@ function buildRoiProposalHtml({
         font-size: 7.8px;
         font-weight: 700;
       }
+      .purchase-cost-row small.vp-timing-note {
+        display: inline-block;
+        border: 1px solid #ead7a6;
+        border-radius: 999px;
+        background: #fff9e8;
+        color: #9A6B1F;
+        font-size: 7.4px;
+        font-weight: 800;
+        margin-top: 2px;
+        padding: 1px 5px;
+      }
       .purchase-cost-row strong {
         display: flex;
         gap: 7px;
@@ -1771,7 +1782,6 @@ function buildRoiProposalHtml({
           ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow), false, monthlyCashFlowBreakdown)}
           ${proposalRow("Estimated Annual Cash Flow", formatCurrencyDetailed(result.annualCashFlow), false, [annualCashFlowExplanation])}
           ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent), false, ["Based on estimated annual net rental after maintenance."])}
-          ${proposalRow("Cash-on-Cash Return", formatPercent(result.cashOnCashReturnPercent), false, ["Based on estimated annual cash flow against estimated upfront cash invested."])}
         </div>
       </section>
 
@@ -3016,7 +3026,7 @@ export default function RoiCalculatorPage() {
                           ) : null}
                         </div>
                         {item.id === "mot-transfer-stamp-duty" ? (
-                          <p className="mt-1 text-xs text-zinc-500">
+                          <p className="mt-2 inline-flex rounded-full border border-amber-200 bg-[#FFF9E8] px-2.5 py-1 text-xs font-bold text-[#9A6B1F]">
                             Only payable after VP
                           </p>
                         ) : null}
@@ -3397,12 +3407,6 @@ export default function RoiCalculatorPage() {
                   value={formatPercent(result.netRentalYieldPercent)}
                 >
                   Based on estimated annual net rental after maintenance.
-                </ResultRow>
-                <ResultRow
-                  label="Cash-on-Cash Return"
-                  value={formatPercent(result.cashOnCashReturnPercent)}
-                >
-                  Based on estimated annual cash flow against estimated upfront cash invested.
                 </ResultRow>
               </div>
             </section>

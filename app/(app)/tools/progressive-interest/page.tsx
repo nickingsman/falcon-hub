@@ -229,21 +229,6 @@ function getProgressiveInterestDisplay(
   return formatCurrencyDetailed(result.estimatedMonthlyProgressiveInterest);
 }
 
-function getJourneyStatus(
-  stageId: TimelineStageId,
-  currentStageId: TimelineStageId | "",
-) {
-  if (!currentStageId) return "upcoming";
-
-  const currentIndex = timelineStageIds.indexOf(currentStageId);
-  const stageIndex = timelineStageIds.indexOf(stageId);
-
-  if (stageIndex < currentIndex) return "completed";
-  if (stageIndex === currentIndex) return "current";
-
-  return "upcoming";
-}
-
 function getInputStateClass(isInvalid: boolean) {
   return isInvalid ? "border-red-300 bg-red-50" : "border-zinc-200 bg-zinc-50";
 }
@@ -304,7 +289,6 @@ function buildProgressiveInterestProposalHtml({
   stageTimings,
   result,
   fullMonthlyInstalment,
-  peakProgressiveInterest,
   branding,
 }: {
   projectName: string;
@@ -312,49 +296,9 @@ function buildProgressiveInterestProposalHtml({
   stageTimings: Record<TimelineStageId, StageTiming>;
   result: ProgressiveInterestResult;
   fullMonthlyInstalment: number | null;
-  peakProgressiveInterest: number | null;
   branding: CustomerPdfBranding;
 }) {
   const estimatedVp = getStageTimingLabel("vp", stageTimings);
-  const constructionJourneyRows = [
-    timelineStageIds.slice(0, 5),
-    timelineStageIds.slice(5),
-  ];
-  const journeyHtml = constructionJourneyRows
-    .map(
-      (row, rowIndex) => `
-        <div class="journey-row ${rowIndex === 1 ? "journey-row-second" : ""}">
-          ${row
-            .map((stageId) => {
-              const stageResult = result.stages.find((stage) => stage.stage.id === stageId);
-              const label = journeyStageLabels[stageId];
-
-              if (!stageResult) return "";
-
-              return `
-                <article class="journey-node ${stageId === "vp" ? "journey-node-vp" : ""}">
-                  <div class="journey-code">${escapeHtml(stageResult.stage.code)}</div>
-                  <p>${escapeHtml(label.english)}</p>
-                  <span>${escapeHtml(label.chinese)}</span>
-                  <em>${escapeHtml(getStageTimingLabel(stageId, stageTimings))}</em>
-                  <strong>${
-                    stageId === "vp"
-                      ? escapeHtml(formatCurrencyDetailed(fullMonthlyInstalment))
-                      : escapeHtml(
-                          stageResult.estimatedMonthlyProgressiveInterest === null
-                            ? "—"
-                            : formatCurrencyDetailed(stageResult.estimatedMonthlyProgressiveInterest),
-                        )
-                  }</strong>
-                  <small>${stageId === "vp" ? "Full instalment / mo" : "Progressive interest / mo"}</small>
-                </article>
-              `;
-            })
-            .join("")}
-        </div>
-      `,
-    )
-    .join("");
   const scheduleRows = result.stages
     .map((stageResult) => {
       const label = pdfStageLabels[stageResult.stage.id];
@@ -483,83 +427,6 @@ function buildProgressiveInterestProposalHtml({
         font-size: 8px;
         font-weight: 700;
       }
-      .journey-panel {
-        border: 1px solid #b7e6dc;
-        border-radius: 12px;
-        padding: 7px 8px;
-      }
-      .journey-row {
-        display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 7px;
-        position: relative;
-      }
-      .journey-row-second {
-        grid-template-columns: repeat(4, 1fr);
-        margin-top: 7px;
-        padding-left: 20mm;
-      }
-      .journey-row::before {
-        background: #c9d8d5;
-        content: "";
-        height: 1px;
-        left: 8%;
-        position: absolute;
-        right: 8%;
-        top: 15px;
-      }
-      .journey-node {
-        background: #ffffff;
-        border: 1px solid #d4d4d8;
-        border-radius: 10px;
-        min-height: 58px;
-        padding: 5px;
-        position: relative;
-        text-align: center;
-        z-index: 2;
-      }
-      .journey-code {
-        align-items: center;
-        background: #ffffff;
-        border: 1.5px solid #0f766e;
-        border-radius: 999px;
-        color: #0f766e;
-        display: inline-flex;
-        font-size: 7px;
-        font-weight: 800;
-        height: 19px;
-        justify-content: center;
-        min-width: 26px;
-        padding: 0 5px;
-      }
-      .journey-node p {
-        color: #18181b;
-        font-size: 8.4px;
-        font-weight: 800;
-        line-height: 1.08;
-        margin: 3px 0 0;
-      }
-      .journey-node span,
-      .journey-node em,
-      .journey-node small {
-        color: #71717a;
-        display: block;
-        font-size: 7px;
-        font-style: normal;
-        line-height: 1.1;
-        margin-top: 2px;
-      }
-      .journey-node strong {
-        color: #087F6B;
-        display: block;
-        font-size: 10px;
-        line-height: 1.08;
-        margin-top: 3px;
-      }
-      .journey-node-vp {
-        border-color: #0f766e;
-        background: #f1fbf8;
-      }
       .schedule {
         margin-top: 8px;
       }
@@ -687,14 +554,6 @@ function buildProgressiveInterestProposalHtml({
         ${compactField("Interest Rate", formatPercent(result.annualInterestRatePercent))}
         ${compactField("Estimated VP", estimatedVp)}
         ${compactField("Est. Full Instalment", `${formatCurrencyDetailed(fullMonthlyInstalment)}/mo`)}
-      </section>
-
-      <section class="journey">
-        <div class="section-title">
-          <h2>Your Payment Journey / 你的供款时间线</h2>
-          <span>Lower progressive interest → full instalment after VP</span>
-        </div>
-        <div class="journey-panel">${journeyHtml}</div>
       </section>
 
       <section class="schedule">
@@ -902,7 +761,6 @@ export default function ProgressiveInterestPage() {
         stageTimings,
         result: progressiveResult,
         fullMonthlyInstalment,
-        peakProgressiveInterest,
         branding: {
           agentName: displayName,
           agentPhone: phone,
@@ -1194,84 +1052,6 @@ export default function ProgressiveInterestPage() {
             </section>
           ) : null}
         </aside>
-
-        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_16px_48px_rgba(15,23,42,0.06)] xl:col-span-2">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#087F6B]">
-                Your Payment Journey
-              </p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-                你的供款时间线
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">
-                Progressive interest starts lower, increases as the bank releases more, then
-                transitions toward full instalment after VP.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-emerald-200 bg-[#f1fbf8] px-4 py-3">
-              <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#087F6B]">
-                Peak During Construction
-              </p>
-              <p className="mt-1 text-xl font-semibold text-[#087F6B]">
-                {formatCurrencyDetailed(peakProgressiveInterest)}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-8 overflow-x-auto pb-3">
-            <div className="relative flex min-w-[1120px] items-start gap-0 px-2">
-              <div className="absolute left-16 right-16 top-[4.9rem] h-px bg-zinc-200" />
-              {timelineStageIds.map((stageId) => {
-                const result = progressiveResult.stages.find((item) => item.stage.id === stageId);
-
-                if (!result) return null;
-
-                const status = getJourneyStatus(stageId, currentStageId);
-                const label = journeyStageLabels[stageId];
-
-                return (
-                  <article
-                    key={stageId}
-                    className="relative z-10 flex w-32 shrink-0 flex-col items-center text-center"
-                  >
-                    <p className="h-5 text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">
-                      {getStageTimingLabel(stageId, stageTimings)}
-                    </p>
-                    <div
-                      className={`mt-5 flex h-11 w-11 items-center justify-center rounded-full border-2 bg-white text-xs font-semibold ${
-                        status === "current"
-                          ? "border-[#087F6B] text-[#087F6B] shadow-[0_0_0_6px_rgba(8,127,107,0.08)]"
-                          : status === "completed"
-                            ? "border-emerald-300 text-emerald-700"
-                            : "border-zinc-200 text-zinc-500"
-                      }`}
-                    >
-                      {result.stage.code}
-                    </div>
-                    <p className="mt-3 text-sm font-semibold text-zinc-950">{label.english}</p>
-                    <p className="mt-0.5 text-xs text-zinc-500">{label.chinese}</p>
-                    <p className="mt-3 text-base font-bold text-[#087F6B]">
-                      {stageId === "vp"
-                        ? formatCurrencyDetailed(fullMonthlyInstalment)
-                        : result.estimatedMonthlyProgressiveInterest === null
-                          ? "—"
-                          : formatCurrencyDetailed(result.estimatedMonthlyProgressiveInterest)}
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {stageId === "vp" ? "Full instalment / mo" : "Progressive interest / mo"}
-                    </p>
-                    {status === "current" ? (
-                      <span className="mt-3 rounded-full bg-[#087F6B] px-2.5 py-1 text-[11px] font-semibold text-white">
-                        Current
-                      </span>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </section>
 
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)] xl:col-span-2">
           <div>
