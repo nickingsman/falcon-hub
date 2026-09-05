@@ -14,6 +14,7 @@ const sidebarItems = [
   { label: "DSR Calculator", href: "#" },
   { label: "Proposal Generator", href: "#" },
   { label: "Check In", href: "/check-in" },
+  { label: "Calendar", href: "/calendar" },
   { label: "DSI", href: "/dsi" },
   {
     label: "Team",
@@ -67,6 +68,10 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 
   if (item.label === "Check In") {
     return pathname === "/check-in";
+  }
+
+  if (item.label === "Calendar") {
+    return pathname === "/calendar";
   }
 
   return false;
