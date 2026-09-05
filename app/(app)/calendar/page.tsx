@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getMalaysiaTodayDateString } from "@/lib/malaysia-date";
+import { useAppPermissions } from "../components/AppPermissionProvider";
 
 type CalendarCategory =
   | "company_meeting"
@@ -39,7 +40,32 @@ type CalendarEventsResponse = {
   events: CalendarEvent[];
 };
 
+type CalendarMember = {
+  id: string;
+  full_name: string | null;
+  position: string | null;
+  status: string | null;
+};
+
+type MembersResponse = {
+  members: CalendarMember[];
+};
+
+type CreateEventForm = {
+  title: string;
+  category: CalendarCategory | "";
+  eventDate: string;
+  audienceType: "company" | "team";
+  targetTeamMemberId: string;
+  isAllDay: boolean;
+  startTime: string;
+  endTime: string;
+  location: string;
+  description: string;
+};
+
 type LoadState = "loading" | "ready" | "error";
+type MembersLoadState = "idle" | "loading" | "ready" | "error";
 
 const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -62,6 +88,29 @@ const categoryStyles: Record<CalendarCategory, string> = {
   project_activity: "border-emerald-200 bg-emerald-50 text-emerald-800",
   other: "border-stone-200 bg-stone-50 text-stone-700",
 };
+
+const calendarCategoryOptions = Object.entries(categoryLabels).map(([value, label]) => ({
+  value: value as CalendarCategory,
+  label,
+}));
+
+function createInitialEventForm(
+  eventDate: string,
+  canCreateCompanyEvents: boolean,
+): CreateEventForm {
+  return {
+    title: "",
+    category: "",
+    eventDate,
+    audienceType: canCreateCompanyEvents ? "company" : "team",
+    targetTeamMemberId: "",
+    isAllDay: true,
+    startTime: "",
+    endTime: "",
+    location: "",
+    description: "",
+  };
+}
 
 function parseDate(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
@@ -199,6 +248,30 @@ function groupEventsByDate(events: CalendarEvent[]) {
   return groups;
 }
 
+function validateCreateEventForm(form: CreateEventForm) {
+  if (!form.title.trim()) return "Title is required";
+  if (!form.category) return "Category is required";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(form.eventDate)) {
+    return "Date is required";
+  }
+  if (form.audienceType !== "company" && form.audienceType !== "team") {
+    return "Audience is required";
+  }
+  if (form.audienceType === "team" && !form.targetTeamMemberId) {
+    return "Target Team is required";
+  }
+  if (!form.isAllDay) {
+    if (!form.startTime || !form.endTime) {
+      return "Timed events require Start Time and End Time";
+    }
+    if (form.endTime <= form.startTime) {
+      return "End Time must be after Start Time";
+    }
+  }
+
+  return null;
+}
+
 function EventChip({
   event,
   onClick,
@@ -319,8 +392,245 @@ function DetailItem({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CreateEventModal({
+  form,
+  formError,
+  isSubmitting,
+  members,
+  membersLoadState,
+  canCreateCompanyEvents,
+  onClose,
+  onSubmit,
+  onChange,
+  onRetryMembers,
+}: {
+  form: CreateEventForm;
+  formError: string | null;
+  isSubmitting: boolean;
+  members: CalendarMember[];
+  membersLoadState: MembersLoadState;
+  canCreateCompanyEvents: boolean;
+  onClose: () => void;
+  onSubmit: () => void;
+  onChange: (nextForm: CreateEventForm) => void;
+  onRetryMembers: () => void;
+}) {
+  const showTeamTarget = form.audienceType === "team";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
+      <div className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-zinc-100 bg-white p-5 sm:p-6">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#087F6B]">
+              Add Event
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
+              Create Calendar Event
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="rounded-full border border-zinc-200 px-3 py-1.5 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-950 focus:outline-none focus:ring-2 focus:ring-zinc-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5 sm:p-6">
+          {formError ? (
+            <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {formError}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="sm:col-span-2">
+              <span className="text-sm font-semibold text-zinc-700">Title</span>
+              <input
+                value={form.title}
+                onChange={(event) => onChange({ ...form, title: event.target.value })}
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+                placeholder="Weekly team meeting"
+                maxLength={120}
+              />
+            </label>
+
+            <label>
+              <span className="text-sm font-semibold text-zinc-700">Category</span>
+              <select
+                value={form.category}
+                onChange={(event) =>
+                  onChange({ ...form, category: event.target.value as CalendarCategory | "" })
+                }
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+              >
+                <option value="">Select category</option>
+                {calendarCategoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span className="text-sm font-semibold text-zinc-700">Date</span>
+              <input
+                type="date"
+                value={form.eventDate}
+                onChange={(event) => onChange({ ...form, eventDate: event.target.value })}
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+              />
+            </label>
+
+            <label>
+              <span className="text-sm font-semibold text-zinc-700">Audience</span>
+              <select
+                value={form.audienceType}
+                onChange={(event) =>
+                  onChange({
+                    ...form,
+                    audienceType: event.target.value as CreateEventForm["audienceType"],
+                    targetTeamMemberId:
+                      event.target.value === "company" ? "" : form.targetTeamMemberId,
+                  })
+                }
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+              >
+                {canCreateCompanyEvents ? <option value="company">Company</option> : null}
+                <option value="team">Team</option>
+              </select>
+            </label>
+
+            {showTeamTarget ? (
+              <label>
+                <span className="text-sm font-semibold text-zinc-700">Target Team</span>
+                <select
+                  value={form.targetTeamMemberId}
+                  onChange={(event) =>
+                    onChange({ ...form, targetTeamMemberId: event.target.value })
+                  }
+                  className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+                  disabled={membersLoadState === "loading"}
+                >
+                  <option value="">
+                    {membersLoadState === "loading" ? "Loading teams..." : "Select target team"}
+                  </option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name || "Unnamed member"}
+                      {member.position ? ` · ${member.position}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {membersLoadState === "error" ? (
+                  <button
+                    type="button"
+                    onClick={onRetryMembers}
+                    className="mt-2 text-xs font-semibold text-[#087F6B] transition hover:text-[#065f52]"
+                  >
+                    Retry loading teams
+                  </button>
+                ) : null}
+              </label>
+            ) : null}
+
+            <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={form.isAllDay}
+                onChange={(event) =>
+                  onChange({
+                    ...form,
+                    isAllDay: event.target.checked,
+                    startTime: event.target.checked ? "" : form.startTime,
+                    endTime: event.target.checked ? "" : form.endTime,
+                  })
+                }
+                className="h-4 w-4 accent-[#087F6B]"
+              />
+              <span className="text-sm font-semibold text-zinc-700">All Day</span>
+            </label>
+
+            {!form.isAllDay ? (
+              <>
+                <label>
+                  <span className="text-sm font-semibold text-zinc-700">Start Time</span>
+                  <input
+                    type="time"
+                    value={form.startTime}
+                    onChange={(event) => onChange({ ...form, startTime: event.target.value })}
+                    className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-sm font-semibold text-zinc-700">End Time</span>
+                  <input
+                    type="time"
+                    value={form.endTime}
+                    onChange={(event) => onChange({ ...form, endTime: event.target.value })}
+                    className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+                  />
+                </label>
+              </>
+            ) : null}
+
+            <label className="sm:col-span-2">
+              <span className="text-sm font-semibold text-zinc-700">Location</span>
+              <input
+                value={form.location}
+                onChange={(event) => onChange({ ...form, location: event.target.value })}
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+                placeholder="Falcon office"
+                maxLength={160}
+              />
+            </label>
+
+            <label className="sm:col-span-2">
+              <span className="text-sm font-semibold text-zinc-700">Description</span>
+              <textarea
+                value={form.description}
+                onChange={(event) => onChange({ ...form, description: event.target.value })}
+                className="mt-2 min-h-28 w-full resize-y rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-950 outline-none transition focus:border-zinc-400 focus:bg-white"
+                placeholder="Optional notes for the team"
+                maxLength={1200}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-zinc-100 bg-white p-5 sm:flex-row sm:justify-end sm:p-6">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="rounded-full border border-zinc-200 px-5 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={isSubmitting || (showTeamTarget && membersLoadState === "loading")}
+            className="rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSubmitting ? "Creating..." : "Create Event"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CalendarPage() {
+  const { role } = useAppPermissions();
   const today = useMemo(() => getMalaysiaTodayDateString(), []);
+  const canCreateEvents = role === "super_admin" || role === "admin" || role === "leader";
+  const canCreateCompanyEvents = role === "super_admin" || role === "admin";
   const [monthKey, setMonthKey] = useState(() => getMonthKey(parseDate(today)));
   const [selectedDate, setSelectedDate] = useState(today);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -328,12 +638,45 @@ export default function CalendarPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState(() =>
+    createInitialEventForm(today, canCreateCompanyEvents),
+  );
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
+  const [targetMembers, setTargetMembers] = useState<CalendarMember[]>([]);
+  const [membersLoadState, setMembersLoadState] = useState<MembersLoadState>("idle");
 
   const visibleDays = useMemo(() => getVisibleCalendarDays(monthKey), [monthKey]);
   const visibleFrom = visibleDays[0]?.dateKey ?? getMonthStart(monthKey);
   const visibleTo = visibleDays[visibleDays.length - 1]?.dateKey ?? getMonthStart(monthKey);
   const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
   const selectedDateEvents = eventsByDate.get(selectedDate) ?? [];
+
+  const loadTargetMembers = useCallback(async () => {
+    setMembersLoadState("loading");
+
+    try {
+      const response = await fetch("/api/members", { cache: "no-store" });
+      const data = (await response.json()) as Partial<MembersResponse> & {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to load teams");
+      }
+
+      setTargetMembers(
+        Array.isArray(data.members)
+          ? data.members.filter((member) => member.status === "Active")
+          : [],
+      );
+      setMembersLoadState("ready");
+    } catch {
+      setTargetMembers([]);
+      setMembersLoadState("error");
+    }
+  }, []);
 
   const loadEvents = useCallback(async () => {
     setLoadState("loading");
@@ -372,9 +715,81 @@ export default function CalendarPage() {
     }
   }, [monthKey, selectedDate, today]);
 
+  useEffect(() => {
+    if (!showCreateModal) return;
+    if (membersLoadState !== "idle") return;
+
+    void loadTargetMembers();
+  }, [loadTargetMembers, membersLoadState, showCreateModal]);
+
   function goToToday() {
     setMonthKey(getMonthKey(parseDate(today)));
     setSelectedDate(today);
+  }
+
+  function openCreateModal() {
+    setCreateForm(createInitialEventForm(selectedDate, canCreateCompanyEvents));
+    setCreateError(null);
+    setShowCreateModal(true);
+  }
+
+  function closeCreateModal() {
+    if (isSubmittingCreate) return;
+
+    setShowCreateModal(false);
+    setCreateError(null);
+    setCreateForm(createInitialEventForm(selectedDate, canCreateCompanyEvents));
+  }
+
+  async function submitCreateEvent() {
+    const validationError = validateCreateEventForm(createForm);
+
+    if (validationError) {
+      setCreateError(validationError);
+      return;
+    }
+
+    setIsSubmittingCreate(true);
+    setCreateError(null);
+
+    try {
+      const response = await fetch("/api/calendar/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: createForm.title.trim(),
+          category: createForm.category,
+          eventDate: createForm.eventDate,
+          isAllDay: createForm.isAllDay,
+          startTime: createForm.isAllDay ? null : createForm.startTime,
+          endTime: createForm.isAllDay ? null : createForm.endTime,
+          location: createForm.location.trim() || null,
+          description: createForm.description.trim() || null,
+          audienceType: createForm.audienceType,
+          targetTeamMemberId:
+            createForm.audienceType === "team" ? createForm.targetTeamMemberId : null,
+        }),
+      });
+      const data = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("You do not have permission to create this event.");
+        }
+
+        throw new Error(data.error || "Unable to create event");
+      }
+
+      setShowCreateModal(false);
+      setCreateForm(createInitialEventForm(selectedDate, canCreateCompanyEvents));
+      await loadEvents();
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "Unable to create event");
+    } finally {
+      setIsSubmittingCreate(false);
+    }
   }
 
   return (
@@ -415,6 +830,15 @@ export default function CalendarPage() {
             >
               Next
             </button>
+            {canCreateEvents ? (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="rounded-full bg-[#087F6B] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#066b5b] focus:outline-none focus:ring-2 focus:ring-[#087F6B]/30"
+              >
+                Add Event
+              </button>
+            ) : null}
           </div>
         </div>
       </section>
@@ -619,6 +1043,24 @@ export default function CalendarPage() {
 
       {selectedEvent ? (
         <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      ) : null}
+
+      {showCreateModal ? (
+        <CreateEventModal
+          form={createForm}
+          formError={createError}
+          isSubmitting={isSubmittingCreate}
+          members={targetMembers}
+          membersLoadState={membersLoadState}
+          canCreateCompanyEvents={canCreateCompanyEvents}
+          onClose={closeCreateModal}
+          onSubmit={submitCreateEvent}
+          onChange={(nextForm) => {
+            setCreateForm(nextForm);
+            setCreateError(null);
+          }}
+          onRetryMembers={loadTargetMembers}
+        />
       ) : null}
     </main>
   );
