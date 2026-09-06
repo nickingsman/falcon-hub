@@ -26,6 +26,13 @@ import {
   type PurchaseCostKey,
   type PurchaseCostTreatment,
 } from "@/lib/project-comparison-options";
+import {
+  projectComparisonSavedWorkSchemaVersion,
+  validateProjectComparisonSavedWorkPayload,
+  type ProjectComparisonSavedMediaSnapshotV1,
+  type ProjectComparisonSavedProjectOptionsV1,
+  type ProjectComparisonSavedWorkPayloadV1,
+} from "@/lib/project-comparison-saved-work";
 import { getPurchaseCostEstimates } from "@/lib/purchase-costs";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
@@ -222,6 +229,21 @@ type ExportSectionId =
   | "overview"
   | "unit"
   | "connectivity";
+
+type SaveModalMode = "new" | "save-as";
+
+type SavedWorkDetailResponse = {
+  savedWork?: {
+    id: string;
+    title: string;
+    workType: string;
+    schemaVersion: number;
+    payload: unknown;
+    createdAt: string;
+    updatedAt: string;
+  };
+  error?: string;
+};
 
 type PdfTableRow = {
   label: string;
@@ -2365,6 +2387,207 @@ function ComparisonTable({
   );
 }
 
+function getDefaultSavedWorkTitle(slots: ComparisonSlot[], projectOptionsById: Record<string, ProjectOptions>) {
+  const names = slots
+    .map((slot) => projectOptionsById[slot.projectId]?.project.name)
+    .filter((name): name is string => Boolean(name?.trim()));
+
+  return names.length ? `${names.join(" vs ")} Comparison` : "Project Comparison";
+}
+
+function sanitizeMediaSnapshot(
+  media: ProjectCoverMedia | UnitLayoutMedia | null,
+): ProjectComparisonSavedMediaSnapshotV1 | null {
+  if (!media) return null;
+
+  return {
+    title: media.title,
+    media_type: media.media_type,
+    mime_type: media.mime_type,
+    description: media.description,
+  };
+}
+
+function sanitizeProjectOptionsSnapshot(
+  options: ProjectOptions | undefined,
+): ProjectComparisonSavedProjectOptionsV1 | null {
+  if (!options) return null;
+
+  return {
+    project: {
+      ...options.project,
+      cover_media: sanitizeMediaSnapshot(options.project.cover_media),
+    },
+    unit_types: options.unit_types.map((unitType) => ({
+      ...unitType,
+      layout: sanitizeMediaSnapshot(unitType.layout),
+      furnishing_package: unitType.furnishing_package,
+    })),
+    connectivity: options.connectivity.map((point) => ({ ...point })),
+    commercial_packages: options.commercial_packages.map((commercialPackage) => ({
+      ...commercialPackage,
+      furnishing_package: commercialPackage.furnishing_package,
+      items: commercialPackage.items.map((item) => ({ ...item })),
+      purchase_costs: commercialPackage.purchase_costs.map((cost) => ({ ...cost })),
+    })),
+  };
+}
+
+function restoreMediaSnapshot(
+  media: ProjectComparisonSavedMediaSnapshotV1 | null,
+): ProjectCoverMedia | UnitLayoutMedia | null {
+  if (!media) return null;
+
+  return {
+    title: media.title,
+    media_type: media.media_type,
+    mime_type: media.mime_type,
+    description: media.description,
+    signed_url: null,
+  };
+}
+
+function restoreProjectOptionsSnapshot(
+  snapshot: ProjectComparisonSavedProjectOptionsV1 | null,
+): ProjectOptions | null {
+  if (!snapshot) return null;
+
+  return {
+    project: {
+      ...snapshot.project,
+      cover_media: restoreMediaSnapshot(snapshot.project.cover_media),
+    },
+    unit_types: snapshot.unit_types.map((unitType) => ({
+      ...unitType,
+      layout: restoreMediaSnapshot(unitType.layout),
+      furnishing_package: unitType.furnishing_package,
+    })),
+    connectivity: snapshot.connectivity.map((point) => ({ ...point })),
+    commercial_packages: snapshot.commercial_packages.map((commercialPackage) => ({
+      ...commercialPackage,
+      purchase_costs: commercialPackage.purchase_costs.map((cost) => ({
+        ...cost,
+        cost_key: cost.cost_key as PurchaseCostKey,
+        treatment: cost.treatment as PurchaseCostTreatment,
+      })),
+    })),
+  };
+}
+
+function attachFreshCustomerSafeMedia(savedOptions: ProjectOptions, freshOptions: ProjectOptions) {
+  const freshUnitTypesById = new Map(freshOptions.unit_types.map((unitType) => [unitType.id, unitType]));
+
+  return {
+    ...savedOptions,
+    project: {
+      ...savedOptions.project,
+      cover_media: savedOptions.project.cover_media
+        ? {
+            ...savedOptions.project.cover_media,
+            signed_url: freshOptions.project.cover_media?.signed_url ?? null,
+          }
+        : null,
+    },
+    unit_types: savedOptions.unit_types.map((unitType) => {
+      const freshUnitType = freshUnitTypesById.get(unitType.id);
+
+      return {
+        ...unitType,
+        layout: unitType.layout
+          ? {
+              ...unitType.layout,
+              signed_url: freshUnitType?.layout?.signed_url ?? null,
+            }
+          : null,
+      };
+    }),
+  } satisfies ProjectOptions;
+}
+
+async function fetchProjectOptions(projectId: string) {
+  const response = await fetch(`/api/tools/project-comparison/projects/${projectId}/options`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to load Project options");
+  }
+
+  return (await response.json()) as ProjectOptions;
+}
+
+function SaveWorkModal({
+  mode,
+  title,
+  error,
+  isSaving,
+  onTitleChange,
+  onCancel,
+  onConfirm,
+}: {
+  mode: SaveModalMode;
+  title: string;
+  error: string;
+  isSaving: boolean;
+  onTitleChange: (title: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#087F6B]">
+            Saved Work
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+            {mode === "save-as" ? "Save As" : "Save Project Comparison"}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Name this comparison so you can reopen and continue it later.
+          </p>
+        </div>
+
+        <label className="mt-5 block text-sm text-zinc-600">
+          <span className="mb-1 block font-medium text-zinc-900">Saved Work Title</span>
+          <input
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            disabled={isSaving}
+            className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-zinc-400"
+            maxLength={120}
+          />
+        </label>
+
+        {error ? (
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+            className="min-h-11 rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSaving || !title.trim()}
+            className="min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? "Saving..." : mode === "save-as" ? "Save As" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectComparisonPage() {
   const { displayName, phone } = useAppPermissions();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -2381,7 +2604,15 @@ export default function ProjectComparisonPage() {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [selectedExportSections, setSelectedExportSections] =
     useState<ExportSectionId[]>(allExportSectionIds);
+  const [currentSavedWorkId, setCurrentSavedWorkId] = useState<string | null>(null);
+  const [currentSavedWorkTitle, setCurrentSavedWorkTitle] = useState("");
+  const [saveModalMode, setSaveModalMode] = useState<SaveModalMode | null>(null);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [reopenWarning, setReopenWarning] = useState("");
   const handoffHydratedRef = useRef(false);
+  const savedWorkHydratedRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -2417,10 +2648,269 @@ export default function ProjectComparisonPage() {
     };
   }, []);
 
+  function buildProjectComparisonSavedWorkPayload(): ProjectComparisonSavedWorkPayloadV1 {
+    return {
+      tool: "project_comparison",
+      schemaVersion: projectComparisonSavedWorkSchemaVersion,
+      hasCompared,
+      assumptions: {
+        loanMarginPercent,
+        annualInterestRatePercent,
+        loanTenureYears,
+      },
+      selectedExportSections,
+      agentInsights,
+      slots: selectedSlots.slice(0, 3).map((slot) => ({
+        projectId: slot.projectId,
+        unitTypeId: slot.unitTypeId,
+        layoutPlanId: slot.layoutPlanId,
+        packageId: slot.packageId,
+        spaPrice: slot.spaPrice,
+        comparisonPrice: slot.comparisonPrice,
+        snapshot: sanitizeProjectOptionsSnapshot(projectOptionsById[slot.projectId]),
+      })),
+    };
+  }
+
+  async function saveProjectComparisonWork(title: string, savedWorkId: string | null) {
+    const trimmedTitle = title.trim();
+
+    if (!canSaveComparisonWork) {
+      setSaveStatus("error");
+      setSaveMessage("Select at least two Projects and Unit Types before saving.");
+      return;
+    }
+
+    if (!trimmedTitle) {
+      setSaveStatus("error");
+      setSaveMessage("Saved Work title is required.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    setSaveMessage("");
+
+    try {
+      const response = await fetch(
+        savedWorkId ? `/api/saved-work/${savedWorkId}` : "/api/saved-work",
+        {
+          method: savedWorkId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            savedWorkId
+              ? {
+                  title: trimmedTitle,
+                  payload: buildProjectComparisonSavedWorkPayload(),
+                  schemaVersion: projectComparisonSavedWorkSchemaVersion,
+                }
+              : {
+                  title: trimmedTitle,
+                  workType: "project_comparison",
+                  payload: buildProjectComparisonSavedWorkPayload(),
+                  schemaVersion: projectComparisonSavedWorkSchemaVersion,
+                },
+          ),
+        },
+      );
+      const data = (await response.json()) as SavedWorkDetailResponse;
+
+      if (!response.ok || !data.savedWork) {
+        throw new Error(data.error || "Unable to save Project Comparison");
+      }
+
+      setCurrentSavedWorkId(data.savedWork.id);
+      setCurrentSavedWorkTitle(data.savedWork.title);
+      setSaveStatus("saved");
+      setSaveMessage("Saved");
+      setSaveModalMode(null);
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveMessage(error instanceof Error ? error.message : "Save failed");
+    }
+  }
+
+  function openSaveModal(mode: SaveModalMode) {
+    setSaveModalMode(mode);
+    setSaveTitle(
+      mode === "save-as"
+        ? `${getDefaultSavedWorkTitle(selectedSlots, projectOptionsById)} Copy`
+        : getDefaultSavedWorkTitle(selectedSlots, projectOptionsById),
+    );
+    setSaveMessage("");
+    setSaveStatus("idle");
+  }
+
+  function handleSaveClick() {
+    if (currentSavedWorkId) {
+      void saveProjectComparisonWork(
+        currentSavedWorkTitle || getDefaultSavedWorkTitle(selectedSlots, projectOptionsById),
+        currentSavedWorkId,
+      );
+      return;
+    }
+
+    openSaveModal("new");
+  }
+
+  function hydrateSavedProjectComparisonPayload(payload: ProjectComparisonSavedWorkPayloadV1) {
+    const restoredOptions: Record<string, ProjectOptions> = {};
+    const restoredSlots = payload.slots.slice(0, 3).map((slot, index) => {
+      const restoredSnapshot = restoreProjectOptionsSnapshot(slot.snapshot);
+
+      if (restoredSnapshot && slot.projectId) {
+        restoredOptions[slot.projectId] = restoredSnapshot;
+      }
+
+      return {
+        ...createBlankSlot(index),
+        projectId: slot.projectId,
+        unitTypeId: slot.unitTypeId,
+        layoutPlanId: slot.layoutPlanId,
+        packageId: slot.packageId,
+        spaPrice: slot.spaPrice,
+        comparisonPrice: slot.comparisonPrice,
+      };
+    });
+
+    while (restoredSlots.length < 2) {
+      restoredSlots.push(createBlankSlot(restoredSlots.length));
+    }
+
+    setLoanMarginPercent(payload.assumptions.loanMarginPercent);
+    setAnnualInterestRatePercent(payload.assumptions.annualInterestRatePercent);
+    setLoanTenureYears(payload.assumptions.loanTenureYears);
+    setSlots(restoredSlots);
+    setProjectOptionsById((current) => ({ ...current, ...restoredOptions }));
+    setProjects((current) => {
+      const projectMap = new Map(current.map((project) => [project.id, project]));
+
+      Object.values(restoredOptions).forEach((options) => {
+        if (!projectMap.has(options.project.id)) {
+          projectMap.set(options.project.id, {
+            id: options.project.id,
+            name: options.project.name,
+            location: options.project.location,
+          });
+        }
+      });
+
+      return Array.from(projectMap.values());
+    });
+    setAgentInsights(payload.agentInsights);
+    setSelectedExportSections(
+      payload.selectedExportSections.length
+        ? payload.selectedExportSections
+        : allExportSectionIds,
+    );
+    setHasCompared(payload.hasCompared);
+    setComparisonConfigChanged(false);
+  }
+
+  async function reconnectSavedProjectComparisonReferences(payload: ProjectComparisonSavedWorkPayloadV1) {
+    const projectIds = [
+      ...new Set(payload.slots.map((slot) => slot.projectId).filter(Boolean)),
+    ];
+
+    if (projectIds.length === 0) return;
+
+    const settledOptions = await Promise.allSettled(
+      projectIds.map(async (projectId) => ({
+        projectId,
+        options: await fetchProjectOptions(projectId),
+      })),
+    );
+    const mediaUpdates: Record<string, ProjectOptions> = {};
+    const unavailableProjects: string[] = [];
+
+    for (const result of settledOptions) {
+      if (result.status === "rejected") {
+        unavailableProjects.push("one saved Project");
+        continue;
+      }
+
+      const savedSnapshot = payload.slots.find(
+        (slot) => slot.projectId === result.value.projectId,
+      )?.snapshot ?? null;
+      const restoredSnapshot = restoreProjectOptionsSnapshot(savedSnapshot);
+
+      mediaUpdates[result.value.projectId] = restoredSnapshot
+        ? attachFreshCustomerSafeMedia(restoredSnapshot, result.value.options)
+        : result.value.options;
+    }
+
+    setProjectOptionsById((current) => ({ ...current, ...mediaUpdates }));
+
+    if (unavailableProjects.length > 0) {
+      setReopenWarning("Some current Project references could not be refreshed. Saved comparison details were preserved.");
+    }
+  }
+
+  async function openSavedProjectComparison(savedWorkId: string) {
+    setReopenWarning("");
+
+    try {
+      const response = await fetch(`/api/saved-work/${savedWorkId}`, {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as SavedWorkDetailResponse;
+
+      if (!response.ok || !data.savedWork) {
+        throw new Error(data.error || "This saved work could not be opened.");
+      }
+
+      if (data.savedWork.workType !== "project_comparison") {
+        throw new Error("This saved Project Comparison version cannot be opened.");
+      }
+
+      const validated = validateProjectComparisonSavedWorkPayload(data.savedWork.payload);
+
+      if (!validated.valid) {
+        throw new Error(validated.error);
+      }
+
+      hydrateSavedProjectComparisonPayload(validated.payload);
+      setCurrentSavedWorkId(data.savedWork.id);
+      setCurrentSavedWorkTitle(data.savedWork.title);
+      setSaveStatus("saved");
+      setSaveMessage("Saved Work opened");
+
+      await reconnectSavedProjectComparisonReferences(validated.payload);
+    } catch (error) {
+      setReopenWarning(
+        error instanceof Error ? error.message : "This saved work could not be opened.",
+      );
+      setCurrentSavedWorkId(null);
+      setCurrentSavedWorkTitle("");
+    }
+  }
+
+  useEffect(() => {
+    if (savedWorkHydratedRef.current) return;
+
+    const savedWorkId = new URL(window.location.href).searchParams.get("savedWork");
+
+    if (!savedWorkId) {
+      savedWorkHydratedRef.current = true;
+      return;
+    }
+
+    savedWorkHydratedRef.current = true;
+    handoffHydratedRef.current = true;
+    void openSavedProjectComparison(savedWorkId);
+    // Run only once so normal editing after reopen is never rehydrated over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (handoffHydratedRef.current || isLoadingProjects) return;
 
     const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.has("savedWork")) {
+      handoffHydratedRef.current = true;
+      return;
+    }
     const hasFinderHandoffParams = [
       "project1",
       "unit1",
@@ -2511,17 +3001,9 @@ export default function ProjectComparisonPage() {
           }
 
           try {
-            const response = await fetch(
-              `/api/tools/project-comparison/projects/${pair.projectId}/options`,
-            );
-
-            if (!response.ok) {
-              throw new Error("Unable to load Project options");
-            }
-
             return {
               pair,
-              options: (await response.json()) as ProjectOptions,
+              options: await fetchProjectOptions(pair.projectId),
               error: "",
             };
           } catch {
@@ -2647,6 +3129,9 @@ export default function ProjectComparisonPage() {
     selectedSlots.every((slot) => slot.unitTypeId && !slot.isLoadingOptions && !slot.error) &&
     assumptionsValid &&
     comparisonPricesValid;
+  const canSaveComparisonWork =
+    selectedSlots.length >= 2 &&
+    selectedSlots.every((slot) => slot.projectId && slot.unitTypeId && !slot.isLoadingOptions);
   const comparedOptions = useMemo<ComparedOption[]>(() => {
     if (!hasCompared || !canCompare) return [];
 
@@ -2815,13 +3300,7 @@ export default function ProjectComparisonPage() {
     );
 
     try {
-      const response = await fetch(`/api/tools/project-comparison/projects/${projectId}/options`);
-
-      if (!response.ok) {
-        throw new Error("Unable to load Project options");
-      }
-
-      const data = (await response.json()) as ProjectOptions;
+      const data = await fetchProjectOptions(projectId);
       setProjectOptionsById((current) => ({ ...current, [projectId]: data }));
     } catch (error) {
       setSlots((current) =>
@@ -3000,14 +3479,55 @@ export default function ProjectComparisonPage() {
 
   return (
     <>
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur">
-        <div>
+      <header className="flex flex-col gap-4 border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <p className="text-sm text-zinc-500">Tools - Project Comparison</p>
           <p className="text-base font-semibold text-zinc-900">Compare trusted project facts</p>
+          {currentSavedWorkTitle ? (
+            <p className="mt-1 truncate text-xs text-zinc-500">
+              Saved Work:{" "}
+              <span className="font-medium text-zinc-700">{currentSavedWorkTitle}</span>
+            </p>
+          ) : null}
+          {saveMessage ? (
+            <p
+              className={`mt-1 text-xs font-medium ${
+                saveStatus === "error" ? "text-amber-700" : "text-[#087F6B]"
+              }`}
+            >
+              {saveMessage}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={handleSaveClick}
+            disabled={saveStatus === "saving" || !canSaveComparisonWork}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saveStatus === "saving" ? "Saving..." : "Save"}
+          </button>
+          {currentSavedWorkId ? (
+            <button
+              type="button"
+              onClick={() => openSaveModal("save-as")}
+              disabled={saveStatus === "saving"}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Save As
+            </button>
+          ) : null}
         </div>
       </header>
 
       <main className="p-6 lg:p-8">
+        {reopenWarning ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {reopenWarning}
+          </div>
+        ) : null}
+
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -3818,6 +4338,27 @@ export default function ProjectComparisonPage() {
           </>
         ) : null}
       </main>
+
+      {saveModalMode ? (
+        <SaveWorkModal
+          mode={saveModalMode}
+          title={saveTitle}
+          error={saveStatus === "error" ? saveMessage : ""}
+          isSaving={saveStatus === "saving"}
+          onTitleChange={(title) => {
+            setSaveTitle(title);
+            setSaveMessage("");
+            setSaveStatus("idle");
+          }}
+          onCancel={() => {
+            if (saveStatus === "saving") return;
+            setSaveModalMode(null);
+            setSaveMessage("");
+            setSaveStatus("idle");
+          }}
+          onConfirm={() => void saveProjectComparisonWork(saveTitle, null)}
+        />
+      ) : null}
     </>
   );
 }

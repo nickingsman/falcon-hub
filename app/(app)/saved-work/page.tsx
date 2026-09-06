@@ -29,7 +29,7 @@ const workTypeLabels: Record<SavedWorkType, string> = {
 
 const workTypeDescriptions: Record<SavedWorkType, string> = {
   roi: "Reopen saved ROI calculations and proposals.",
-  project_comparison: "Reopen support coming soon.",
+  project_comparison: "Reopen saved project comparisons and proposals.",
   progressive_interest: "Reopen support coming soon.",
 };
 
@@ -43,6 +43,10 @@ const filterOptions: Array<{ label: string; value: WorkTypeFilter }> = [
 function getOpenHref(item: SavedWorkItem) {
   if (item.workType === "roi") {
     return `/tools/roi-calculator?savedWork=${encodeURIComponent(item.id)}`;
+  }
+
+  if (item.workType === "project_comparison") {
+    return `/tools/project-comparison?savedWork=${encodeURIComponent(item.id)}`;
   }
 
   return null;
