@@ -21,6 +21,14 @@ import {
   type PurchaseCostEstimateKey,
 } from "@/lib/purchase-costs";
 import {
+  roiSavedWorkSchemaVersion,
+  validateRoiSavedWorkPayload,
+  type RoiSavedFloorPlanPresentationSnapshotV1,
+  type RoiSavedLayoutSnapshotV1,
+  type RoiSavedUnitPresentationSnapshotV1,
+  type RoiSavedWorkPayloadV1,
+} from "@/lib/roi-saved-work";
+import {
   normalizeTowerCode,
   parseUnitNumber,
   stackCodesMatch,
@@ -184,6 +192,19 @@ type UnitDetectionState = {
   floorPlan: ProjectFloorPlan | null;
   stack: FloorPlanStack | null;
   requiresConfirmation: boolean;
+};
+
+type SaveModalMode = "new" | "save-as";
+
+type SavedWorkDetailResponse = {
+  savedWork?: {
+    id: string;
+    title: string;
+    workType: string;
+    schemaVersion: number;
+    payload: unknown;
+  };
+  error?: string;
 };
 
 const defaultPurchaseCosts: PurchaseCostItem[] = [
@@ -516,6 +537,123 @@ function getFloorPlanPresentationSnapshot(
       height_percent: stack.height_percent,
     },
     facing: stack.facing ?? null,
+  };
+}
+
+function sanitizeLayoutSnapshot(layout: ProjectLayout | null): RoiSavedLayoutSnapshotV1 | null {
+  if (!layout) return null;
+
+  return {
+    title: layout.title,
+    description: layout.description,
+  };
+}
+
+function restoreLayoutSnapshot(
+  layout: RoiSavedLayoutSnapshotV1 | null,
+  signedUrl: string | null = null,
+): ProjectLayout | null {
+  if (!layout) return null;
+
+  return {
+    title: layout.title,
+    description: layout.description,
+    signed_url: signedUrl,
+  };
+}
+
+function sanitizeFacingSnapshot(facing: ProjectFacing | null) {
+  if (!facing) return null;
+
+  return {
+    name: facing.name,
+    description: facing.description,
+    view_type: facing.view_type,
+    disclaimer: facing.disclaimer,
+    media: sanitizeLayoutSnapshot(facing.media),
+  };
+}
+
+function restoreFacingSnapshot(
+  facing: RoiSavedFloorPlanPresentationSnapshotV1["facing"],
+): ProjectFacing | null {
+  if (!facing) return null;
+
+  return {
+    name: facing.name,
+    description: facing.description,
+    view_type: facing.view_type,
+    disclaimer: facing.disclaimer,
+    media: restoreLayoutSnapshot(facing.media),
+  };
+}
+
+function sanitizeUnitPresentationSnapshot(
+  snapshot: UnitPresentationSnapshot | null,
+): RoiSavedUnitPresentationSnapshotV1 | null {
+  if (!snapshot) return null;
+
+  return {
+    projectName: snapshot.projectName,
+    typeCode: snapshot.typeCode,
+    typeName: snapshot.typeName,
+    configuration: snapshot.configuration,
+    sizeSqft: snapshot.sizeSqft,
+    carpark: snapshot.carpark,
+    layout: sanitizeLayoutSnapshot(snapshot.layout),
+    furnishingPackage: snapshot.furnishingPackage,
+  };
+}
+
+function restoreUnitPresentationSnapshot(
+  snapshot: RoiSavedUnitPresentationSnapshotV1 | null,
+  freshUnitType?: ProjectUnitType | null,
+): UnitPresentationSnapshot | null {
+  if (!snapshot) return null;
+
+  return {
+    projectName: snapshot.projectName,
+    typeCode: snapshot.typeCode,
+    typeName: snapshot.typeName,
+    configuration: snapshot.configuration,
+    sizeSqft: snapshot.sizeSqft,
+    carpark: snapshot.carpark,
+    layout: freshUnitType?.layout ?? restoreLayoutSnapshot(snapshot.layout),
+    furnishingPackage: snapshot.furnishingPackage,
+  };
+}
+
+function sanitizeFloorPlanPresentationSnapshot(
+  snapshot: FloorPlanPresentationSnapshot | null,
+): RoiSavedFloorPlanPresentationSnapshotV1 | null {
+  if (!snapshot) return null;
+
+  return {
+    floorPlanName: snapshot.floorPlanName,
+    towerCode: snapshot.towerCode,
+    floorFrom: snapshot.floorFrom,
+    floorTo: snapshot.floorTo,
+    media: sanitizeLayoutSnapshot(snapshot.media),
+    stackCode: snapshot.stackCode,
+    stack: snapshot.stack,
+    facing: sanitizeFacingSnapshot(snapshot.facing),
+  };
+}
+
+function restoreFloorPlanPresentationSnapshot(
+  snapshot: RoiSavedFloorPlanPresentationSnapshotV1 | null,
+): FloorPlanPresentationSnapshot | null {
+  if (!snapshot) return null;
+
+  return {
+    floorPlanName: snapshot.floorPlanName,
+    towerCode: snapshot.towerCode,
+    floorFrom: snapshot.floorFrom,
+    floorTo: snapshot.floorTo,
+    media: restoreLayoutSnapshot(snapshot.media),
+    stackCode: snapshot.stackCode,
+    stack: snapshot.stack,
+    facing: restoreFacingSnapshot(snapshot.facing),
   };
 }
 
@@ -1886,6 +2024,84 @@ function ResultRow({
   );
 }
 
+function getDefaultSavedWorkTitle(form: CalculatorForm) {
+  return [form.projectName, form.unitNumber || form.unitType]
+    .filter((value) => value.trim())
+    .join(" - ") || "ROI Calculation";
+}
+
+function SaveWorkModal({
+  mode,
+  title,
+  error,
+  isSaving,
+  onTitleChange,
+  onCancel,
+  onConfirm,
+}: {
+  mode: SaveModalMode;
+  title: string;
+  error: string;
+  isSaving: boolean;
+  onTitleChange: (title: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#087F6B]">
+            Saved Work
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+            {mode === "save-as" ? "Save As" : "Save ROI"}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Name this ROI calculation so you can reopen and continue it later.
+          </p>
+        </div>
+
+        <label className="mt-5 block text-sm text-zinc-600">
+          <span className="mb-1 block font-medium text-zinc-900">Saved Work Title</span>
+          <input
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            disabled={isSaving}
+            className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-zinc-400"
+            maxLength={120}
+          />
+        </label>
+
+        {error ? (
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+            className="min-h-11 rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSaving || !title.trim()}
+            className="min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? "Saving..." : mode === "save-as" ? "Save As" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function RoiCalculatorPage() {
   const { displayName, phone } = useAppPermissions();
   const [form, setForm] = useState<CalculatorForm>({
@@ -1922,6 +2138,15 @@ export default function RoiCalculatorPage() {
   const [isLoadingFloorPlans, setIsLoadingFloorPlans] = useState(false);
   const [manualFloorPlanId, setManualFloorPlanId] = useState("");
   const [manualStackId, setManualStackId] = useState("");
+  const [savedFloorPlanPresentation, setSavedFloorPlanPresentation] =
+    useState<FloorPlanPresentationSnapshot | null>(null);
+  const [currentSavedWorkId, setCurrentSavedWorkId] = useState<string | null>(null);
+  const [currentSavedWorkTitle, setCurrentSavedWorkTitle] = useState("");
+  const [saveModalMode, setSaveModalMode] = useState<SaveModalMode | null>(null);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [reopenWarning, setReopenWarning] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2126,9 +2351,11 @@ export default function RoiCalculatorPage() {
 
       const data = (await response.json()) as ProjectUnitType[];
       setUnitTypes(data);
+      return data;
     } catch (error) {
       setUnitTypes([]);
       setUnitTypesError(error instanceof Error ? error.message : "Unable to load Unit Types");
+      return [];
     } finally {
       setIsLoadingUnitTypes(false);
     }
@@ -2147,9 +2374,11 @@ export default function RoiCalculatorPage() {
 
       const data = (await response.json()) as ProjectFloorPlan[];
       setFloorPlans(data);
+      return data;
     } catch (error) {
       setFloorPlans([]);
       setFloorPlansError(error instanceof Error ? error.message : "Unable to load Floor Plans");
+      return [];
     } finally {
       setIsLoadingFloorPlans(false);
     }
@@ -2165,6 +2394,7 @@ export default function RoiCalculatorPage() {
     setFloorPlansError("");
     setManualFloorPlanId("");
     setManualStackId("");
+    setSavedFloorPlanPresentation(null);
 
     const selectedProject = projects.find((project) => project.id === projectId);
 
@@ -2198,12 +2428,14 @@ export default function RoiCalculatorPage() {
     updateField("unitNumber", unitNumber);
     setManualFloorPlanId("");
     setManualStackId("");
+    setSavedFloorPlanPresentation(null);
   }
 
   function handleUnitTypeChange(unitTypeId: string) {
     setSelectedUnitTypeId(unitTypeId);
     setManualFloorPlanId("");
     setManualStackId("");
+    setSavedFloorPlanPresentation(null);
 
     const selectedUnitType = unitTypes.find((unitType) => unitType.id === unitTypeId);
 
@@ -2255,7 +2487,7 @@ export default function RoiCalculatorPage() {
   const floorPlanPresentation = getFloorPlanPresentationSnapshot(
     confirmedFloorPlan,
     confirmedStack,
-  );
+  ) ?? savedFloorPlanPresentation;
   const selectedFacing = floorPlanPresentation?.facing ?? null;
   const selectedFacingViewTypeLabel = getFacingViewTypeLabel(selectedFacing?.view_type ?? null);
 
@@ -2277,6 +2509,14 @@ export default function RoiCalculatorPage() {
       const selectedProjectName =
         projects.find((project) => project.id === selectedProjectId)?.project_name ||
         form.projectName;
+
+      if (unitPresentation) {
+        return {
+          ...unitPresentation,
+          projectName: unitPresentation.projectName || selectedProjectName,
+          layout: freshUnitType.layout,
+        };
+      }
 
       return getUnitPresentationSnapshot(selectedProjectName, freshUnitType);
     } catch {
@@ -2360,6 +2600,186 @@ export default function RoiCalculatorPage() {
     );
   }
 
+  function buildRoiSavedWorkPayload(): RoiSavedWorkPayloadV1 {
+    return {
+      tool: "roi",
+      schemaVersion: roiSavedWorkSchemaVersion,
+      form,
+      packageItems,
+      purchaseCosts,
+      projectReference: {
+        selectedProjectId,
+        selectedUnitTypeId,
+        manualFloorPlanId,
+        manualStackId,
+      },
+      snapshots: {
+        unitPresentation: sanitizeUnitPresentationSnapshot(unitPresentation),
+        floorPlanPresentation: sanitizeFloorPlanPresentationSnapshot(floorPlanPresentation),
+      },
+    };
+  }
+
+  async function saveRoiWork(title: string, savedWorkId: string | null) {
+    const trimmedTitle = title.trim();
+
+    if (!trimmedTitle) {
+      setSaveStatus("error");
+      setSaveMessage("Saved Work title is required.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    setSaveMessage("");
+
+    try {
+      const response = await fetch(
+        savedWorkId ? `/api/saved-work/${savedWorkId}` : "/api/saved-work",
+        {
+          method: savedWorkId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            savedWorkId
+              ? {
+                  title: trimmedTitle,
+                  payload: buildRoiSavedWorkPayload(),
+                  schemaVersion: roiSavedWorkSchemaVersion,
+                }
+              : {
+                  title: trimmedTitle,
+                  workType: "roi",
+                  payload: buildRoiSavedWorkPayload(),
+                  schemaVersion: roiSavedWorkSchemaVersion,
+                },
+          ),
+        },
+      );
+      const data = (await response.json()) as SavedWorkDetailResponse;
+
+      if (!response.ok || !data.savedWork) {
+        throw new Error(data.error || "Unable to save ROI");
+      }
+
+      setCurrentSavedWorkId(data.savedWork.id);
+      setCurrentSavedWorkTitle(data.savedWork.title);
+      setSaveStatus("saved");
+      setSaveMessage("Saved");
+      setSaveModalMode(null);
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveMessage(error instanceof Error ? error.message : "Save failed");
+    }
+  }
+
+  function openSaveModal(mode: SaveModalMode) {
+    setSaveModalMode(mode);
+    setSaveTitle(mode === "save-as" ? `${getDefaultSavedWorkTitle(form)} Copy` : getDefaultSavedWorkTitle(form));
+    setSaveMessage("");
+    setSaveStatus("idle");
+  }
+
+  function handleSaveClick() {
+    if (currentSavedWorkId) {
+      void saveRoiWork(currentSavedWorkTitle || getDefaultSavedWorkTitle(form), currentSavedWorkId);
+      return;
+    }
+
+    openSaveModal("new");
+  }
+
+  function hydrateSavedRoiPayload(payload: RoiSavedWorkPayloadV1) {
+    setForm(payload.form);
+    setPackageItems(payload.packageItems.length ? payload.packageItems : [createPackageItem("discount")]);
+    setPurchaseCosts(payload.purchaseCosts.length ? payload.purchaseCosts : defaultPurchaseCosts);
+    setSelectedProjectId(payload.projectReference.selectedProjectId);
+    setSelectedUnitTypeId(payload.projectReference.selectedUnitTypeId);
+    setManualFloorPlanId(payload.projectReference.manualFloorPlanId);
+    setManualStackId(payload.projectReference.manualStackId);
+    setUnitPresentation(restoreUnitPresentationSnapshot(payload.snapshots.unitPresentation));
+    setSavedFloorPlanPresentation(
+      restoreFloorPlanPresentationSnapshot(payload.snapshots.floorPlanPresentation),
+    );
+    setUnitTypes([]);
+    setUnitTypesError("");
+    setFloorPlans([]);
+    setFloorPlansError("");
+  }
+
+  async function reconnectSavedRoiReferences(payload: RoiSavedWorkPayloadV1) {
+    const { selectedProjectId: projectId, selectedUnitTypeId: unitTypeId } =
+      payload.projectReference;
+
+    if (!projectId) return;
+
+    const [freshUnitTypes] = await Promise.all([
+      loadUnitTypes(projectId),
+      loadFloorPlans(projectId),
+    ]);
+    const freshUnitType = freshUnitTypes.find((unitType) => unitType.id === unitTypeId);
+
+    if (freshUnitType && payload.snapshots.unitPresentation) {
+      setUnitPresentation(
+        restoreUnitPresentationSnapshot(payload.snapshots.unitPresentation, freshUnitType),
+      );
+      return;
+    }
+
+    if (unitTypeId) {
+      setReopenWarning("Current Unit Type reference is unavailable. Saved ROI values were preserved.");
+    }
+  }
+
+  async function openSavedRoi(savedWorkId: string) {
+    setReopenWarning("");
+
+    try {
+      const response = await fetch(`/api/saved-work/${savedWorkId}`, {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as SavedWorkDetailResponse;
+
+      if (!response.ok || !data.savedWork) {
+        throw new Error(data.error || "This saved work could not be opened.");
+      }
+
+      if (data.savedWork.workType !== "roi") {
+        throw new Error("This saved ROI version cannot be opened.");
+      }
+
+      const validated = validateRoiSavedWorkPayload(data.savedWork.payload);
+
+      if (!validated.valid) {
+        throw new Error(validated.error);
+      }
+
+      hydrateSavedRoiPayload(validated.payload);
+      setCurrentSavedWorkId(data.savedWork.id);
+      setCurrentSavedWorkTitle(data.savedWork.title);
+      setSaveStatus("saved");
+      setSaveMessage("Saved Work opened");
+
+      await reconnectSavedRoiReferences(validated.payload);
+    } catch (error) {
+      setReopenWarning(
+        error instanceof Error ? error.message : "This saved work could not be opened.",
+      );
+      setCurrentSavedWorkId(null);
+      setCurrentSavedWorkTitle("");
+    }
+  }
+
+  useEffect(() => {
+    const savedWorkId = new URL(window.location.href).searchParams.get("savedWork");
+
+    if (savedWorkId) {
+      void openSavedRoi(savedWorkId);
+    }
+    // Run only once so normal editing after reopen is never rehydrated over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleExportPdf() {
     if (hasBlockingValidation) return;
 
@@ -2397,24 +2817,65 @@ export default function RoiCalculatorPage() {
 
   return (
     <>
-      <header className="flex items-center justify-between border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur">
-        <div>
+      <header className="flex flex-col gap-4 border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
           <p className="text-sm text-zinc-500">Tools - ROI Calculator</p>
           <p className="text-base font-semibold text-zinc-900">
             Property Investment Calculator
           </p>
+          {currentSavedWorkTitle ? (
+            <p className="mt-1 truncate text-xs text-zinc-500">
+              Saved Work:{" "}
+              <span className="font-medium text-zinc-700">{currentSavedWorkTitle}</span>
+            </p>
+          ) : null}
+          {saveMessage ? (
+            <p
+              className={`mt-1 text-xs font-medium ${
+                saveStatus === "error" ? "text-amber-700" : "text-[#087F6B]"
+              }`}
+            >
+              {saveMessage}
+            </p>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={handleExportPdf}
-          disabled={hasBlockingValidation}
-          className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Export PDF
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={handleSaveClick}
+            disabled={saveStatus === "saving"}
+            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saveStatus === "saving" ? "Saving..." : "Save"}
+          </button>
+          {currentSavedWorkId ? (
+            <button
+              type="button"
+              onClick={() => openSaveModal("save-as")}
+              disabled={saveStatus === "saving"}
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Save As
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            disabled={hasBlockingValidation}
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Export PDF
+          </button>
+        </div>
       </header>
 
       <main className="p-6 lg:p-8">
+        {reopenWarning ? (
+          <section className="mb-6 rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+            {reopenWarning}
+          </section>
+        ) : null}
+
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
@@ -2612,6 +3073,7 @@ export default function RoiCalculatorPage() {
                             onChange={(event) => {
                               setManualFloorPlanId(event.target.value);
                               setManualStackId("");
+                              setSavedFloorPlanPresentation(null);
                             }}
                             className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none"
                           >
@@ -2632,7 +3094,10 @@ export default function RoiCalculatorPage() {
                           <span className="mb-1 block">Manual Stack</span>
                           <select
                             value={manualStackId}
-                            onChange={(event) => setManualStackId(event.target.value)}
+                            onChange={(event) => {
+                              setManualStackId(event.target.value);
+                              setSavedFloorPlanPresentation(null);
+                            }}
                             disabled={!activeManualFloorPlan}
                             className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -3413,6 +3878,27 @@ export default function RoiCalculatorPage() {
           </div>
         </div>
       </main>
+
+      {saveModalMode ? (
+        <SaveWorkModal
+          mode={saveModalMode}
+          title={saveTitle}
+          error={saveStatus === "error" ? saveMessage : ""}
+          isSaving={saveStatus === "saving"}
+          onTitleChange={(title) => {
+            setSaveTitle(title);
+            setSaveMessage("");
+            setSaveStatus("idle");
+          }}
+          onCancel={() => {
+            if (saveStatus === "saving") return;
+            setSaveModalMode(null);
+            setSaveMessage("");
+            setSaveStatus("idle");
+          }}
+          onConfirm={() => void saveRoiWork(saveTitle, null)}
+        />
+      ) : null}
     </>
   );
 }
