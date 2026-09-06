@@ -8,6 +8,18 @@ type AttendanceStatus = "not_checked_in" | "checked_in" | "completed";
 type DsiStatus = "not_submitted" | "submitted";
 type DashboardView = "my" | "team";
 
+type DashboardUpcomingEvent = {
+  id: string;
+  title: string;
+  category: string;
+  eventDate: string;
+  isAllDay: boolean;
+  startTime: string | null;
+  endTime: string | null;
+  location: string | null;
+  audienceLabel: string;
+};
+
 type AgentDashboardResponse = {
   date: string;
   timezone: "Asia/Kuala_Lumpur";
@@ -34,6 +46,14 @@ type AgentDashboardResponse = {
     appointmentMade: number;
     turnUpAppt: number;
     unitClosed: number;
+  };
+  upcomingEvents: {
+    from: string;
+    to: string;
+    timezone: "Asia/Kuala_Lumpur";
+    totalVisible: number;
+    hasMore: boolean;
+    events: DashboardUpcomingEvent[];
   };
   teamPresence: {
     totalCheckedIn: number;
@@ -82,6 +102,7 @@ type LeaderDashboardResponse = {
       count: number;
     }[];
   };
+  upcomingEvents: AgentDashboardResponse["upcomingEvents"];
   teamWeek: {
     recordedDsiDays: number;
     appointmentMade: number;
@@ -117,6 +138,16 @@ const quickTools = [
   },
 ];
 
+const upcomingCategoryLabels: Record<string, string> = {
+  company_meeting: "Company Meeting",
+  team_meeting: "Team Meeting",
+  training: "Training",
+  roleplay: "Roleplay",
+  recognition_event: "Recognition Event",
+  project_activity: "Project Activity",
+  other: "Event",
+};
+
 function formatMalaysiaDate(value: string) {
   return new Intl.DateTimeFormat("en-MY", {
     weekday: "long",
@@ -125,6 +156,54 @@ function formatMalaysiaDate(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function formatShortEventDate(value: string) {
+  return new Intl.DateTimeFormat("en-MY", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  })
+    .format(new Date(`${value}T00:00:00.000Z`))
+    .replace(",", "")
+    .toUpperCase();
+}
+
+function formatDashboardEventTime(event: DashboardUpcomingEvent) {
+  if (event.isAllDay) return "All Day";
+
+  const start = formatLocalClockTime(event.startTime);
+  if (!start) return "Time TBC";
+
+  const end = formatLocalClockTime(event.endTime);
+
+  return end ? `${start} – ${end}` : start;
+}
+
+function formatLocalClockTime(value: string | null) {
+  if (!value) return null;
+
+  const match = value.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
+  if (!match) return null;
+
+  const hour = Number(match[1]);
+  const minute = match[2];
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+
+  return `${displayHour}:${minute} ${period}`;
+}
+
+function getUpcomingDateLabel(eventDate: string, today: string) {
+  if (eventDate === today) return "Today";
+
+  const tomorrow = new Date(`${today}T00:00:00.000Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+  if (eventDate === tomorrow.toISOString().slice(0, 10)) return "Tomorrow";
+
+  return formatShortEventDate(eventDate);
 }
 
 function formatMalaysiaTime(value: string | null) {
@@ -288,6 +367,88 @@ function AttentionList({
         </div>
       )}
     </div>
+  );
+}
+
+function UpcomingEventsCard({
+  upcomingEvents,
+  today,
+}: {
+  upcomingEvents: AgentDashboardResponse["upcomingEvents"];
+  today: string;
+}) {
+  return (
+    <section>
+      <div className="mb-3 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">Upcoming Events</p>
+          <p className="text-sm text-zinc-500">Visible Falcon Calendar events in the next 7 days</p>
+        </div>
+        <Link
+          href="/calendar"
+          className="shrink-0 text-sm font-semibold text-zinc-900 underline-offset-4 transition hover:underline focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+        >
+          View Calendar
+        </Link>
+      </div>
+
+      <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+        {upcomingEvents.events.length === 0 ? (
+          <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            No upcoming events in the next 7 days.
+          </p>
+        ) : (
+          <div className="divide-y divide-zinc-100">
+            {upcomingEvents.events.map((event) => {
+              const isToday = event.eventDate === today;
+
+              return (
+                <Link
+                  key={event.id}
+                  href="/calendar"
+                  className="block py-3 first:pt-0 last:pb-0 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                            isToday
+                              ? "border-[#087F6B]/20 bg-[#087F6B]/10 text-[#087F6B]"
+                              : "border-zinc-200 bg-zinc-50 text-zinc-600"
+                          }`}
+                        >
+                          {getUpcomingDateLabel(event.eventDate, today)}
+                        </span>
+                        <span className="text-xs font-medium text-zinc-500">
+                          {upcomingCategoryLabels[event.category] ?? "Event"} · {event.audienceLabel}
+                        </span>
+                      </div>
+                      <p className="mt-2 break-words text-sm font-semibold text-zinc-950">
+                        {event.title}
+                      </p>
+                      {event.location ? (
+                        <p className="mt-1 break-words text-sm text-zinc-500">{event.location}</p>
+                      ) : null}
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold text-zinc-800">
+                      {formatDashboardEventTime(event)}
+                    </p>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {upcomingEvents.hasMore ? (
+          <p className="mt-4 border-t border-zinc-100 pt-3 text-sm text-zinc-500">
+            {upcomingEvents.totalVisible - upcomingEvents.events.length} more event
+            {upcomingEvents.totalVisible - upcomingEvents.events.length === 1 ? "" : "s"} in this window.
+          </p>
+        ) : null}
+      </article>
+    </section>
   );
 }
 
@@ -938,6 +1099,8 @@ export default function Home() {
             </article>
           </div>
         </section>
+
+        <UpcomingEventsCard upcomingEvents={dashboard.upcomingEvents} today={dashboard.date} />
 
         <section className="lg:hidden">
           <div className="mb-3">

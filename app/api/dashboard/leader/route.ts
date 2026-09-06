@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDashboardUpcomingCalendarEvents } from "@/app/api/calendar/calendar-service";
 import { getAuthenticatedUserProfile, type UserProfile } from "@/lib/auth";
 import {
   getMalaysiaThisWeekRange,
@@ -143,6 +144,7 @@ export async function GET() {
       { data: todayDsiRows, error: todayDsiError },
       { data: weekDsiRows, error: weekDsiError },
       { data: todayAttendanceRows, error: todayAttendanceError },
+      upcomingEvents,
     ] = visibleMemberIds.length
       ? await Promise.all([
           supabase
@@ -161,11 +163,20 @@ export async function GET() {
             .select("member_id, checked_out_at, current_location_name, current_location_source")
             .in("member_id", visibleMemberIds)
             .eq("attendance_date", today),
+          getDashboardUpcomingCalendarEvents(),
         ])
       : [
           { data: [], error: null },
           { data: [], error: null },
           { data: [], error: null },
+          {
+            from: today,
+            to: today,
+            timezone: "Asia/Kuala_Lumpur" as const,
+            totalVisible: 0,
+            hasMore: false,
+            events: [],
+          },
         ];
 
     if (todayDsiError) {
@@ -220,6 +231,7 @@ export async function GET() {
         totalCheckedIn: currentPresence.length,
         groups: groupPresence(currentPresence),
       },
+      upcomingEvents,
       teamWeek: {
         recordedDsiDays: weekDsi.length,
         appointmentMade: weekActivity.appointmentMade,

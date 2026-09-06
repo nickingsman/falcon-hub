@@ -68,6 +68,18 @@ type CalendarEventInput = {
   targetTeamMemberId: string | null;
 };
 
+export type DashboardUpcomingCalendarEvent = {
+  id: string;
+  title: string;
+  category: CalendarCategory;
+  eventDate: string;
+  isAllDay: boolean;
+  startTime: string | null;
+  endTime: string | null;
+  location: string | null;
+  audienceLabel: string;
+};
+
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -449,6 +461,20 @@ function toCalendarEventResponse(
   };
 }
 
+function toDashboardUpcomingCalendarEvent(row: CalendarEventRow): DashboardUpcomingCalendarEvent {
+  return {
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    eventDate: row.event_date,
+    isAllDay: row.is_all_day,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    location: row.location,
+    audienceLabel: row.audience_type === "company" ? "Company" : "Team",
+  };
+}
+
 async function getCalendarEventById(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   eventId: string,
@@ -717,4 +743,50 @@ export async function deleteCalendarEvent(eventId: string) {
 
     return serverError("Unable to delete calendar event");
   }
+}
+
+export async function getDashboardUpcomingCalendarEvents(limit = 5) {
+  const authorization = await requireCalendarAccess();
+
+  if (!authorization.authorized) {
+    throw new Error("Calendar dashboard access requires an active linked user");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const from = getMalaysiaTodayDateString();
+  const to = addCalendarDays(from, 7);
+  const members = await getActiveCalendarMembers(supabase);
+  const { data, error } = await supabase
+    .from("calendar_events")
+    .select(calendarSelectFields)
+    .eq("is_deleted", false)
+    .gte("event_date", from)
+    .lte("event_date", to)
+    .order("event_date", { ascending: true })
+    .order("start_time", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const visibleEvents = ((data ?? []) as CalendarEventRow[])
+    .filter((event) => canReadCalendarEvent(authorization.context, event, members))
+    .sort((a, b) => {
+      if (a.event_date !== b.event_date) return a.event_date.localeCompare(b.event_date);
+      if (a.is_all_day !== b.is_all_day) return a.is_all_day ? -1 : 1;
+      if ((a.start_time ?? "") !== (b.start_time ?? "")) {
+        return (a.start_time ?? "").localeCompare(b.start_time ?? "");
+      }
+      return a.created_at.localeCompare(b.created_at);
+    });
+
+  return {
+    from,
+    to,
+    timezone: "Asia/Kuala_Lumpur" as const,
+    totalVisible: visibleEvents.length,
+    hasMore: visibleEvents.length > limit,
+    events: visibleEvents.slice(0, limit).map(toDashboardUpcomingCalendarEvent),
+  };
 }
