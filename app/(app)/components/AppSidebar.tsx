@@ -15,6 +15,7 @@ const sidebarItems = [
   { label: "Proposal Generator", href: "#" },
   { label: "Check In", href: "/check-in" },
   { label: "Calendar", href: "/calendar" },
+  { label: "Saved Work", href: "/saved-work" },
   { label: "DSI", href: "/dsi" },
   {
     label: "Team",
@@ -72,6 +73,10 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 
   if (item.label === "Calendar") {
     return pathname === "/calendar";
+  }
+
+  if (item.label === "Saved Work") {
+    return pathname === "/saved-work";
   }
 
   return false;
