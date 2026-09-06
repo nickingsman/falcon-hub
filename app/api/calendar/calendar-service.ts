@@ -245,8 +245,7 @@ function getReadableTeamRootIds(context: CalendarAuthContext, members: CalendarM
 
 function canManageCalendarEvent(
   context: CalendarAuthContext,
-  event: Pick<CalendarEventRow, "audience_type" | "target_team_member_id">,
-  members: CalendarMemberRow[],
+  event: Pick<CalendarEventRow, "audience_type" | "created_by">,
 ) {
   if (canManageMembers(context.profile)) {
     return true;
@@ -256,11 +255,11 @@ function canManageCalendarEvent(
     return false;
   }
 
-  if (event.audience_type !== "team" || !event.target_team_member_id) {
+  if (event.audience_type !== "team") {
     return false;
   }
 
-  return getManageableTeamRootIds(context, members).has(event.target_team_member_id);
+  return event.created_by === context.authUserId;
 }
 
 function canReadCalendarEvent(
@@ -414,10 +413,15 @@ function parseCalendarEventInput(
   };
 }
 
-function toCalendarEventResponse(row: CalendarEventRow, membersById: Map<string, CalendarMemberRow>) {
+function toCalendarEventResponse(
+  row: CalendarEventRow,
+  membersById: Map<string, CalendarMemberRow>,
+  context: CalendarAuthContext,
+) {
   const targetTeamMember = row.target_team_member_id
     ? membersById.get(row.target_team_member_id)
     : null;
+  const canManage = canManageCalendarEvent(context, row);
 
   return {
     id: row.id,
@@ -437,6 +441,9 @@ function toCalendarEventResponse(row: CalendarEventRow, membersById: Map<string,
           position: targetTeamMember.position,
         }
       : null,
+    canManage,
+    canEdit: canManage,
+    canDelete: canManage,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -507,7 +514,9 @@ export async function getCalendarEvents(request: Request) {
       from: range.from,
       to: range.to,
       timezone: "Asia/Kuala_Lumpur",
-      events: events.map((event) => toCalendarEventResponse(event, membersById)),
+      events: events.map((event) =>
+        toCalendarEventResponse(event, membersById, authorization.context),
+      ),
     });
   } catch (error) {
     console.error("GET calendar events error:", error);
@@ -575,7 +584,7 @@ export async function createCalendarEvent(request: Request) {
     }
 
     return NextResponse.json(
-      { event: toCalendarEventResponse(data as CalendarEventRow, membersById) },
+      { event: toCalendarEventResponse(data as CalendarEventRow, membersById, authorization.context) },
       { status: 201 },
     );
   } catch (error) {
@@ -606,7 +615,7 @@ export async function updateCalendarEvent(request: Request, eventId: string) {
 
     const members = await getActiveCalendarMembers(supabase);
 
-    if (!canManageCalendarEvent(authorization.context, existingResult.event, members)) {
+    if (!canManageCalendarEvent(authorization.context, existingResult.event)) {
       return forbidden();
     }
 
@@ -656,7 +665,7 @@ export async function updateCalendarEvent(request: Request, eventId: string) {
     const membersById = new Map(members.map((member) => [member.id, member]));
 
     return NextResponse.json({
-      event: toCalendarEventResponse(data as CalendarEventRow, membersById),
+      event: toCalendarEventResponse(data as CalendarEventRow, membersById, authorization.context),
     });
   } catch (error) {
     console.error("PATCH calendar event error:", error);
@@ -684,9 +693,7 @@ export async function deleteCalendarEvent(eventId: string) {
       return existingResult.errorResponse;
     }
 
-    const members = await getActiveCalendarMembers(supabase);
-
-    if (!canManageCalendarEvent(authorization.context, existingResult.event, members)) {
+    if (!canManageCalendarEvent(authorization.context, existingResult.event)) {
       return forbidden();
     }
 

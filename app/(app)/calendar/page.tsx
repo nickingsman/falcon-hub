@@ -29,6 +29,9 @@ type CalendarEvent = {
     memberName: string;
     position: string | null;
   } | null;
+  canManage: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -109,6 +112,24 @@ function createInitialEventForm(
     endTime: "",
     location: "",
     description: "",
+  };
+}
+
+function createEventFormFromEvent(
+  event: CalendarEvent,
+  canCreateCompanyEvents: boolean,
+): CreateEventForm {
+  return {
+    title: event.title,
+    category: event.category,
+    eventDate: event.eventDate,
+    audienceType: canCreateCompanyEvents ? event.audienceType : "team",
+    targetTeamMemberId: event.targetTeam?.memberId ?? "",
+    isAllDay: event.isAllDay,
+    startTime: event.startTime ?? "",
+    endTime: event.endTime ?? "",
+    location: event.location ?? "",
+    description: event.description ?? "",
   };
 }
 
@@ -328,9 +349,13 @@ function EventAgendaItem({
 function EventDetailModal({
   event,
   onClose,
+  onEdit,
+  onDelete,
 }: {
   event: CalendarEvent;
   onClose: () => void;
+  onEdit: (event: CalendarEvent) => void;
+  onDelete: (event: CalendarEvent) => void;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
@@ -376,6 +401,29 @@ function EventDetailModal({
             </div>
           ) : null}
         </div>
+
+        {event.canManage ? (
+          <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-zinc-100 bg-white p-5 sm:flex-row sm:justify-end sm:p-6">
+            {event.canDelete ? (
+              <button
+                type="button"
+                onClick={() => onDelete(event)}
+                className="rounded-full border border-red-200 px-5 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-200"
+              >
+                Delete
+              </button>
+            ) : null}
+            {event.canEdit ? (
+              <button
+                type="button"
+                onClick={() => onEdit(event)}
+                className="rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-400"
+              >
+                Edit
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -399,6 +447,10 @@ function CreateEventModal({
   members,
   membersLoadState,
   canCreateCompanyEvents,
+  eyebrow,
+  title,
+  submitLabel,
+  submittingLabel,
   onClose,
   onSubmit,
   onChange,
@@ -410,6 +462,10 @@ function CreateEventModal({
   members: CalendarMember[];
   membersLoadState: MembersLoadState;
   canCreateCompanyEvents: boolean;
+  eyebrow: string;
+  title: string;
+  submitLabel: string;
+  submittingLabel: string;
   onClose: () => void;
   onSubmit: () => void;
   onChange: (nextForm: CreateEventForm) => void;
@@ -423,10 +479,10 @@ function CreateEventModal({
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-zinc-100 bg-white p-5 sm:p-6">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#087F6B]">
-              Add Event
+              {eyebrow}
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
-              Create Calendar Event
+              {title}
             </h2>
           </div>
           <button
@@ -618,7 +674,64 @@ function CreateEventModal({
             disabled={isSubmitting || (showTeamTarget && membersLoadState === "loading")}
             className="rounded-full bg-zinc-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {isSubmitting ? "Creating..." : "Create Event"}
+            {isSubmitting ? submittingLabel : submitLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteEventModal({
+  event,
+  isDeleting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  event: CalendarEvent;
+  isDeleting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-red-700">
+          Delete Event
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-950">
+          Delete this event?
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-zinc-500">
+          This event will be removed from the Falcon Calendar.
+        </p>
+        <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+          <p className="font-semibold text-zinc-950">{event.title}</p>
+          <p className="mt-1 text-sm text-zinc-500">{formatDisplayDate(event.eventDate)}</p>
+        </div>
+        {error ? (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        ) : null}
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="rounded-full border border-zinc-200 px-5 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="rounded-full bg-red-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isDeleting ? "Deleting..." : "Delete Event"}
           </button>
         </div>
       </div>
@@ -644,6 +757,15 @@ export default function CalendarPage() {
   );
   const [createError, setCreateError] = useState<string | null>(null);
   const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [editForm, setEditForm] = useState(() =>
+    createInitialEventForm(today, canCreateCompanyEvents),
+  );
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState<CalendarEvent | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [targetMembers, setTargetMembers] = useState<CalendarMember[]>([]);
   const [membersLoadState, setMembersLoadState] = useState<MembersLoadState>("idle");
 
@@ -716,11 +838,11 @@ export default function CalendarPage() {
   }, [monthKey, selectedDate, today]);
 
   useEffect(() => {
-    if (!showCreateModal) return;
+    if (!showCreateModal && !editingEvent) return;
     if (membersLoadState !== "idle") return;
 
     void loadTargetMembers();
-  }, [loadTargetMembers, membersLoadState, showCreateModal]);
+  }, [editingEvent, loadTargetMembers, membersLoadState, showCreateModal]);
 
   function goToToday() {
     setMonthKey(getMonthKey(parseDate(today)));
@@ -739,6 +861,33 @@ export default function CalendarPage() {
     setShowCreateModal(false);
     setCreateError(null);
     setCreateForm(createInitialEventForm(selectedDate, canCreateCompanyEvents));
+  }
+
+  function openEditModal(event: CalendarEvent) {
+    setSelectedEvent(null);
+    setEditingEvent(event);
+    setEditForm(createEventFormFromEvent(event, canCreateCompanyEvents));
+    setEditError(null);
+  }
+
+  function closeEditModal() {
+    if (isSubmittingEdit) return;
+
+    setEditingEvent(null);
+    setEditError(null);
+    setEditForm(createInitialEventForm(selectedDate, canCreateCompanyEvents));
+  }
+
+  function openDeleteModal(event: CalendarEvent) {
+    setDeleteError(null);
+    setDeletingEvent(event);
+  }
+
+  function closeDeleteModal() {
+    if (isDeleting) return;
+
+    setDeletingEvent(null);
+    setDeleteError(null);
   }
 
   async function submitCreateEvent() {
@@ -789,6 +938,90 @@ export default function CalendarPage() {
       setCreateError(error instanceof Error ? error.message : "Unable to create event");
     } finally {
       setIsSubmittingCreate(false);
+    }
+  }
+
+  async function submitEditEvent() {
+    if (!editingEvent) return;
+
+    const validationError = validateCreateEventForm(editForm);
+
+    if (validationError) {
+      setEditError(validationError);
+      return;
+    }
+
+    setIsSubmittingEdit(true);
+    setEditError(null);
+
+    try {
+      const response = await fetch(`/api/calendar/events/${editingEvent.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: editForm.title.trim(),
+          category: editForm.category,
+          eventDate: editForm.eventDate,
+          isAllDay: editForm.isAllDay,
+          startTime: editForm.isAllDay ? null : editForm.startTime,
+          endTime: editForm.isAllDay ? null : editForm.endTime,
+          location: editForm.location.trim() || null,
+          description: editForm.description.trim() || null,
+          audienceType: editForm.audienceType,
+          targetTeamMemberId:
+            editForm.audienceType === "team" ? editForm.targetTeamMemberId : null,
+        }),
+      });
+      const data = (await response.json()) as { error?: string; event?: CalendarEvent };
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("You do not have permission to edit this event.");
+        }
+
+        throw new Error(data.error || "Unable to update event");
+      }
+
+      setEditingEvent(null);
+      setSelectedEvent(data.event ?? null);
+      setEditForm(createInitialEventForm(selectedDate, canCreateCompanyEvents));
+      await loadEvents();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : "Unable to update event");
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  }
+
+  async function confirmDeleteEvent() {
+    if (!deletingEvent) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const response = await fetch(`/api/calendar/events/${deletingEvent.id}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("You do not have permission to delete this event.");
+        }
+
+        throw new Error(data.error || "Unable to delete event");
+      }
+
+      setDeletingEvent(null);
+      setSelectedEvent(null);
+      await loadEvents();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Unable to delete event");
+    } finally {
+      setIsDeleting(false);
     }
   }
 
@@ -1042,7 +1275,12 @@ export default function CalendarPage() {
       ) : null}
 
       {selectedEvent ? (
-        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onEdit={openEditModal}
+          onDelete={openDeleteModal}
+        />
       ) : null}
 
       {showCreateModal ? (
@@ -1053,6 +1291,10 @@ export default function CalendarPage() {
           members={targetMembers}
           membersLoadState={membersLoadState}
           canCreateCompanyEvents={canCreateCompanyEvents}
+          eyebrow="Add Event"
+          title="Create Calendar Event"
+          submitLabel="Create Event"
+          submittingLabel="Creating..."
           onClose={closeCreateModal}
           onSubmit={submitCreateEvent}
           onChange={(nextForm) => {
@@ -1060,6 +1302,38 @@ export default function CalendarPage() {
             setCreateError(null);
           }}
           onRetryMembers={loadTargetMembers}
+        />
+      ) : null}
+
+      {editingEvent ? (
+        <CreateEventModal
+          form={editForm}
+          formError={editError}
+          isSubmitting={isSubmittingEdit}
+          members={targetMembers}
+          membersLoadState={membersLoadState}
+          canCreateCompanyEvents={canCreateCompanyEvents}
+          eyebrow="Edit Event"
+          title="Update Calendar Event"
+          submitLabel="Save Changes"
+          submittingLabel="Saving..."
+          onClose={closeEditModal}
+          onSubmit={submitEditEvent}
+          onChange={(nextForm) => {
+            setEditForm(nextForm);
+            setEditError(null);
+          }}
+          onRetryMembers={loadTargetMembers}
+        />
+      ) : null}
+
+      {deletingEvent ? (
+        <DeleteEventModal
+          event={deletingEvent}
+          isDeleting={isDeleting}
+          error={deleteError}
+          onCancel={closeDeleteModal}
+          onConfirm={confirmDeleteEvent}
         />
       ) : null}
     </main>
