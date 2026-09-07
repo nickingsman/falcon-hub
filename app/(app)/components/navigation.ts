@@ -24,7 +24,7 @@ export type MoreNavSection = {
 export const desktopNavItems: AppNavItem[] = [
   { label: "Dashboard", href: "/" },
   { label: "Projects", href: "/projects" },
-  { label: "ROI Calculator", href: "/tools/roi-calculator" },
+  { label: "Unit Calculation", href: "/tools/roi-calculator" },
   { label: "Project Comparison", href: "/tools/project-comparison" },
   { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
   { label: "Progressive Interest", href: "/tools/progressive-interest" },
@@ -104,7 +104,7 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
     {
       title: "Customer Tools",
       items: [
-        { label: "ROI Calculator", href: "/tools/roi-calculator" },
+        { label: "Unit Calculation", href: "/tools/roi-calculator" },
         { label: "Project Comparison", href: "/tools/project-comparison" },
         { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
         { label: "Progressive Interest", href: "/tools/progressive-interest" },

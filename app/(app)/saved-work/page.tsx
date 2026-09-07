@@ -22,20 +22,20 @@ type SavedWorkListResponse = {
 };
 
 const workTypeLabels: Record<SavedWorkType, string> = {
-  roi: "ROI Calculator",
+  roi: "Unit Calculation",
   project_comparison: "Project Comparison",
   progressive_interest: "Progressive Interest",
 };
 
 const workTypeDescriptions: Record<SavedWorkType, string> = {
-  roi: "Reopen saved ROI calculations and proposals.",
+  roi: "Reopen saved Unit Calculation work and proposals.",
   project_comparison: "Reopen saved project comparisons and proposals.",
   progressive_interest: "Reopen saved Progressive Interest calculations and proposals.",
 };
 
 const filterOptions: Array<{ label: string; value: WorkTypeFilter }> = [
   { label: "All", value: "all" },
-  { label: "ROI Calculator", value: "roi" },
+  { label: "Unit Calculation", value: "roi" },
   { label: "Project Comparison", value: "project_comparison" },
   { label: "Progressive Interest", value: "progressive_interest" },
 ];

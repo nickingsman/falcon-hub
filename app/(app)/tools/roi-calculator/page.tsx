@@ -480,6 +480,59 @@ function formatCashBenefitTreatment(
   return receiveAt ? `Refund Later (${receiveAt})` : "Refund Later";
 }
 
+function getPackageGroupTitle(type: PackageItemType) {
+  if (type === "discount") return "Discounts";
+  if (type === "cash_benefit") return "Cashback";
+
+  return "Freebies";
+}
+
+function getPackageAddLabel(type: PackageItemType) {
+  if (type === "discount") return "+ Discount";
+  if (type === "cash_benefit") return "+ Cashback";
+
+  return "+ Freebie";
+}
+
+function getPackageDescriptionPlaceholder(type: PackageItemType) {
+  if (type === "discount") return "Developer Rebate";
+  if (type === "cash_benefit") return "Cashback";
+
+  return "Free furniture package";
+}
+
+function getDiscountMethodLabel(method: DiscountMethod) {
+  if (method === "percentage_spa") return "% of SPA";
+  if (method === "percentage_previous_balance") return "% of Balance";
+
+  return "Fixed RM";
+}
+
+function getPackageItemEffectLabel(
+  item: EditablePackageItem,
+  result: RoiCalculatorResult,
+) {
+  if (item.type === "discount") {
+    const discount = result.processedDiscounts.find((processed) => processed.id === item.id);
+
+    return discount ? `-${formatCurrency(discount.amount)}` : "-RM 0";
+  }
+
+  if (item.type === "cash_benefit") {
+    const benefit = result.cashBenefits.find((processed) => processed.id === item.id);
+
+    return benefit ? `-${formatCurrency(benefit.amount)}` : "-RM 0";
+  }
+
+  const amount = parseMoney(item.amount);
+
+  if (!hasEnteredValue(item.amount) || !Number.isFinite(amount) || amount <= 0) {
+    return "Included";
+  }
+
+  return formatCurrency(amount);
+}
+
 function formatCarpark(unitType: ProjectUnitType) {
   if (unitType.carpark_description?.trim()) return unitType.carpark_description.trim();
   if (unitType.default_carparks === null || unitType.default_carparks === undefined) return "";
@@ -858,7 +911,7 @@ function buildDetectionState({
   if (stack.unit_type_id && selectedUnitTypeId && stack.unit_type_id !== selectedUnitTypeId) {
     return {
       status: "mismatch",
-      message: `Detected Stack ${stack.stack_code} is mapped to ${getMappedUnitTypeLabel(stack.unit_type)}, while the selected ROI Unit Type is different. Confirm manually before highlighting.`,
+      message: `Detected Stack ${stack.stack_code} is mapped to ${getMappedUnitTypeLabel(stack.unit_type)}, while the selected Unit Type is different. Confirm manually before highlighting.`,
       parsed,
       floorPlan,
       stack,
@@ -979,7 +1032,7 @@ function buildRoiProposalHtml({
   floorPlanPresentation: FloorPlanPresentationSnapshot | null;
   purchaseCosts: ResolvedPurchaseCostItem[];
 }) {
-  const projectName = form.projectName.trim() || "Property ROI Proposal";
+  const projectName = form.projectName.trim() || "Unit Calculation Proposal";
   const renderUnitPresentation = shouldRenderUnitPresentation(
     unitPresentation,
     floorPlanPresentation,
@@ -1194,7 +1247,7 @@ function buildRoiProposalHtml({
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(projectName)} - ROI Proposal</title>
+    <title>${escapeHtml(projectName)} - Unit Calculation Proposal</title>
     <style>
       @page { size: A4; margin: 10mm 10mm 16mm; }
       * { box-sizing: border-box; }
@@ -1847,7 +1900,7 @@ function buildRoiProposalHtml({
     <main class="page proposal-page-one">
       <section class="header">
         <div>
-          <div class="eyebrow">Falcon Hub ROI Proposal</div>
+          <div class="eyebrow">Falcon Hub Unit Calculation</div>
           <h1>${escapeHtml(projectName)}</h1>
         </div>
         <div class="date">Calculation Date: ${escapeHtml(form.calculationDate || "-")}</div>
@@ -1962,7 +2015,7 @@ function createPackageItem(type: PackageItemType): EditablePackageItem {
         ? "Developer Rebate"
         : type === "cash_benefit"
           ? "Cashback"
-          : "Free Furniture Package",
+          : "Freebie",
     method: "percentage_spa",
     value: "",
     amount: "",
@@ -1986,7 +2039,7 @@ function toPackageItem(item: EditablePackageItem): PurchasePackageItem {
     return {
       id: item.id,
       type: "cash_benefit",
-      description: item.description.trim() || "Cash Benefit",
+      description: item.description.trim() || "Cashback",
       amount: parseMoney(item.amount),
       treatment: item.treatment,
       receiveAt: item.receiveAt.trim() || undefined,
@@ -1996,7 +2049,7 @@ function toPackageItem(item: EditablePackageItem): PurchasePackageItem {
   return {
     id: item.id,
     type: "non_cash_benefit",
-    description: item.description.trim() || "Non-Cash Benefit",
+    description: item.description.trim() || "Freebie",
   };
 }
 
@@ -2027,7 +2080,7 @@ function ResultRow({
 function getDefaultSavedWorkTitle(form: CalculatorForm) {
   return [form.projectName, form.unitNumber || form.unitType]
     .filter((value) => value.trim())
-    .join(" - ") || "ROI Calculation";
+    .join(" - ") || "Unit Calculation";
 }
 
 function SaveWorkModal({
@@ -2055,10 +2108,10 @@ function SaveWorkModal({
             Saved Work
           </p>
           <h2 className="mt-1 text-xl font-semibold text-zinc-950">
-            {mode === "save-as" ? "Save As" : "Save ROI"}
+            {mode === "save-as" ? "Save As" : "Save Unit Calculation"}
           </h2>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
-            Name this ROI calculation so you can reopen and continue it later.
+            Name this Unit Calculation so you can reopen and continue it later.
           </p>
         </div>
 
@@ -2278,7 +2331,7 @@ export default function RoiCalculatorPage() {
         const amount = parseMoney(item.amount);
 
         if (!Number.isFinite(amount) || amount < 0) {
-          messages.push(`${item.description || "Cash Benefit"} must not be negative.`);
+          messages.push(`${item.description || "Cashback"} must not be negative.`);
         }
       }
     }
@@ -2659,7 +2712,7 @@ export default function RoiCalculatorPage() {
       const data = (await response.json()) as SavedWorkDetailResponse;
 
       if (!response.ok || !data.savedWork) {
-        throw new Error(data.error || "Unable to save ROI");
+        throw new Error(data.error || "Unable to save Unit Calculation");
       }
 
       setCurrentSavedWorkId(data.savedWork.id);
@@ -2727,7 +2780,7 @@ export default function RoiCalculatorPage() {
     }
 
     if (unitTypeId) {
-      setReopenWarning("Current Unit Type reference is unavailable. Saved ROI values were preserved.");
+      setReopenWarning("Current Unit Type reference is unavailable. Saved Unit Calculation values were preserved.");
     }
   }
 
@@ -2745,7 +2798,7 @@ export default function RoiCalculatorPage() {
       }
 
       if (data.savedWork.workType !== "roi") {
-        throw new Error("This saved ROI version cannot be opened.");
+        throw new Error("This saved Unit Calculation version cannot be opened.");
       }
 
       const validated = validateRoiSavedWorkPayload(data.savedWork.payload);
@@ -2819,9 +2872,9 @@ export default function RoiCalculatorPage() {
     <>
       <header className="flex flex-col gap-4 border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
-          <p className="text-sm text-zinc-500">Tools - ROI Calculator</p>
+          <p className="text-sm text-zinc-500">Tools - Unit Calculation</p>
           <p className="text-base font-semibold text-zinc-900">
-            Property Investment Calculator
+            Unit Calculation
           </p>
           {currentSavedWorkTitle ? (
             <p className="mt-1 truncate text-xs text-zinc-500">
@@ -2879,13 +2932,13 @@ export default function RoiCalculatorPage() {
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
-              ROI Calculator
+              Unit Calculation
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-              Property ROI Calculator
+              Unit Calculation
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-600">
-              Build a Malaysia new-launch package, estimate financing, and present rental returns in a customer-friendly format.
+              Calculate the complete purchase package, financing and investment figures for a unit.
             </p>
           </div>
         </section>
@@ -3205,224 +3258,245 @@ export default function RoiCalculatorPage() {
             </section>
 
             <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-zinc-950">
                     Discounts & Benefits
                   </h2>
                   <p className="mt-1 text-sm text-zinc-500">
-                    Discounts are applied in order. Cash benefits affect final price, not Nett Price.
+                    Discounts are applied in order. Cashback affects final price, not Nett Price.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => addPackageItem("discount")}
-                    className="rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700"
-                  >
-                    + Discount
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addPackageItem("cash_benefit")}
-                    className="rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700"
-                  >
-                    + Cash Benefit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => addPackageItem("non_cash_benefit")}
-                    className="rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700"
-                  >
-                    + Non-Cash
-                  </button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label className="block min-w-[180px] text-sm text-zinc-600">
+                    <span className="mb-1 block text-xs font-semibold text-[#9A6B1F]">
+                      Package Valid Until
+                    </span>
+                    <input
+                      type="date"
+                      value={form.packageValidUntil}
+                      onChange={(event) =>
+                        updateField("packageValidUntil", event.target.value)
+                      }
+                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-[#d8c18d]"
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(["discount", "cash_benefit", "non_cash_benefit"] as const).map(
+                      (type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => addPackageItem(type)}
+                          className="rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+                        >
+                          {getPackageAddLabel(type)}
+                        </button>
+                      ),
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <label className="mt-5 block max-w-xs rounded-2xl border border-[#e4d3ad] bg-[#fffaf0] p-3 text-sm text-zinc-600">
-                <span className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9A6B1F]">
-                  Package Valid Until
-                </span>
-                {formatDisplayDate(form.packageValidUntil) ? (
-                  <span className="mt-1 block text-base font-semibold text-[#9A6B1F]">
-                    {formatDisplayDate(form.packageValidUntil)}
-                  </span>
-                ) : null}
-                <input
-                  type="date"
-                  value={form.packageValidUntil}
-                  onChange={(event) =>
-                    updateField("packageValidUntil", event.target.value)
-                  }
-                  className="mt-2 w-full rounded-2xl border border-[#d8c18d] bg-white px-3 py-2 outline-none"
-                />
-              </label>
+              <div className="mt-5 space-y-5">
+                {(["discount", "cash_benefit", "non_cash_benefit"] as const).map(
+                  (type) => {
+                    const items = packageItems.filter((item) => item.type === type);
 
-              <div className="mt-5 space-y-4">
-                {packageItems.map((item, index) => {
-                  const discountValue = parseMoney(item.value);
-                  const cashBenefitAmount = parseMoney(item.amount);
-                  const discountValueIsInvalid =
-                    hasEnteredValue(item.value) &&
-                    (!Number.isFinite(discountValue) ||
-                      discountValue < 0 ||
-                      (item.method !== "fixed" && discountValue > 100));
-                  const cashBenefitAmountIsInvalid =
-                    hasEnteredValue(item.amount) &&
-                    (!Number.isFinite(cashBenefitAmount) || cashBenefitAmount < 0);
+                    return (
+                      <div key={type} className="rounded-[22px] border border-zinc-200 bg-zinc-50 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-semibold text-zinc-900">
+                            {getPackageGroupTitle(type)}
+                          </h3>
+                          <span className="text-xs font-medium text-zinc-500">
+                            {items.length ? `${items.length} item${items.length === 1 ? "" : "s"}` : "Optional"}
+                          </span>
+                        </div>
 
-                  return (
-                  <div
-                    key={item.id}
-                    className="rounded-[24px] border border-zinc-200 bg-zinc-50 p-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-zinc-900">
-                        Item {index + 1}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => removePackageItem(item.id)}
-                        className="text-sm font-medium text-red-600 hover:text-red-800"
-                      >
-                        Remove
-                      </button>
-                    </div>
+                        {items.length === 0 ? (
+                          <p className="mt-3 text-sm text-zinc-500">
+                            Add {type === "discount" ? "a discount" : type === "cash_benefit" ? "cashback" : "a freebie"} if this package includes one.
+                          </p>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {items.map((item) => {
+                              const discountValue = parseMoney(item.value);
+                              const cashBenefitAmount = parseMoney(item.amount);
+                              const discountValueIsInvalid =
+                                hasEnteredValue(item.value) &&
+                                (!Number.isFinite(discountValue) ||
+                                  discountValue < 0 ||
+                                  (item.method !== "fixed" && discountValue > 100));
+                              const cashBenefitAmountIsInvalid =
+                                hasEnteredValue(item.amount) &&
+                                (!Number.isFinite(cashBenefitAmount) || cashBenefitAmount < 0);
 
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <label className="block text-sm text-zinc-600">
-                        <span className="mb-1 block font-medium text-zinc-900">
-                          Category
-                        </span>
-                        <select
-                          value={item.type}
-                          onChange={(event) =>
-                            updatePackageItem(item.id, {
-                              type: event.target.value as PackageItemType,
-                            })
-                          }
-                          className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 outline-none"
-                        >
-                          <option value="discount">Discount</option>
-                          <option value="cash_benefit">Cash Benefit</option>
-                          <option value="non_cash_benefit">Non-Cash Benefit</option>
-                        </select>
-                      </label>
-                      <label className="block text-sm text-zinc-600">
-                        <span className="mb-1 block font-medium text-zinc-900">
-                          Description
-                        </span>
-                        <input
-                          value={item.description}
-                          onChange={(event) =>
-                            updatePackageItem(item.id, {
-                              description: event.target.value,
-                            })
-                          }
-                          className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 outline-none"
-                          placeholder="Developer Rebate"
-                        />
-                      </label>
+                              return (
+                                <div
+                                  key={item.id}
+                                  className="grid gap-3 rounded-2xl border border-zinc-200 bg-white p-3 md:grid-cols-[minmax(150px,1fr)_minmax(220px,1.4fr)_auto] md:items-end"
+                                >
+                                  <label className="block text-sm text-zinc-600">
+                                    <span className="mb-1 block font-medium text-zinc-900">
+                                      Description
+                                    </span>
+                                    <input
+                                      value={item.description}
+                                      onChange={(event) =>
+                                        updatePackageItem(item.id, {
+                                          description: event.target.value,
+                                        })
+                                      }
+                                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                      placeholder={getPackageDescriptionPlaceholder(item.type)}
+                                    />
+                                  </label>
 
-                      {item.type === "discount" ? (
-                        <>
-                          <label className="block text-sm text-zinc-600">
-                            <span className="mb-1 block font-medium text-zinc-900">
-                              Method
-                            </span>
-                            <select
-                              value={item.method}
-                              onChange={(event) =>
-                                updatePackageItem(item.id, {
-                                  method: event.target.value as DiscountMethod,
-                                })
-                              }
-                              className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 outline-none"
-                            >
-                              <option value="percentage_spa">% based on SPA Price</option>
-                              <option value="percentage_previous_balance">
-                                % based on Previous Balance
-                              </option>
-                              <option value="fixed">Fixed RM discount</option>
-                            </select>
-                          </label>
-                          <label className="block text-sm text-zinc-600">
-                            <span className="mb-1 block font-medium text-zinc-900">
-                              Value
-                            </span>
-                            <input
-                              inputMode="decimal"
-                              value={item.value}
-                              onChange={(event) =>
-                                updatePackageItem(item.id, {
-                                  value: event.target.value,
-                                })
-                              }
-                              className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!hasEnteredValue(item.value), discountValueIsInvalid)}`}
-                              placeholder={item.method === "fixed" ? "30000" : "10"}
-                            />
-                          </label>
-                        </>
-                      ) : null}
+                                  {item.type === "discount" ? (
+                                    <div className="grid gap-3 sm:grid-cols-[minmax(150px,1fr)_minmax(110px,0.7fr)]">
+                                      <label className="block text-sm text-zinc-600">
+                                        <span className="mb-1 block font-medium text-zinc-900">
+                                          Method
+                                        </span>
+                                        <select
+                                          value={item.method}
+                                          onChange={(event) =>
+                                            updatePackageItem(item.id, {
+                                              method: event.target.value as DiscountMethod,
+                                            })
+                                          }
+                                          className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                        >
+                                          <option value="percentage_spa">% of SPA</option>
+                                          <option value="percentage_previous_balance">% of Balance</option>
+                                          <option value="fixed">Fixed RM</option>
+                                        </select>
+                                      </label>
+                                      <label className="block text-sm text-zinc-600">
+                                        <span className="mb-1 block font-medium text-zinc-900">
+                                          Value
+                                        </span>
+                                        <input
+                                          inputMode="decimal"
+                                          value={item.value}
+                                          onChange={(event) =>
+                                            updatePackageItem(item.id, {
+                                              value: event.target.value,
+                                            })
+                                          }
+                                          className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!hasEnteredValue(item.value), discountValueIsInvalid)}`}
+                                          placeholder={item.method === "fixed" ? "30000" : "10"}
+                                        />
+                                      </label>
+                                    </div>
+                                  ) : null}
 
-                      {item.type === "cash_benefit" ? (
-                        <>
-                          <label className="block text-sm text-zinc-600">
-                            <span className="mb-1 block font-medium text-zinc-900">
-                              Amount
-                            </span>
-                            <input
-                              inputMode="decimal"
-                              value={item.amount}
-                              onChange={(event) =>
-                                updatePackageItem(item.id, {
-                                  amount: event.target.value,
-                                })
-                              }
-                              className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!hasEnteredValue(item.amount), cashBenefitAmountIsInvalid)}`}
-                              placeholder="30000"
-                            />
-                          </label>
-                          <label className="block text-sm text-zinc-600">
-                            <span className="mb-1 block font-medium text-zinc-900">
-                              Treatment
-                            </span>
-                            <select
-                              value={item.treatment}
-                              onChange={(event) =>
-                                updatePackageItem(item.id, {
-                                  treatment: event.target.value as CashBenefitTreatment,
-                                })
-                              }
-                              className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 outline-none"
-                            >
-                              <option value="immediate_offset">Immediate Offset</option>
-                              <option value="refund_later">Refund Later</option>
-                            </select>
-                          </label>
-                          {item.treatment === "refund_later" ? (
-                            <label className="block text-sm text-zinc-600 md:col-span-2">
-                              <span className="mb-1 block font-medium text-zinc-900">
-                                Refund / Receive At
-                              </span>
-                              <input
-                                value={item.receiveAt}
-                                onChange={(event) =>
-                                  updatePackageItem(item.id, {
-                                    receiveAt: event.target.value,
-                                  })
-                                }
-                                className="w-full rounded-2xl border border-zinc-200 bg-white px-3 py-2 outline-none"
-                                placeholder="Stage 2B, VP, upon loan disbursement"
-                              />
-                            </label>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                  );
-                })}
+                                  {item.type === "cash_benefit" ? (
+                                    <div className="grid gap-3 sm:grid-cols-[minmax(110px,0.75fr)_minmax(150px,1fr)]">
+                                      <label className="block text-sm text-zinc-600">
+                                        <span className="mb-1 block font-medium text-zinc-900">
+                                          Amount
+                                        </span>
+                                        <input
+                                          inputMode="decimal"
+                                          value={item.amount}
+                                          onChange={(event) =>
+                                            updatePackageItem(item.id, {
+                                              amount: event.target.value,
+                                            })
+                                          }
+                                          className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!hasEnteredValue(item.amount), cashBenefitAmountIsInvalid)}`}
+                                          placeholder="30000"
+                                        />
+                                      </label>
+                                      <label className="block text-sm text-zinc-600">
+                                        <span className="mb-1 block font-medium text-zinc-900">
+                                          Timing
+                                        </span>
+                                        <select
+                                          value={item.treatment}
+                                          onChange={(event) =>
+                                            updatePackageItem(item.id, {
+                                              treatment: event.target.value as CashBenefitTreatment,
+                                            })
+                                          }
+                                          className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                        >
+                                          <option value="immediate_offset">Immediate Offset</option>
+                                          <option value="refund_later">Refund Later</option>
+                                        </select>
+                                      </label>
+                                      {item.treatment === "refund_later" ? (
+                                        <label className="block text-sm text-zinc-600 sm:col-span-2">
+                                          <span className="mb-1 block font-medium text-zinc-900">
+                                            Refund At
+                                          </span>
+                                          <input
+                                            value={item.receiveAt}
+                                            onChange={(event) =>
+                                              updatePackageItem(item.id, {
+                                                receiveAt: event.target.value,
+                                              })
+                                            }
+                                            className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                            placeholder="Stage 2B, VP, upon loan disbursement"
+                                          />
+                                        </label>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+
+                                  {item.type === "non_cash_benefit" ? (
+                                    <label className="block text-sm text-zinc-600">
+                                      <span className="mb-1 block font-medium text-zinc-900">
+                                        Value
+                                      </span>
+                                      <input
+                                        inputMode="decimal"
+                                        value={item.amount}
+                                        onChange={(event) =>
+                                          updatePackageItem(item.id, {
+                                            amount: event.target.value,
+                                          })
+                                        }
+                                        className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                        placeholder="Optional RM value"
+                                      />
+                                    </label>
+                                  ) : null}
+
+                                  <div className="flex items-center justify-between gap-3 md:justify-end">
+                                    <div className="text-left md:text-right">
+                                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">
+                                        Effect
+                                      </p>
+                                      <p className="mt-1 text-sm font-semibold text-zinc-900">
+                                        {getPackageItemEffectLabel(item, result)}
+                                      </p>
+                                      {item.type === "discount" ? (
+                                        <p className="mt-1 text-xs text-zinc-500">
+                                          {getDiscountMethodLabel(item.method)}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removePackageItem(item.id)}
+                                      className="rounded-full border border-red-100 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 hover:text-red-800"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  },
+                )}
               </div>
             </section>
 

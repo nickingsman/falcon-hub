@@ -117,8 +117,8 @@ const introSessionKey = "falcon-hub:intro-played";
 
 const quickTools = [
   {
-    title: "ROI Calculator",
-    description: "Calculate returns and customer purchase numbers.",
+    title: "Unit Calculation",
+    description: "Calculate purchase package, financing and investment figures.",
     href: "/tools/roi-calculator",
   },
   {
