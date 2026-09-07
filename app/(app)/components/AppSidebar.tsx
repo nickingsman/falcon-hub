@@ -3,135 +3,23 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppPermissions } from "./AppPermissionProvider";
-
-const sidebarItems = [
-  { label: "Dashboard", href: "/" },
-  { label: "Projects", href: "/projects" },
-  { label: "ROI Calculator", href: "/tools/roi-calculator" },
-  { label: "Project Comparison", href: "/tools/project-comparison" },
-  { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
-  { label: "Progressive Interest", href: "/tools/progressive-interest" },
-  { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
-  { label: "DSR Calculator", href: "#" },
-  { label: "Proposal Generator", href: "#" },
-  { label: "Check In", href: "/check-in" },
-  { label: "Calendar", href: "/calendar" },
-  { label: "Customer Birthdays", href: "/customer-birthdays" },
-  { label: "Saved Work", href: "/saved-work" },
-  { label: "DSI", href: "/dsi" },
-  {
-    label: "Team",
-    href: "#",
-    children: [
-      { label: "Members", href: "/team/members" },
-      { label: "User Management", href: "/team/user-management", permission: "canManageUsers" },
-    ],
-  },
-  {
-    label: "Sales",
-    href: "#",
-    children: [{ label: "Sales Records", href: "#" }],
-  },
-  { label: "Training", href: "#" },
-  { label: "Settings", href: "#" },
-];
-
-function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
-  if (item.label === "Dashboard") {
-    return pathname === "/";
-  }
-
-  if (item.label === "Projects") {
-    return pathname === "/projects" || pathname.startsWith("/projects/");
-  }
-
-  if (item.label === "Team") {
-    return pathname.startsWith("/team/");
-  }
-
-  if (item.label === "ROI Calculator") {
-    return pathname === "/tools/roi-calculator";
-  }
-
-  if (item.label === "Project Comparison") {
-    return pathname === "/tools/project-comparison";
-  }
-
-  if (item.label === "Smart Project Finder") {
-    return pathname === "/tools/smart-project-finder";
-  }
-
-  if (item.label === "Progressive Interest") {
-    return pathname === "/tools/progressive-interest";
-  }
-
-  if (item.label === "Payment Schedule") {
-    return pathname === "/tools/buyer-payment-schedule";
-  }
-
-  if (item.label === "DSI") {
-    return pathname === "/dsi";
-  }
-
-  if (item.label === "Check In") {
-    return pathname === "/check-in";
-  }
-
-  if (item.label === "Calendar") {
-    return pathname === "/calendar";
-  }
-
-  if (item.label === "Customer Birthdays") {
-    return pathname === "/customer-birthdays";
-  }
-
-  if (item.label === "Saved Work") {
-    return pathname === "/saved-work";
-  }
-
-  return false;
-}
+import {
+  getRoleLabel,
+  getVisibleDesktopNavItems,
+  isDesktopNavItemActive,
+  isNavHrefActive,
+} from "./navigation";
 
 function isChildActive(pathname: string, href: string) {
-  return href !== "#" && (pathname === href || pathname.startsWith(`${href}/`));
-}
-
-function getRoleLabel(role: ReturnType<typeof useAppPermissions>["role"]) {
-  if (role === "super_admin") return "Super Admin";
-  if (role === "admin") return "Admin";
-  if (role === "leader") return "Leader";
-  if (role === "agent") return "Agent";
-
-  return "Read Only";
+  return isNavHrefActive(pathname, { label: "", href });
 }
 
 export default function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { displayName, role, canManageUserApprovals, canManageUsers } = useAppPermissions();
-  const canViewAttendance = role === "super_admin" || role === "admin" || role === "leader";
-  const visibleSidebarItems = sidebarItems.map((item) => {
-    if (item.label !== "Team") {
-      return item;
-    }
-
-    return {
-      ...item,
-      children: [
-        ...((item.children ?? []).filter((child) => {
-          if (child.permission === "canManageUsers") return canManageUsers;
-
-          return true;
-        })),
-        ...(canViewAttendance
-          ? [{ label: "Attendance", href: "/team/attendance" }]
-          : []),
-        ...(canManageUserApprovals
-          ? [{ label: "User Approvals", href: "/team/user-approvals" }]
-          : []),
-      ],
-    };
-  });
+  const permissions = useAppPermissions();
+  const { displayName, role } = permissions;
+  const visibleSidebarItems = getVisibleDesktopNavItems(permissions);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", {
@@ -143,7 +31,7 @@ export default function AppSidebar() {
   }
 
   return (
-    <aside className="flex w-full flex-col border-b border-zinc-200 bg-white/80 p-6 backdrop-blur lg:min-h-screen lg:w-72 lg:border-b-0 lg:border-r">
+    <aside className="hidden w-full flex-col border-b border-zinc-200 bg-white/80 p-6 backdrop-blur lg:flex lg:min-h-screen lg:w-72 lg:border-b-0 lg:border-r">
       <div>
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-900 text-sm font-semibold text-white">
@@ -157,7 +45,7 @@ export default function AppSidebar() {
 
         <nav className="mt-8 space-y-1">
           {visibleSidebarItems.map((item) => {
-            const isActive = isItemActive(pathname, item);
+            const isActive = isDesktopNavItemActive(pathname, item);
 
             return (
               <div key={item.label}>

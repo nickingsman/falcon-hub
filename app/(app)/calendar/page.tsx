@@ -1246,7 +1246,7 @@ export default function CalendarPage() {
       ) : null}
 
       {expandedDate ? (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
           <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>

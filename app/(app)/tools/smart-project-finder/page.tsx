@@ -618,7 +618,7 @@ export default function SmartProjectFinderPage() {
         </div>
       </header>
 
-      <main className={`p-6 lg:p-8 ${selectedComparisons.length ? "pb-48 lg:pb-40" : ""}`}>
+      <main className={`p-6 lg:p-8 ${selectedComparisons.length ? "pb-64 lg:pb-40" : ""}`}>
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
@@ -1204,7 +1204,7 @@ export default function SmartProjectFinderPage() {
         )}
 
         {selectedComparisons.length ? (
-          <section className="fixed inset-x-3 bottom-3 z-30 rounded-[24px] border border-zinc-200 bg-white/95 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.18)] backdrop-blur lg:left-[19rem] lg:right-6">
+          <section className="fixed inset-x-3 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] z-30 rounded-[24px] border border-zinc-200 bg-white/95 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.18)] backdrop-blur lg:left-[19rem] lg:right-6 lg:bottom-3">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">

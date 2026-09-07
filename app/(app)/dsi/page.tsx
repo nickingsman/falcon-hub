@@ -658,7 +658,7 @@ export default function DsiPage() {
 
       {activeView === "entry" ? (
         <>
-      <section className="mt-4 space-y-3 pb-32 sm:pb-0">
+      <section className="mt-4 space-y-3 pb-44 sm:pb-0">
         {activityGroups.map((group) => (
           <div
             key={group.title}
@@ -728,7 +728,7 @@ export default function DsiPage() {
         ))}
       </section>
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-200 bg-white/95 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:static sm:mt-5 sm:border-0 sm:bg-transparent sm:p-0">
+      <div className="fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 border-t border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mt-5 sm:border-0 sm:bg-transparent sm:p-0">
         <div className="mx-auto max-w-3xl">
           <button
             type="button"

@@ -11,6 +11,7 @@ import {
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
 import AppSidebar from "./components/AppSidebar";
+import MobileBottomNav from "./components/MobileBottomNav";
 
 export const dynamic = "force-dynamic";
 
@@ -93,9 +94,10 @@ export default async function AppLayout({
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
         <AppPermissionProvider permissions={permissions}>
           <AppSidebar />
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-0">
             {children}
           </div>
+          <MobileBottomNav />
         </AppPermissionProvider>
       </div>
     </div>
