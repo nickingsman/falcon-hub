@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCustomerPdfBrandingStyles,
   renderCustomerPdfBranding,
@@ -15,6 +15,12 @@ import {
   type ProgressiveInterestResult,
   type ScheduleHStageId,
 } from "@/lib/progressive-interest";
+import {
+  progressiveInterestSavedWorkSchemaVersion,
+  validateProgressiveInterestSavedWorkPayload,
+  type ProgressiveInterestSavedProjectSnapshotV1,
+  type ProgressiveInterestSavedWorkPayloadV1,
+} from "@/lib/progressive-interest-saved-work";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type ProjectOption = {
@@ -30,6 +36,21 @@ type TimelineStageId = Extract<
 type StageTiming = {
   year: string;
   quarter: string;
+};
+
+type SaveModalMode = "new" | "save-as";
+
+type SavedWorkDetailResponse = {
+  savedWork?: {
+    id: string;
+    title: string;
+    workType: string;
+    schemaVersion: number;
+    payload: unknown;
+    createdAt: string;
+    updatedAt: string;
+  };
+  error?: string;
 };
 
 const timelineStageIds: TimelineStageId[] = [
@@ -251,6 +272,89 @@ function compactField(label: string, value: string | null | undefined) {
       <strong>${escapeHtml(value)}</strong>
     </div>
   `;
+}
+
+function getDefaultSavedWorkTitle({
+  projectName,
+  unitNo,
+}: {
+  projectName: string;
+  unitNo: string;
+}) {
+  return [projectName, unitNo ? `Unit ${unitNo}` : ""].filter(Boolean).join(" - ") ||
+    "Progressive Interest Estimate";
+}
+
+function SaveWorkModal({
+  mode,
+  title,
+  error,
+  isSaving,
+  onTitleChange,
+  onCancel,
+  onConfirm,
+}: {
+  mode: SaveModalMode;
+  title: string;
+  error: string;
+  isSaving: boolean;
+  onTitleChange: (title: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 px-4 py-6 sm:items-center">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#087F6B]">
+            Saved Work
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-zinc-950">
+            {mode === "save-as" ? "Save As" : "Save Progressive Interest"}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Name this progressive interest estimate so you can reopen it later.
+          </p>
+        </div>
+
+        <label className="mt-5 block text-sm text-zinc-600">
+          <span className="mb-1 block font-medium text-zinc-900">Saved Work Title</span>
+          <input
+            value={title}
+            onChange={(event) => onTitleChange(event.target.value)}
+            disabled={isSaving}
+            className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-zinc-400"
+            maxLength={120}
+          />
+        </label>
+
+        {error ? (
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSaving}
+            className="min-h-11 rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSaving || !title.trim()}
+            className="min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? "Saving..." : mode === "save-as" ? "Save As" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getPdfInterestDisplay(
@@ -624,6 +728,16 @@ export default function ProgressiveInterestPage() {
   const [expandedStageIds, setExpandedStageIds] = useState<Set<ScheduleHStageId>>(
     () => new Set(),
   );
+  const [savedProjectSnapshot, setSavedProjectSnapshot] =
+    useState<ProgressiveInterestSavedProjectSnapshotV1 | null>(null);
+  const [currentSavedWorkId, setCurrentSavedWorkId] = useState<string | null>(null);
+  const [currentSavedWorkTitle, setCurrentSavedWorkTitle] = useState("");
+  const [saveModalMode, setSaveModalMode] = useState<SaveModalMode | null>(null);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveMessage, setSaveMessage] = useState("");
+  const [reopenWarning, setReopenWarning] = useState("");
+  const savedWorkHydratedRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -701,6 +815,13 @@ export default function ProgressiveInterestPage() {
       ? Math.max(...knownConstructionInterest)
       : null;
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const selectedProjectName =
+    selectedProject?.project_name?.trim() ||
+    (savedProjectSnapshot?.id === selectedProjectId ? savedProjectSnapshot.projectName : "");
+  const shouldShowSavedProjectOption =
+    Boolean(savedProjectSnapshot?.id) &&
+    savedProjectSnapshot?.id === selectedProjectId &&
+    !projects.some((project) => project.id === selectedProjectId);
   const invalidSpaPrice = spaPrice.trim() !== "" && progressiveResult.validationErrors.some(
     (error) => error.startsWith("SPA Price"),
   );
@@ -713,6 +834,182 @@ export default function ProgressiveInterestPage() {
   const invalidLoanTenure =
     loanTenureYears.trim() !== "" &&
     (!Number.isFinite(numericInput.loanTenureYears) || numericInput.loanTenureYears <= 0);
+
+  function buildProgressiveInterestSavedWorkPayload(): ProgressiveInterestSavedWorkPayloadV1 {
+    return {
+      tool: "progressive_interest",
+      schemaVersion: progressiveInterestSavedWorkSchemaVersion,
+      selectedProjectId,
+      unitNo,
+      spaPrice,
+      loanMarginPercent,
+      annualInterestRatePercent,
+      loanTenureYears,
+      currentStageId,
+      stageTimings,
+      snapshots: {
+        project:
+          selectedProjectId && selectedProjectName
+            ? {
+                id: selectedProjectId,
+                projectName: selectedProjectName,
+              }
+            : null,
+      },
+    };
+  }
+
+  async function saveProgressiveInterestWork(title: string, savedWorkId: string | null) {
+    const trimmedTitle = title.trim();
+
+    if (!trimmedTitle) {
+      setSaveStatus("error");
+      setSaveMessage("Saved Work title is required.");
+      return;
+    }
+
+    setSaveStatus("saving");
+    setSaveMessage("");
+
+    try {
+      const response = await fetch(
+        savedWorkId ? `/api/saved-work/${savedWorkId}` : "/api/saved-work",
+        {
+          method: savedWorkId ? "PATCH" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(
+            savedWorkId
+              ? {
+                  title: trimmedTitle,
+                  payload: buildProgressiveInterestSavedWorkPayload(),
+                  schemaVersion: progressiveInterestSavedWorkSchemaVersion,
+                }
+              : {
+                  title: trimmedTitle,
+                  workType: "progressive_interest",
+                  payload: buildProgressiveInterestSavedWorkPayload(),
+                  schemaVersion: progressiveInterestSavedWorkSchemaVersion,
+                },
+          ),
+        },
+      );
+      const data = (await response.json()) as SavedWorkDetailResponse;
+
+      if (!response.ok || !data.savedWork) {
+        throw new Error(data.error || "Unable to save Progressive Interest");
+      }
+
+      setCurrentSavedWorkId(data.savedWork.id);
+      setCurrentSavedWorkTitle(data.savedWork.title);
+      setSaveStatus("saved");
+      setSaveMessage("Saved");
+      setSaveModalMode(null);
+    } catch (error) {
+      setSaveStatus("error");
+      setSaveMessage(error instanceof Error ? error.message : "Save failed");
+    }
+  }
+
+  function openSaveModal(mode: SaveModalMode) {
+    setSaveModalMode(mode);
+    setSaveTitle(
+      mode === "save-as"
+        ? `${getDefaultSavedWorkTitle({ projectName: selectedProjectName, unitNo })} Copy`
+        : getDefaultSavedWorkTitle({ projectName: selectedProjectName, unitNo }),
+    );
+    setSaveMessage("");
+    setSaveStatus("idle");
+  }
+
+  function handleSaveClick() {
+    if (currentSavedWorkId) {
+      void saveProgressiveInterestWork(
+        currentSavedWorkTitle ||
+          getDefaultSavedWorkTitle({ projectName: selectedProjectName, unitNo }),
+        currentSavedWorkId,
+      );
+      return;
+    }
+
+    openSaveModal("new");
+  }
+
+  function hydrateSavedProgressiveInterestPayload(payload: ProgressiveInterestSavedWorkPayloadV1) {
+    setSelectedProjectId(payload.selectedProjectId);
+    setUnitNo(payload.unitNo);
+    setSpaPrice(payload.spaPrice);
+    setLoanMarginPercent(payload.loanMarginPercent);
+    setAnnualInterestRatePercent(payload.annualInterestRatePercent);
+    setLoanTenureYears(payload.loanTenureYears);
+    setStageTimings(payload.stageTimings);
+    setCurrentStageId(payload.currentStageId);
+    setSavedProjectSnapshot(payload.snapshots.project);
+    setExpandedStageIds(new Set());
+    setExportError("");
+  }
+
+  async function openSavedProgressiveInterest(savedWorkId: string) {
+    setReopenWarning("");
+
+    try {
+      const response = await fetch(`/api/saved-work/${savedWorkId}`, {
+        cache: "no-store",
+      });
+      const data = (await response.json()) as SavedWorkDetailResponse;
+
+      if (!response.ok || !data.savedWork) {
+        throw new Error(data.error || "This saved work could not be opened.");
+      }
+
+      if (data.savedWork.workType !== "progressive_interest") {
+        throw new Error("This saved Progressive Interest version cannot be opened.");
+      }
+
+      const validated = validateProgressiveInterestSavedWorkPayload(data.savedWork.payload);
+
+      if (!validated.valid) {
+        throw new Error(validated.error);
+      }
+
+      hydrateSavedProgressiveInterestPayload(validated.payload);
+      setCurrentSavedWorkId(data.savedWork.id);
+      setCurrentSavedWorkTitle(data.savedWork.title);
+      setSaveStatus("saved");
+      setSaveMessage("Saved Work opened");
+    } catch (error) {
+      setReopenWarning(
+        error instanceof Error ? error.message : "This saved work could not be opened.",
+      );
+      setCurrentSavedWorkId(null);
+      setCurrentSavedWorkTitle("");
+    }
+  }
+
+  useEffect(() => {
+    if (savedWorkHydratedRef.current) return;
+
+    const savedWorkId = new URL(window.location.href).searchParams.get("savedWork");
+
+    if (!savedWorkId) {
+      savedWorkHydratedRef.current = true;
+      return;
+    }
+
+    savedWorkHydratedRef.current = true;
+    void openSavedProgressiveInterest(savedWorkId);
+    // Run only once so normal editing after reopen is never rehydrated over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!savedProjectSnapshot || !selectedProjectId || projectsError) return;
+    if (projects.length === 0) return;
+    if (projects.some((project) => project.id === selectedProjectId)) return;
+
+    setReopenWarning("Current Project reference is unavailable. Saved project details were preserved.");
+  }, [projects, projectsError, savedProjectSnapshot, selectedProjectId]);
 
   function updateStageTiming(stageId: TimelineStageId, field: keyof StageTiming, value: string) {
     setStageTimings((current) => ({
@@ -756,7 +1053,7 @@ export default function ProgressiveInterestPage() {
     proposalWindow.document.open();
     proposalWindow.document.write(
       buildProgressiveInterestProposalHtml({
-        projectName: selectedProject?.project_name?.trim() || "",
+        projectName: selectedProjectName,
         unitNo: unitNo.trim(),
         stageTimings,
         result: progressiveResult,
@@ -774,42 +1071,83 @@ export default function ProgressiveInterestPage() {
   }
 
   return (
-    <main className="px-4 py-6 sm:px-6 lg:px-8">
-      <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.05)]">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#087F6B]">
-          Schedule H · Under Construction Property
-        </p>
-        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
-              Progressive Interest Calculator
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-              Estimate progressive interest throughout the construction period.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-              <span className="block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">
-                Structure Total
-              </span>
-              <strong className="mt-1 block text-lg text-zinc-950">100%</strong>
+    <>
+      <main className="px-4 py-6 sm:px-6 lg:px-8">
+        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.05)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#087F6B]">
+            Schedule H · Under Construction Property
+          </p>
+          <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-zinc-950">
+                Progressive Interest Calculator
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
+                Estimate progressive interest throughout the construction period.
+              </p>
+              {currentSavedWorkTitle ? (
+                <p className="mt-2 truncate text-xs text-zinc-500">
+                  Saved Work:{" "}
+                  <span className="font-medium text-zinc-700">{currentSavedWorkTitle}</span>
+                </p>
+              ) : null}
+              {saveMessage ? (
+                <p
+                  className={`mt-1 text-xs font-medium ${
+                    saveStatus === "error" ? "text-amber-700" : "text-[#087F6B]"
+                  }`}
+                >
+                  {saveMessage}
+                </p>
+              ) : null}
             </div>
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              className="rounded-full bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
-            >
-              Export PDF
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                <span className="block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">
+                  Structure Total
+                </span>
+                <strong className="mt-1 block text-lg text-zinc-950">100%</strong>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={handleSaveClick}
+                  disabled={saveStatus === "saving"}
+                  className="rounded-full border border-zinc-300 px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saveStatus === "saving" ? "Saving..." : "Save"}
+                </button>
+                {currentSavedWorkId ? (
+                  <button
+                    type="button"
+                    onClick={() => openSaveModal("save-as")}
+                    disabled={saveStatus === "saving"}
+                    className="rounded-full border border-zinc-300 px-5 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Save As
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleExportPdf}
+                  className="rounded-full bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
+                >
+                  Export PDF
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-        {exportError ? (
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-[#FFF9E8] px-4 py-3 text-sm font-medium text-amber-800">
-            {exportError}
-          </div>
-        ) : null}
-      </section>
+          {reopenWarning ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {reopenWarning}
+            </div>
+          ) : null}
+          {exportError ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-[#FFF9E8] px-4 py-3 text-sm font-medium text-amber-800">
+              {exportError}
+            </div>
+          ) : null}
+        </section>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-6">
@@ -826,10 +1164,18 @@ export default function ProgressiveInterestPage() {
                 <span className="mb-1 block font-medium text-zinc-900">Project</span>
                 <select
                   value={selectedProjectId}
-                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedProjectId(event.target.value);
+                    setSavedProjectSnapshot(null);
+                  }}
                   className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
                 >
                   <option value="">Optional Project</option>
+                  {shouldShowSavedProjectOption && savedProjectSnapshot ? (
+                    <option value={savedProjectSnapshot.id}>
+                      {savedProjectSnapshot.projectName || "Saved Project"}
+                    </option>
+                  ) : null}
                   {projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.project_name || "Untitled Project"}
@@ -1177,6 +1523,24 @@ export default function ProgressiveInterestPage() {
           </p>
         </section>
       </div>
-    </main>
+      </main>
+
+      {saveModalMode ? (
+        <SaveWorkModal
+          mode={saveModalMode}
+          title={saveTitle}
+          error={saveStatus === "error" ? saveMessage : ""}
+          isSaving={saveStatus === "saving"}
+          onTitleChange={setSaveTitle}
+          onCancel={() => {
+            if (saveStatus === "saving") return;
+            setSaveModalMode(null);
+            setSaveMessage("");
+            setSaveStatus("idle");
+          }}
+          onConfirm={() => void saveProgressiveInterestWork(saveTitle, null)}
+        />
+      ) : null}
+    </>
   );
 }

@@ -30,7 +30,7 @@ const workTypeLabels: Record<SavedWorkType, string> = {
 const workTypeDescriptions: Record<SavedWorkType, string> = {
   roi: "Reopen saved ROI calculations and proposals.",
   project_comparison: "Reopen saved project comparisons and proposals.",
-  progressive_interest: "Reopen support coming soon.",
+  progressive_interest: "Reopen saved Progressive Interest calculations and proposals.",
 };
 
 const filterOptions: Array<{ label: string; value: WorkTypeFilter }> = [
@@ -47,6 +47,10 @@ function getOpenHref(item: SavedWorkItem) {
 
   if (item.workType === "project_comparison") {
     return `/tools/project-comparison?savedWork=${encodeURIComponent(item.id)}`;
+  }
+
+  if (item.workType === "progressive_interest") {
+    return `/tools/progressive-interest?savedWork=${encodeURIComponent(item.id)}`;
   }
 
   return null;
