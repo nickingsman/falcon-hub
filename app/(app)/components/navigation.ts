@@ -49,7 +49,7 @@ export const desktopNavItems: AppNavItem[] = [
     href: "#",
     children: [{ label: "Sales Records", href: "#" }],
   },
-  { label: "Training", href: "#" },
+  { label: "Falcon Academy", href: "/academy" },
   { label: "Settings", href: "#" },
 ];
 
@@ -117,6 +117,10 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
         { label: "Saved Work", href: "/saved-work" },
         { label: "Customer Birthdays", href: "/customer-birthdays" },
       ],
+    },
+    {
+      title: "Learning",
+      items: [{ label: "Falcon Academy", href: "/academy" }],
     },
     {
       title: "Team",
