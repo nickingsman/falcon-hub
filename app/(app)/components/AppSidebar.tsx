@@ -11,6 +11,7 @@ const sidebarItems = [
   { label: "Project Comparison", href: "/tools/project-comparison" },
   { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
   { label: "Progressive Interest", href: "/tools/progressive-interest" },
+  { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
   { label: "DSR Calculator", href: "#" },
   { label: "Proposal Generator", href: "#" },
   { label: "Check In", href: "/check-in" },
@@ -62,6 +63,10 @@ function isItemActive(pathname: string, item: (typeof sidebarItems)[number]) {
 
   if (item.label === "Progressive Interest") {
     return pathname === "/tools/progressive-interest";
+  }
+
+  if (item.label === "Payment Schedule") {
+    return pathname === "/tools/buyer-payment-schedule";
   }
 
   if (item.label === "DSI") {
