@@ -3,6 +3,13 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --falcon-gold: #b8924a;
+  --falcon-gold-dark: #8f6e35;
+  --falcon-warm-background: #f8f5ef;
+  --falcon-surface: #ffffff;
+  --falcon-charcoal: #171717;
+  --falcon-muted-text: #6b6b68;
+  --falcon-soft-border: #e5e2da;
 }
 
 @theme inline {
@@ -21,7 +28,7 @@
 
 body {
   margin: 0;
-  background: #f7f7f3;
+  background: var(--falcon-warm-background);
   color: #18181b;
   font-family: Arial, Helvetica, sans-serif;
 }

@@ -1,7 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import {
+  Button,
+  EmptyState,
+  SectionHeader,
+  StatusBadge,
+  buttonClassName,
+} from "@/app/(app)/components/ui";
 
 type SavedWorkType = "roi" | "project_comparison" | "progressive_interest";
 type LoadStatus = "loading" | "ready" | "error";
@@ -104,20 +113,17 @@ function SavedWorkModal({
         <div className="sticky top-0 border-b border-zinc-100 bg-white px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#087F6B]">
-                Saved Work
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-zinc-950">{title}</h2>
+              <SectionHeader title={title} description={description} />
             </div>
-            <button
+            <Button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-zinc-200 px-3 py-1.5 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-950"
+              variant="ghost"
+              className="min-h-9 px-3 py-1.5"
             >
               Close
-            </button>
+            </Button>
           </div>
-          <p className="mt-2 text-sm leading-6 text-zinc-600">{description}</p>
         </div>
         <div className="overflow-y-auto px-5 py-4">{children}</div>
         <div className="border-t border-zinc-100 bg-white px-5 py-4">{footer}</div>
@@ -138,27 +144,25 @@ function SavedWorkCard({
   const openHref = getOpenHref(item);
 
   return (
-    <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+    <article className="group overflow-hidden rounded-[26px] border border-[var(--falcon-soft-border)] bg-white shadow-[0_14px_34px_rgba(23,23,23,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(23,23,23,0.07)]">
+      <div className="h-2 bg-[linear-gradient(90deg,var(--falcon-gold),rgba(184,146,74,0.18))]" />
+      <div className="p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="break-words text-lg font-semibold leading-snug text-zinc-950">
             {item.title}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-semibold text-zinc-700">
-              {workTypeLabels[item.workType]}
-            </span>
+            <StatusBadge>{workTypeLabels[item.workType]}</StatusBadge>
             {!openHref ? (
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
-                Coming soon
-              </span>
+              <StatusBadge variant="warning">Coming soon</StatusBadge>
             ) : null}
           </div>
-          <p className="mt-3 text-sm text-zinc-500">
+          <p className="mt-3 text-sm text-[var(--falcon-muted-text)]">
             Last updated {formatDateTime(item.updatedAt)}
           </p>
           <p className="mt-1 text-xs text-zinc-400">Created {formatDate(item.createdAt)}</p>
-          <p className="mt-3 text-sm leading-6 text-zinc-500">
+          <p className="mt-3 text-sm leading-6 text-[var(--falcon-muted-text)]">
             {workTypeDescriptions[item.workType]}
           </p>
         </div>
@@ -167,34 +171,37 @@ function SavedWorkCard({
           {openHref ? (
             <Link
               href={openHref}
-              className="inline-flex min-h-10 items-center justify-center rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+              className={buttonClassName({ className: "min-h-10 px-4" })}
             >
               Open
             </Link>
           ) : (
-            <button
+            <Button
               type="button"
               disabled
-              className="min-h-10 rounded-full bg-zinc-100 px-4 text-sm font-semibold text-zinc-400"
+              className="min-h-10 px-4"
             >
               Open
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
             onClick={() => onRename(item)}
-            className="min-h-10 rounded-full border border-zinc-300 px-4 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+            variant="secondary"
+            className="min-h-10 px-4"
           >
             Rename
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             onClick={() => onDelete(item)}
-            className="min-h-10 rounded-full border border-zinc-200 px-4 text-sm font-semibold text-zinc-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-700 focus:ring-offset-2"
+            variant="ghost"
+            className="min-h-10 px-4 text-zinc-600 hover:bg-red-50 hover:text-red-700 focus:ring-red-700"
           >
             Delete
-          </button>
+          </Button>
         </div>
+      </div>
       </div>
     </article>
   );
@@ -241,7 +248,11 @@ export default function SavedWorkPage() {
   }, []);
 
   useEffect(() => {
-    void loadSavedWork();
+    const loadTimer = window.setTimeout(() => {
+      void loadSavedWork();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
   }, [loadSavedWork]);
 
   const filteredSavedWork = useMemo(() => {
@@ -348,28 +359,41 @@ export default function SavedWorkPage() {
   }
 
   return (
-    <main className="overflow-x-hidden p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-6xl space-y-5">
-        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
-                My Library
-              </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-                Saved Work
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-zinc-600">
-                Your saved calculators and project work.
-              </p>
-            </div>
-            <p className="rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-700">
-              {savedWork.length} saved item{savedWork.length === 1 ? "" : "s"}
+    <main className="relative overflow-hidden bg-[var(--falcon-warm-background)] p-4 sm:p-6 lg:p-8">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(circle_at_top_right,rgba(184,146,74,0.14),transparent_38%)]"
+        aria-hidden
+      />
+      <div className="relative mx-auto max-w-6xl space-y-6">
+        <section className="relative min-h-[188px] overflow-hidden rounded-[30px] bg-[linear-gradient(135deg,#fbf8f2_0%,#f7f1e7_55%,#eee3d3_100%)] px-5 py-7 sm:px-7 sm:py-8 lg:h-[300px] lg:px-0 lg:py-0">
+          <Image
+            src="/brand/falcon-team-signature-transparent-v2.png"
+            alt=""
+            width={1920}
+            height={1080}
+            priority
+            className="pointer-events-none absolute bottom-0 right-0 z-10 hidden h-auto w-[68%] max-w-[900px] select-none object-contain object-bottom-right lg:block xl:w-[70%]"
+            aria-hidden
+          />
+          <div className="relative z-20 flex w-full max-w-[470px] flex-col lg:h-full lg:w-[46%] lg:justify-center lg:px-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--falcon-gold-dark)]">
+              My Library
             </p>
+            <h1 className="mt-2 whitespace-nowrap text-[34px] font-semibold leading-none tracking-tight text-[var(--falcon-charcoal)] xl:text-[38px]">
+              Saved Work
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--falcon-muted-text)]">
+              Your saved calculators and project work. Pick up where you left off.
+            </p>
+            <div className="mt-3">
+              <StatusBadge variant="accent" className="px-4 py-2 text-sm">
+                {savedWork.length} saved item{savedWork.length === 1 ? "" : "s"}
+              </StatusBadge>
+            </div>
           </div>
         </section>
 
-        <section className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+        <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white/78 p-4 shadow-[0_10px_28px_rgba(23,23,23,0.035)] backdrop-blur">
           <div className="grid gap-3 lg:grid-cols-[1fr_280px] lg:items-center">
             <div className="flex gap-2 overflow-x-auto pb-1">
               {filterOptions.map((option) => (
@@ -379,8 +403,8 @@ export default function SavedWorkPage() {
                   onClick={() => setFilter(option.value)}
                   className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2 ${
                     filter === option.value
-                      ? "border-zinc-950 bg-zinc-950 text-white"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
+                      ? "border-zinc-950 bg-zinc-950 text-white shadow-[inset_0_-3px_0_var(--falcon-gold)]"
+                      : "border-[var(--falcon-soft-border)] bg-white text-zinc-700 hover:bg-[var(--falcon-warm-background)]"
                   }`}
                 >
                   {option.label}
@@ -392,7 +416,7 @@ export default function SavedWorkPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 outline-none focus:border-zinc-400"
+                className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-2.5 outline-none focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                 placeholder="Search by title"
               />
             </label>
@@ -402,43 +426,47 @@ export default function SavedWorkPage() {
         {status === "loading" ? (
           <section className="grid gap-3">
             {[0, 1, 2].map((item) => (
-              <div key={item} className="h-36 rounded-[24px] border border-zinc-200 bg-white" />
+              <div
+                key={item}
+                className="h-36 rounded-[24px] border border-[var(--falcon-soft-border)] bg-white"
+              />
             ))}
           </section>
         ) : null}
 
         {status === "error" ? (
-          <section className="rounded-[24px] border border-zinc-200 bg-white p-5">
-            <p className="text-sm font-semibold text-zinc-900">Saved Work unavailable</p>
-            <p className="mt-2 text-sm leading-6 text-zinc-600">{errorMessage}</p>
-            <button
-              type="button"
-              onClick={() => void loadSavedWork()}
-              className="mt-5 min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
-            >
-              Retry
-            </button>
-          </section>
+          <EmptyState
+            title="Saved Work unavailable"
+            description={errorMessage}
+            action={
+              <Button
+                type="button"
+                onClick={() => void loadSavedWork()}
+                className="px-5"
+              >
+                Retry
+              </Button>
+            }
+          />
         ) : null}
 
         {status === "ready" && savedWork.length === 0 ? (
-          <section className="rounded-[24px] border border-dashed border-zinc-300 bg-white px-5 py-10 text-center">
-            <p className="text-lg font-semibold text-zinc-950">No saved work yet.</p>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-zinc-500">
-              Save your work from a Falcon Hub calculator and it will appear here.
-            </p>
-          </section>
+          <EmptyState
+            title="No saved work yet."
+            description="Save your work from a Falcon Hub calculator and it will appear here."
+            variant="dashed"
+          />
         ) : null}
 
         {status === "ready" && savedWork.length > 0 && filteredSavedWork.length === 0 ? (
-          <section className="rounded-[24px] border border-zinc-200 bg-white px-5 py-8 text-center">
-            <p className="text-base font-semibold text-zinc-950">No saved work matches this view.</p>
-            <p className="mt-2 text-sm text-zinc-500">Try another filter or search term.</p>
-          </section>
+          <EmptyState
+            title="No saved work matches this view."
+            description="Try another filter or search term."
+          />
         ) : null}
 
         {status === "ready" && filteredSavedWork.length > 0 ? (
-          <section className="grid gap-3">
+          <section className="grid gap-4 md:grid-cols-2">
             {filteredSavedWork.map((item) => (
               <SavedWorkCard
                 key={item.id}
@@ -461,22 +489,21 @@ export default function SavedWorkPage() {
           }}
           footer={
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
+              <Button
                 type="button"
                 onClick={() => setRenamingItem(null)}
                 disabled={isRenaming}
-                className="min-h-11 rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                variant="secondary"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => void renameSavedWork()}
                 disabled={isRenaming || !renameTitle.trim()}
-                className="min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isRenaming ? "Renaming..." : "Rename"}
-              </button>
+              </Button>
             </div>
           }
         >
@@ -490,7 +517,7 @@ export default function SavedWorkPage() {
               }}
               disabled={isRenaming}
               maxLength={120}
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-zinc-400"
+              className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-2 outline-none focus:border-[var(--falcon-gold-dark)] focus:bg-white"
             />
           </label>
           {renameError ? (
@@ -511,26 +538,26 @@ export default function SavedWorkPage() {
           }}
           footer={
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
+              <Button
                 type="button"
                 onClick={() => setDeletingItem(null)}
                 disabled={isDeleting}
-                className="min-h-11 rounded-full border border-zinc-300 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                variant="secondary"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
                 onClick={() => void deleteSavedWork()}
                 disabled={isDeleting}
-                className="min-h-11 rounded-full bg-red-700 px-5 text-sm font-semibold text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                variant="destructive"
               >
                 {isDeleting ? "Deleting..." : "Delete"}
-              </button>
+              </Button>
             </div>
           }
         >
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+          <div className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3">
             <p className="text-sm text-zinc-500">Saved Work</p>
             <p className="mt-1 break-words text-base font-semibold text-zinc-950">
               {deletingItem.title}
