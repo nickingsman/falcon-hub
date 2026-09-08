@@ -3,6 +3,13 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAppPermissions } from "../components/AppPermissionProvider";
+import {
+  Button,
+  EmptyState,
+  PageHeader,
+  StatusBadge,
+  buttonClassName,
+} from "../components/ui";
 
 type Project = {
   id: string;
@@ -60,6 +67,42 @@ const emptyForm: ProjectForm = {
   maintenance_fee_per_sqft: "",
   notes: "",
 };
+
+function formatCurrency(value: number | null) {
+  if (!value) return "—";
+
+  return `RM ${value.toLocaleString()}`;
+}
+
+function getProjectStatusVariant(status: string | null) {
+  const normalizedStatus = status?.toLowerCase();
+
+  if (normalizedStatus === "active") return "success";
+  if (normalizedStatus === "upcoming") return "accent";
+  if (normalizedStatus === "sold out") return "warning";
+  if (normalizedStatus === "inactive") return "neutral";
+
+  return "neutral";
+}
+
+function ProjectInfoItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number | null | undefined;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+        {label}
+      </p>
+      <p className="mt-1 break-words text-sm font-semibold text-zinc-900">
+        {value || "—"}
+      </p>
+    </div>
+  );
+}
 
 export default function ProjectsPage() {
   const { canManageProjects } = useAppPermissions();
@@ -297,214 +340,179 @@ if (projectsResponse.ok) {
       .filter(Boolean)
   );
 
+  const projectMetrics = [
+    { label: "Total Projects", value: projects.length },
+    { label: "Active Projects", value: activeProjects.length },
+    { label: "Developers", value: developers.size },
+  ];
+
   return (
-    <main className="min-h-screen bg-zinc-50 p-8">
-      {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-zinc-500">
-            Project Management
-          </p>
-
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-900">
-            Projects
-          </h1>
-
-          <p className="mt-2 text-sm text-zinc-500">
-            Manage your property projects and project information.
-          </p>
-        </div>
-
-        {canManageProjects ? (
-          <button
-            onClick={openAddProject}
-            className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
-          >
-            + Add Project
-          </button>
-        ) : null}
-      </div>
-
-      {/* Summary */}
-      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">
-            Total Projects
-          </p>
-
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">
-            {projects.length}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">
-            Active Projects
-          </p>
-
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">
-            {activeProjects.length}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-          <p className="text-sm text-zinc-500">
-            Developers
-          </p>
-
-          <p className="mt-2 text-3xl font-semibold text-zinc-900">
-            {developers.size}
-          </p>
-        </div>
-      </div>
-
-      {/* Project Directory */}
-      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-        <div className="border-b border-zinc-200 px-6 py-4">
-          <h2 className="font-semibold text-zinc-900">
-            Project Directory
-          </h2>
-        </div>
-
-        {loading ? (
-          <div className="p-10 text-center text-sm text-zinc-500">
-            Loading projects...
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-lg font-medium text-zinc-900">
-              No projects yet
-            </p>
-
-            <p className="mt-2 text-sm text-zinc-500">
-              Add your first property project to get started.
-            </p>
-
-            {canManageProjects ? (
-              <button
-                onClick={openAddProject}
-                className="mt-5 rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
-              >
+    <main className="min-h-screen bg-[var(--falcon-warm-background)] p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader
+          eyebrow="Project Directory"
+          title="Projects"
+          description="Manage and access your active development projects."
+          actions={
+            canManageProjects ? (
+              <Button type="button" onClick={openAddProject}>
                 + Add Project
-              </button>
-            ) : null}
+              </Button>
+            ) : null
+          }
+        />
+
+        <section className="grid gap-3 sm:grid-cols-3">
+          {projectMetrics.map((metric) => (
+            <article
+              key={metric.label}
+              className="overflow-hidden rounded-[22px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-surface)] shadow-sm"
+            >
+              <div className="h-1 bg-[linear-gradient(90deg,var(--falcon-gold),rgba(184,146,74,0.08))]" />
+              <div className="px-4 py-4 sm:px-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-muted-text)]">
+                  {metric.label}
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--falcon-charcoal)]">
+                  {metric.value}
+                </p>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <section>
+          <div className="mb-4 flex flex-col gap-1">
+            <h2 className="text-lg font-semibold text-zinc-950">
+              Project Directory
+            </h2>
+            <p className="text-sm text-[var(--falcon-muted-text)]">
+              Open a project workspace or manage project details.
+            </p>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50">
-                <tr>
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Project
-                  </th>
 
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Developer
-                  </th>
-
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Location
-                  </th>
-
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Type
-                  </th>
-
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Tenure
-                  </th>
-
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Starting Price
-                  </th>
-
-                  <th className="px-6 py-4 font-medium text-zinc-500">
-                    Status
-                  </th>
-                  {canManageProjects ? (
-                    <th className="px-6 py-4 font-medium text-zinc-500">
-                      Actions
-                    </th>
-                  ) : null}
-                </tr>
-              </thead>
-
-              <tbody>
-                {projects.map((project) => (
-                  <tr
-                    key={project.id}
-                    className="border-b border-zinc-100 last:border-0"
-                  >
-                    <td className="px-6 py-4">
+          {loading ? (
+            <div className="grid gap-4 xl:grid-cols-2">
+              {[0, 1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="animate-pulse rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-3">
+                      <div className="h-4 w-36 rounded bg-zinc-200" />
+                      <div className="h-3 w-24 rounded bg-zinc-100" />
+                    </div>
+                    <div className="h-6 w-20 rounded-full bg-zinc-100" />
+                  </div>
+                  <div className="mt-6 grid grid-cols-2 gap-4">
+                    {[0, 1, 2, 3].map((line) => (
+                      <div key={line} className="space-y-2">
+                        <div className="h-2 w-16 rounded bg-zinc-100" />
+                        <div className="h-3 w-24 rounded bg-zinc-200" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : errorMessage && projects.length === 0 && !showModal ? (
+            <EmptyState
+              title="Projects unavailable"
+              description={errorMessage}
+              action={
+                <Button type="button" onClick={() => void fetchProjects()}>
+                  Retry
+                </Button>
+              }
+            />
+          ) : projects.length === 0 ? (
+            <EmptyState
+              title="No projects yet"
+              description="Create your first project to start building your project directory."
+              variant="dashed"
+              action={
+                canManageProjects ? (
+                  <Button type="button" onClick={openAddProject}>
+                    + Add Project
+                  </Button>
+                ) : null
+              }
+            />
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-2">
+              {projects.map((project) => (
+                <article
+                  key={project.id}
+                  className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,23,23,0.05)]"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
                       <Link
                         href={`/projects/${project.id}`}
-                        className="font-medium text-zinc-900 hover:underline"
+                        className="break-words text-lg font-semibold leading-snug text-zinc-950 transition hover:text-[var(--falcon-gold-dark)]"
                       >
                         {project.project_name}
                       </Link>
 
-                      {project.title_type && (
-                        <div className="mt-1 text-xs text-zinc-400">
+                      {project.title_type ? (
+                        <p className="mt-1 text-sm text-[var(--falcon-muted-text)]">
                           {project.title_type}
-                        </div>
-                      )}
-                    </td>
+                        </p>
+                      ) : null}
+                    </div>
 
-                    <td className="px-6 py-4 text-zinc-600">
-                      {project.developer || "—"}
-                    </td>
+                    <StatusBadge variant={getProjectStatusVariant(project.status)}>
+                      {project.status || "—"}
+                    </StatusBadge>
+                  </div>
 
-                    <td className="px-6 py-4 text-zinc-600">
-                      {project.location || "—"}
-                    </td>
+                  <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <ProjectInfoItem label="Developer" value={project.developer} />
+                    <ProjectInfoItem label="Location" value={project.location} />
+                    <ProjectInfoItem label="Property Type" value={project.property_type} />
+                    <ProjectInfoItem label="Tenure" value={project.tenure} />
+                    <ProjectInfoItem
+                      label="Starting Price"
+                      value={formatCurrency(project.starting_price)}
+                    />
+                    <ProjectInfoItem label="Total Units" value={project.total_units} />
+                  </div>
 
-                    <td className="px-6 py-4 text-zinc-600">
-                      {project.property_type || "—"}
-                    </td>
-
-                    <td className="px-6 py-4 text-zinc-600">
-                      {project.tenure || "—"}
-                    </td>
-
-                    <td className="px-6 py-4 text-zinc-600">
-                      {project.starting_price
-                        ? `RM ${project.starting_price.toLocaleString()}`
-                        : "—"}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">
-                        {project.status || "—"}
-                      </span>
-                    </td>
+                  <div className="mt-5 flex flex-col gap-2 border-t border-[var(--falcon-soft-border)] pt-4 sm:flex-row sm:items-center sm:justify-end">
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className={buttonClassName({ className: "min-h-10 px-4" })}
+                    >
+                      Open Project
+                    </Link>
 
                     {canManageProjects ? (
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-4">
-                          <button
-                            type="button"
-                            onClick={() => openEditProject(project)}
-                            className="text-sm font-medium text-zinc-700 hover:text-black"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteProject(project)}
-                            className="text-sm font-medium text-red-500 hover:text-red-700"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
+                      <>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() => openEditProject(project)}
+                          className="min-h-10 px-4"
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => handleDeleteProject(project)}
+                          className="min-h-10 px-4 text-red-600 hover:bg-red-50 hover:text-red-700 focus:ring-red-700"
+                        >
+                          Delete
+                        </Button>
+                      </>
                     ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       {/* Add Project Modal */}
