@@ -3,6 +3,7 @@
 import { FormEvent, PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { Button, PageHeader, StatusBadge } from "../../components/ui";
 
 type Project = {
   id: string;
@@ -3904,158 +3905,113 @@ export default function ProjectDetailPage() {
   }
 
   const activeConfig = activeSection ? sectionConfigs[activeSection] : null;
+  const projectSubtitle = [project.developer, project.location].filter(Boolean).join(" · ");
+  const projectSummaryItems = [
+    { label: "Location", value: project.location || "—" },
+    { label: "Property Type", value: project.property_type || "—" },
+    { label: "Tenure", value: project.tenure || "—" },
+    { label: "Title Type", value: project.title_type || "—" },
+    {
+      label: "Starting Price",
+      value: project.starting_price
+        ? `RM ${project.starting_price.toLocaleString()}`
+        : "—",
+    },
+    { label: "Total Units", value: project.total_units ?? "—" },
+    { label: "Status", value: project.status || "—" },
+    { label: "Launch Date", value: project.launch_date || "—" },
+    ...(canManageProjects
+      ? [
+          {
+            label: "Unit Number Format",
+            value: getUnitNumberFormatLabel(project.unit_number_format),
+          },
+        ]
+      : []),
+    { label: "Estimated VP", value: formatEstimatedVp(project) },
+    {
+      label: "Maintenance Fee",
+      value:
+        project.maintenance_fee_per_sqft !== null
+          ? `RM${project.maintenance_fee_per_sqft.toFixed(2)} psf`
+          : "—",
+      helper: project.maintenance_fee_per_sqft !== null ? "including sinking fund" : "",
+    },
+  ];
 
   return (
-    <main className="min-h-screen bg-white px-8 py-10">
+    <main className="min-h-screen bg-[var(--falcon-warm-background)] px-4 py-6 text-zinc-900 sm:px-6 lg:px-8 lg:py-10">
       <div className="mx-auto max-w-6xl">
         <button
           type="button"
           onClick={() => router.push("/projects")}
-          className="mb-8 text-sm font-medium text-zinc-600 hover:text-black"
+          className="mb-4 inline-flex text-sm font-semibold text-[var(--falcon-muted-text)] transition hover:text-[var(--falcon-charcoal)]"
         >
           ← Back to Projects
         </button>
 
-        <div className="mb-8 flex items-start justify-between">
-          <div>
-            <p className="text-sm text-zinc-500">
-              Project Management
-            </p>
-
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-zinc-900">
-              {project.project_name}
-            </h1>
-
-            {project.developer && (
-              <p className="mt-2 text-lg text-zinc-500">
-                {project.developer}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => router.push(`/projects/${project.id}/agent-view`)}
-              className="rounded-xl border border-zinc-200 px-5 py-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              Agent View
-            </button>
-
-            {canManageProjects ? (
-              <button
+        <PageHeader
+          eyebrow="Project Management"
+          title={project.project_name}
+          description={projectSubtitle || undefined}
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
                 type="button"
-                onClick={() => router.push(`/projects?edit=${project.id}`)}
-                className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+                variant="secondary"
+                onClick={() => router.push(`/projects/${project.id}/agent-view`)}
               >
-                Edit Project
-              </button>
-            ) : null}
-          </div>
-        </div>
+                Agent View
+              </Button>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Location</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.location || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Property Type</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.property_type || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Tenure</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.tenure || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Title Type</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.title_type || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Starting Price</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.starting_price
-                ? `RM ${project.starting_price.toLocaleString()}`
-                : "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Total Units</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.total_units ?? "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Status</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.status || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Launch Date</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.launch_date || "—"}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Title Classification</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.title_type || "—"}
-            </p>
-          </div>
-
-          {canManageProjects ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-              <p className="text-sm text-zinc-500">Unit Number Format</p>
-              <p className="mt-2 text-lg font-medium text-zinc-900">
-                {getUnitNumberFormatLabel(project.unit_number_format)}
-              </p>
+              {canManageProjects ? (
+                <Button
+                  type="button"
+                  onClick={() => router.push(`/projects?edit=${project.id}`)}
+                >
+                  Edit Project
+                </Button>
+              ) : null}
             </div>
-          ) : null}
+          }
+          className="mb-5"
+        />
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Estimated VP</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {formatEstimatedVp(project)}
-            </p>
+        <section className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-surface)] shadow-[0_12px_32px_rgba(23,23,23,0.04)]">
+          <div className="grid gap-px overflow-hidden rounded-[24px] bg-[var(--falcon-soft-border)] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {projectSummaryItems.map((item) => (
+              <div key={item.label} className="min-h-[96px] bg-white px-5 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-muted-text)]">
+                  {item.label}
+                </p>
+                <div className="mt-2">
+                  {item.label === "Status" ? (
+                    <StatusBadge>{item.value}</StatusBadge>
+                  ) : (
+                    <p className="text-base font-semibold leading-snug text-[var(--falcon-charcoal)]">
+                      {item.value}
+                    </p>
+                  )}
+                  {"helper" in item && item.helper ? (
+                    <p className="mt-1 text-xs text-[var(--falcon-muted-text)]">
+                      {item.helper}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ))}
           </div>
+        </section>
 
-          <div className="rounded-2xl border border-zinc-200 bg-white p-6">
-            <p className="text-sm text-zinc-500">Maintenance Fee</p>
-            <p className="mt-2 text-lg font-medium text-zinc-900">
-              {project.maintenance_fee_per_sqft !== null
-                ? `RM${project.maintenance_fee_per_sqft.toFixed(2)} psf`
-                : "—"}
-            </p>
-            {project.maintenance_fee_per_sqft !== null ? (
-              <p className="mt-1 text-xs text-zinc-500">including sinking fund</p>
-            ) : null}
-          </div>
-        </div>
+        <section className="mt-5 rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-[0_12px_32px_rgba(23,23,23,0.04)] sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+            Notes
+          </p>
 
-        <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-6">
-          <p className="text-sm text-zinc-500">Notes</p>
-
-          <p className="mt-3 whitespace-pre-wrap text-zinc-800">
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
             {project.notes || "No notes available."}
           </p>
-        </div>
+        </section>
 
         <div className="mt-8 space-y-6">
           {renderProjectCover()}
