@@ -3153,11 +3153,16 @@ export default function ProjectDetailPage() {
 
   function renderConnectivityPoints() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Connectivity & Convenience</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Lifestyle Access
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Connectivity & Convenience
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Nearby transport, amenities, and customer-safe convenience notes.
             </p>
           </div>
@@ -3166,14 +3171,14 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={openAddConnectivityPoint}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
               Add Connectivity
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {connectivityErrorMessage && !isConnectivityModalOpen ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {connectivityErrorMessage}
@@ -3181,54 +3186,68 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {connectivityLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading connectivity points...
             </p>
           ) : connectivityPoints.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No connectivity points added yet.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={`grid gap-4 ${connectivityPoints.length > 1 ? "md:grid-cols-2" : ""}`}>
               {connectivityPoints.map((point) => (
-                <article key={point.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
+                <article
+                  key={point.id}
+                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
+                >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-zinc-500">
-                        <span className="rounded-full bg-white px-3 py-1 text-zinc-700">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                        <span className="rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-1 text-[var(--falcon-gold-dark)]">
                           {connectivityCategoryLabels[point.category] || point.category}
                         </span>
-                        {point.distance_meters !== null ? <span>{point.distance_meters}m</span> : null}
+                        {point.distance_meters !== null ? (
+                          <span className="text-[var(--falcon-muted-text)]">{point.distance_meters}m</span>
+                        ) : null}
                         {point.connection_mode ? (
-                          <span>{connectionModeLabels[point.connection_mode] || point.connection_mode}</span>
+                          <span className="rounded-full bg-zinc-100 px-3 py-1 text-zinc-700">
+                            {connectionModeLabels[point.connection_mode] || point.connection_mode}
+                          </span>
                         ) : null}
                       </div>
-                      <h3 className="mt-3 text-base font-semibold text-zinc-900">{point.name}</h3>
+                      <h3 className="mt-3 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                        {point.name}
+                      </h3>
                       {point.customer_description ? (
                         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
                           {point.customer_description}
                         </p>
                       ) : null}
                       {canManageProjects && point.internal_note ? (
-                        <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-zinc-500">
-                          Internal: {point.internal_note}
-                        </p>
+                        <div className="mt-4 rounded-[16px] border border-dashed border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                            Internal Note
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-zinc-600">
+                            {point.internal_note}
+                          </p>
+                        </div>
                       ) : null}
                     </div>
 
                     {canManageProjects ? (
-                      <div className="flex items-center gap-4">
+                      <div className="flex shrink-0 items-center gap-2">
                         <button
                           type="button"
                           onClick={() => openEditConnectivityPoint(point)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                          className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
                         >
                           Edit
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteConnectivityPoint(point)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                          className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
                         >
                           Delete
                         </button>
@@ -3246,11 +3265,16 @@ export default function ProjectDetailPage() {
 
   function renderCommercialPackages() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Sales Packages</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Purchase Offers
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Sales Packages
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Developer packages, discounts, benefits, purchase costs, and Unit Type applicability.
             </p>
           </div>
@@ -3259,14 +3283,14 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={openAddCommercialPackage}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
               Add Sales Package
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {commercialPackagesErrorMessage && !isCommercialPackageModalOpen ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {commercialPackagesErrorMessage}
@@ -3274,31 +3298,31 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {commercialPackagesLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading sales packages...
             </p>
           ) : commercialPackages.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No sales packages added yet.
             </p>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className={`grid gap-4 ${commercialPackages.length > 1 ? "lg:grid-cols-2" : ""}`}>
               {commercialPackages.map((commercialPackage) => (
                 <article
                   key={commercialPackage.id}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
                         {commercialPackage.applies_to_all_unit_types
                           ? "All Unit Types"
                           : `${commercialPackage.applicable_unit_types.length} Selected Unit Types`}
                       </p>
-                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
+                      <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
                         {commercialPackage.package_name}
                       </h3>
-                      <p className="mt-1 text-sm text-zinc-500">
+                      <p className="mt-1 text-sm text-[var(--falcon-muted-text)]">
                         {commercialPackage.valid_until
                           ? `Valid until ${formatDate(commercialPackage.valid_until)}`
                           : "No validity end date"}
@@ -3306,18 +3330,18 @@ export default function ProjectDetailPage() {
                     </div>
 
                     {canManageProjects ? (
-                      <div className="flex items-center gap-4">
+                      <div className="flex shrink-0 items-center gap-2">
                         <button
                           type="button"
                           onClick={() => openEditCommercialPackage(commercialPackage)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                          className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
                         >
-                          Edit Package
+                          Edit
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteCommercialPackage(commercialPackage)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                          className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
                         >
                           Delete
                         </button>
@@ -3331,33 +3355,39 @@ export default function ProjectDetailPage() {
                     </p>
                   ) : null}
 
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 grid gap-3">
                     {commercialPackage.items.map((item) => (
-                      <div key={item.id ?? `${item.item_type}-${item.sort_order}`} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
-                        <span className="font-medium">
+                      <div
+                        key={item.id ?? `${item.item_type}-${item.sort_order}`}
+                        className="rounded-xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-2 text-sm text-zinc-700"
+                      >
+                        <span className="font-semibold text-zinc-800">
                           {item.item_type === "discount"
                             ? "Discount"
                             : item.item_type === "cash_benefit"
                               ? "Cash Benefit"
                               : "Non-Cash Benefit"}
                         </span>
-                        <span className="text-zinc-500"> · {item.description}</span>
+                        <span className="text-[var(--falcon-muted-text)]"> · {item.description}</span>
                         {item.value !== null ? (
-                          <span className="text-zinc-500"> · {item.value}</span>
+                          <span className="text-[var(--falcon-muted-text)]"> · {item.value}</span>
                         ) : null}
                       </div>
                     ))}
                     {commercialPackage.purchase_costs
                       .filter((cost) => cost.treatment !== "not_applicable")
                       .map((cost) => (
-                        <div key={cost.cost_key} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                        <div
+                          key={cost.cost_key}
+                          className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm text-zinc-700"
+                        >
                           {purchaseCostLabels[cost.cost_key] || cost.cost_key} ·{" "}
                           {purchaseCostTreatmentLabels[cost.treatment] || cost.treatment}
                           {cost.amount_override !== null ? ` · ${formatMoney(cost.amount_override)}` : ""}
                         </div>
                       ))}
                     {commercialPackage.furnishing_package ? (
-                      <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700">
+                      <div className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm font-medium text-zinc-700">
                         Furnishing · {commercialPackage.furnishing_package.package_name}
                       </div>
                     ) : null}
@@ -3373,11 +3403,16 @@ export default function ProjectDetailPage() {
 
   function renderFloorPlans() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Floor Plans</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Stack Mapping
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Floor Plans
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Typical floor plans and stack mapping for future unit presentation.
             </p>
           </div>
@@ -3386,14 +3421,14 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={openAddFloorPlan}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
               Add Floor Plan
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {floorPlansErrorMessage && !isFloorPlanModalOpen && !mappingFloorPlan ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {floorPlansErrorMessage}
@@ -3401,83 +3436,85 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {floorPlansLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading floor plans...
             </p>
           ) : floorPlans.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No floor plans added yet.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={`grid gap-4 ${floorPlans.length > 1 ? "md:grid-cols-2" : ""}`}>
               {floorPlans.map((floorPlan) => (
                 <article
                   key={floorPlan.id}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                  className="overflow-hidden rounded-[22px] border border-[var(--falcon-soft-border)] bg-white shadow-sm"
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  <div className="p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
                         Sort Order {floorPlan.sort_order ?? 0}
-                      </p>
-                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
-                        {floorPlan.name}
-                      </h3>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        {floorPlan.tower_code ? `Tower/Block ${floorPlan.tower_code}` : "No Tower/Block"} · Floors {floorPlan.floor_from}-{floorPlan.floor_to}
-                      </p>
+                        </p>
+                        <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                          {floorPlan.name}
+                        </h3>
+                        <p className="mt-1 text-sm text-[var(--falcon-muted-text)]">
+                          {floorPlan.tower_code ? `Tower/Block ${floorPlan.tower_code}` : "No Tower/Block"} · Floors {floorPlan.floor_from}-{floorPlan.floor_to}
+                        </p>
+                      </div>
+
+                      {canManageProjects ? (
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditFloorPlan(floorPlan)}
+                            className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openStackMapper(floorPlan)}
+                            className="rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
+                          >
+                            Map Stacks
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFloorPlan(floorPlan)}
+                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
+                      </div>
                     </div>
 
-                    {canManageProjects ? (
-                      <div className="flex flex-wrap items-center gap-4">
-                        <button
-                          type="button"
-                          onClick={() => openEditFloorPlan(floorPlan)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openStackMapper(floorPlan)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
-                        >
-                          Map Stacks
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteFloorPlan(floorPlan)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-
                   {floorPlan.media?.signed_url ? (
-                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
+                    <div className="border-y border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={floorPlan.media.signed_url}
                         alt={`${floorPlan.name} floor plan`}
-                        className="max-h-64 w-full rounded-lg object-contain"
+                        className="max-h-72 w-full rounded-[16px] bg-white object-contain"
                       />
                     </div>
                   ) : null}
 
-                  <div className="mt-4">
-                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  <div className="p-5 pt-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-muted-text)]">
                       Stack Mappings
                     </p>
                     {floorPlan.stacks.length === 0 ? (
-                      <p className="mt-2 text-sm text-zinc-500">No stacks mapped yet.</p>
+                      <p className="mt-2 text-sm text-[var(--falcon-muted-text)]">No stacks mapped yet.</p>
                     ) : (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {floorPlan.stacks.map((stack) => (
                           <span
                             key={stack.id}
-                            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700"
+                            className="rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-1 text-xs font-semibold text-zinc-700"
                           >
                             {stack.stack_code}
                             {stack.unit_type ? ` · ${getUnitTypeDisplay(stack.unit_type)}` : ""}
@@ -3498,11 +3535,16 @@ export default function ProjectDetailPage() {
 
   function renderFacings() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Facing / Views</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              View References
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Facing / Views
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Optional view references that can be assigned to stack mappings.
             </p>
           </div>
@@ -3511,14 +3553,14 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={openAddFacing}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
               Add Facing
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {facingsErrorMessage && !isFacingModalOpen ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {facingsErrorMessage}
@@ -3526,66 +3568,72 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {facingsLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading facings...
             </p>
           ) : facings.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No facings added yet.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={`grid gap-4 ${facings.length > 1 ? "md:grid-cols-2" : ""}`}>
               {facings.map((facing) => (
                 <article
                   key={facing.id}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                  className="overflow-hidden rounded-[22px] border border-[var(--falcon-soft-border)] bg-white shadow-sm"
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        {getViewTypeLabel(facing.view_type)}
-                      </p>
-                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
-                        {facing.name}
-                      </h3>
-                      {facing.description ? (
-                        <p className="mt-2 text-sm text-zinc-600">{facing.description}</p>
+                  <div className="p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+                          {getViewTypeLabel(facing.view_type)}
+                        </p>
+                        <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                          {facing.name}
+                        </h3>
+                        {facing.description ? (
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
+                            {facing.description}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {canManageProjects ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditFacing(facing)}
+                            className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFacing(facing)}
+                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       ) : null}
+                      </div>
                     </div>
 
-                    {canManageProjects ? (
-                      <div className="flex items-center gap-4">
-                        <button
-                          type="button"
-                          onClick={() => openEditFacing(facing)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteFacing(facing)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-
                   {facing.media?.signed_url ? (
-                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
+                    <div className="border-y border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={facing.media.signed_url}
                         alt={`${facing.name} facing view`}
-                        className="max-h-48 w-full rounded-lg object-contain"
+                        className="max-h-56 w-full rounded-[16px] bg-white object-contain"
                       />
                     </div>
                   ) : null}
 
                   {facing.disclaimer ? (
-                    <p className="mt-3 text-xs text-zinc-500">{facing.disclaimer}</p>
+                    <p className="px-5 py-3 text-xs leading-5 text-[var(--falcon-muted-text)]">
+                      {facing.disclaimer}
+                    </p>
                   ) : null}
                 </article>
               ))}
@@ -3598,11 +3646,16 @@ export default function ProjectDetailPage() {
 
   function renderFurnishingPackages() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Furnishing Packages</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Included Finishes
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Furnishing Packages
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Reusable included furnishing lists that can be assigned to unit types.
             </p>
           </div>
@@ -3611,14 +3664,14 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={openAddFurnishingPackage}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
-              Add Package
+              Add Furnishing Package
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {furnishingErrorMessage && !isFurnishingModalOpen ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {furnishingErrorMessage}
@@ -3626,48 +3679,49 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {furnishingLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading furnishing packages...
             </p>
           ) : furnishingPackages.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No furnishing packages added yet.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={`grid gap-4 ${furnishingPackages.length > 1 ? "md:grid-cols-2" : ""}`}>
               {furnishingPackages.map((item) => (
                 <article
                   key={item.id}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Sort Order {item.sort_order ?? 0}
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+                        {item.items.length} {item.items.length === 1 ? "Item" : "Items"} · Order{" "}
+                        {item.sort_order ?? 0}
                       </p>
-                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
+                      <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
                         {item.package_name}
                       </h3>
                       {item.description ? (
-                        <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-600">
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-600">
                           {item.description}
                         </p>
                       ) : null}
                     </div>
 
                     {canManageProjects ? (
-                      <div className="flex items-center gap-4">
+                      <div className="flex shrink-0 items-center gap-2">
                         <button
                           type="button"
                           onClick={() => openEditFurnishingPackage(item)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                          className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
                         >
                           Edit
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteFurnishingPackage(item)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
+                          className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
                         >
                           Delete
                         </button>
@@ -3675,24 +3729,32 @@ export default function ProjectDetailPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-4 border-t border-[var(--falcon-soft-border)] pt-4">
                     {item.items.length === 0 ? (
-                      <p className="text-sm text-zinc-500">No items added.</p>
+                      <p className="text-sm text-[var(--falcon-muted-text)]">No items added.</p>
                     ) : (
-                      item.items.map((child) => (
-                        <div
-                          key={child.id}
-                          className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
-                        >
-                          {child.item_name}
-                          {child.quantity ? (
-                            <span className="text-zinc-500"> × {child.quantity}</span>
-                          ) : null}
-                          {child.description ? (
-                            <p className="mt-1 text-xs text-zinc-500">{child.description}</p>
-                          ) : null}
-                        </div>
-                      ))
+                      <ul className="space-y-2">
+                        {item.items.map((child) => (
+                          <li
+                            key={child.id}
+                            className="flex flex-col gap-1 rounded-xl bg-[var(--falcon-warm-background)] px-3 py-2 text-sm sm:flex-row sm:items-start sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-semibold text-zinc-800">{child.item_name}</span>
+                              {child.description ? (
+                                <p className="mt-1 text-xs leading-5 text-[var(--falcon-muted-text)]">
+                                  {child.description}
+                                </p>
+                              ) : null}
+                            </div>
+                            {child.quantity ? (
+                              <span className="shrink-0 rounded-full border border-[var(--falcon-soft-border)] bg-white px-2.5 py-1 text-xs font-semibold text-zinc-700">
+                                × {child.quantity}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 </article>
@@ -3706,11 +3768,16 @@ export default function ProjectDetailPage() {
 
   function renderProjectResources() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Project Resources</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Agent Materials
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Project Resources
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Sales materials, external documents, and links for agents.
             </p>
           </div>
@@ -3719,14 +3786,14 @@ export default function ProjectDetailPage() {
             <button
               type="button"
               onClick={openAddResource}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
               Add Resource
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {resourcesErrorMessage && !isResourceModalOpen ? (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {resourcesErrorMessage}
@@ -3734,79 +3801,81 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {resourcesLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading resources...
             </p>
           ) : projectResources.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No resources added yet.
             </p>
           ) : (
-            projectResources.map((resource) => (
-              <article
-                key={resource.id}
-                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-700">
-                        {resource.resource_type || "Other"}
-                      </span>
-                      <span className="rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium capitalize text-zinc-500">
-                        {resource.visibility || "internal"}
-                      </span>
-                      <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Sort Order {resource.sort_order ?? 0}
-                      </span>
+            <div className="grid gap-4">
+              {projectResources.map((resource) => (
+                <article
+                  key={resource.id}
+                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-1 text-xs font-semibold text-[var(--falcon-gold-dark)]">
+                          {resource.resource_type || "Other"}
+                        </span>
+                        <span className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1 text-xs font-semibold capitalize text-[var(--falcon-muted-text)]">
+                          {resource.visibility || "internal"}
+                        </span>
+                        <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                          Order {resource.sort_order ?? 0}
+                        </span>
+                      </div>
+
+                      <h3 className="mt-3 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                        {resource.resource_name}
+                      </h3>
+
+                      {resource.description ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                          {resource.description}
+                        </p>
+                      ) : null}
                     </div>
 
-                    <h3 className="mt-3 text-base font-semibold text-zinc-900">
-                      {resource.resource_name}
-                    </h3>
-
-                    {resource.description ? (
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
-                        {resource.description}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    {resource.external_link ? (
-                      <a
-                        href={resource.external_link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-medium text-zinc-900 hover:underline"
-                      >
-                        Open Link
-                      </a>
-                    ) : null}
-
-                    {canManageProjects ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => openEditResource(resource)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      {resource.external_link ? (
+                        <a
+                          href={resource.external_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-full bg-[var(--falcon-charcoal)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-zinc-800"
                         >
-                          Edit
-                        </button>
+                          Open Link
+                        </a>
+                      ) : null}
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteResource(resource)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    ) : null}
+                      {canManageProjects ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditResource(resource)}
+                            className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteResource(resource)}
+                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))
+                </article>
+              ))}
+            </div>
           )}
         </div>
       </section>
@@ -3817,92 +3886,104 @@ export default function ProjectDetailPage() {
     const config = sectionConfigs[section];
 
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">{config.title}</h2>
-            <p className="mt-1 text-sm text-zinc-500">{config.description}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Project Knowledge
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              {config.title}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
+              {config.description}
+            </p>
           </div>
 
           {canManageProjects ? (
             <button
               type="button"
               onClick={() => openAddKnowledgeItem(section)}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="rounded-full bg-[var(--falcon-charcoal)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
             >
               Add Item
             </button>
           ) : null}
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {knowledgeLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
               Loading items...
             </p>
           ) : items.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No items added yet.
             </p>
           ) : (
-            items.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                      Sort Order {item.sort_order ?? 0}
-                    </p>
-                    <h3 className="mt-1 text-base font-semibold text-zinc-900">
-                      {item.title}
-                    </h3>
+            <div className="grid gap-4">
+              {items.map((item) => (
+                <article
+                  key={item.id}
+                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+                        Order {item.sort_order ?? 0}
+                      </p>
+                      <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                        {item.title}
+                      </h3>
+                    </div>
+
+                    {canManageProjects ? (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditKnowledgeItem(section, item)}
+                          className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteKnowledgeItem(section, item)}
+                          className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
-                  {canManageProjects ? (
-                    <div className="flex items-center gap-4">
-                      <button
-                        type="button"
-                        onClick={() => openEditKnowledgeItem(section, item)}
-                        className="text-sm font-medium text-zinc-700 hover:text-black"
-                      >
-                        Edit
-                      </button>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {config.fields.map((field) => {
+                      const value = item[field.key];
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteKnowledgeItem(section, item)}
-                        className="text-sm font-medium text-red-500 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                      if (!value) {
+                        return null;
+                      }
 
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  {config.fields.map((field) => {
-                    const value = item[field.key];
-
-                    if (!value) {
-                      return null;
-                    }
-
-                    return (
-                      <div key={field.key}>
-                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                          {field.label}
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
-                          {value}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </article>
-            ))
+                      return (
+                        <div
+                          key={field.key}
+                          className="rounded-[16px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-3"
+                        >
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                            {field.label}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                            {value}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
           )}
         </div>
       </section>
