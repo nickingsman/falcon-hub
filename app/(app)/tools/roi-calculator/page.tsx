@@ -36,6 +36,7 @@ import {
   type UnitNumberFormat,
 } from "@/lib/unit-number-format";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { Button, PageHeader, SectionHeader, StatusBadge } from "../../components/ui";
 
 type CalculatorForm = {
   projectName: string;
@@ -2870,81 +2871,75 @@ export default function RoiCalculatorPage() {
 
   return (
     <>
-      <header className="flex flex-col gap-4 border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm text-zinc-500">Tools - Unit Calculation</p>
-          <p className="text-base font-semibold text-zinc-900">
-            Unit Calculation
-          </p>
-          {currentSavedWorkTitle ? (
-            <p className="mt-1 truncate text-xs text-zinc-500">
-              Saved Work:{" "}
-              <span className="font-medium text-zinc-700">{currentSavedWorkTitle}</span>
-            </p>
-          ) : null}
-          {saveMessage ? (
-            <p
-              className={`mt-1 text-xs font-medium ${
-                saveStatus === "error" ? "text-amber-700" : "text-[#087F6B]"
-              }`}
-            >
-              {saveMessage}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <button
-            type="button"
-            onClick={handleSaveClick}
-            disabled={saveStatus === "saving"}
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saveStatus === "saving" ? "Saving..." : "Save"}
-          </button>
-          {currentSavedWorkId ? (
-            <button
-              type="button"
-              onClick={() => openSaveModal("save-as")}
-              disabled={saveStatus === "saving"}
-              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Save As
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleExportPdf}
-            disabled={hasBlockingValidation}
-            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Export PDF
-          </button>
-        </div>
-      </header>
+      <main className="bg-[var(--falcon-warm-background)] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+        <PageHeader
+          eyebrow="Unit Calculation"
+          title="Unit Calculation"
+          description="Build a clean purchase package, financing summary and investment view for a selected unit."
+          className="p-5 sm:p-6 [&_h1]:text-3xl [&_h1]:sm:text-4xl"
+          meta={
+            <div className="flex flex-col gap-2 text-xs text-[var(--falcon-muted-text)]">
+              {currentSavedWorkTitle ? (
+                <p className="truncate">
+                  Saved Work:{" "}
+                  <span className="font-semibold text-[var(--falcon-charcoal)]">
+                    {currentSavedWorkTitle}
+                  </span>
+                </p>
+              ) : null}
+              {saveMessage ? (
+                <p
+                  className={`font-semibold ${
+                    saveStatus === "error" ? "text-amber-700" : "text-[#087F6B]"
+                  }`}
+                >
+                  {saveMessage}
+                </p>
+              ) : null}
+            </div>
+          }
+          actions={
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <Button
+                type="button"
+                onClick={handleSaveClick}
+                disabled={saveStatus === "saving"}
+                className="w-full sm:w-auto"
+              >
+                {saveStatus === "saving" ? "Saving..." : "Save"}
+              </Button>
+              {currentSavedWorkId ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => openSaveModal("save-as")}
+                  disabled={saveStatus === "saving"}
+                  className="w-full sm:w-auto"
+                >
+                  Save As
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleExportPdf}
+                disabled={hasBlockingValidation}
+                className="w-full sm:w-auto"
+              >
+                Export PDF
+              </Button>
+            </div>
+          }
+        />
 
-      <main className="p-6 lg:p-8">
         {reopenWarning ? (
-          <section className="mb-6 rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <section className="mt-5 rounded-[22px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
             {reopenWarning}
           </section>
         ) : null}
 
-        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
-              Unit Calculation
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-              Unit Calculation
-            </h1>
-            <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-600">
-              Calculate the complete purchase package, financing and investment figures for a unit.
-            </p>
-          </div>
-        </section>
-
         {hasBlockingValidation ? (
-          <section className="mt-6 rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+          <section className="mt-5 rounded-[22px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 shadow-sm">
             <p className="font-semibold">Check these inputs before presenting:</p>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               {validationMessages.map((message) => (
@@ -2954,16 +2949,14 @@ export default function RoiCalculatorPage() {
           </section>
         ) : null}
 
-        <div className="mt-8 grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-          <div className="space-y-6">
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
-                Project Defaults
-              </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Optional project data can prefill presentation fields. You can still edit the calculator manually.
-              </p>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+          <div className="space-y-5">
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader
+                title="Project Defaults"
+                description="Optional project data can prefill presentation fields. Manual entry remains available."
+              />
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Project
@@ -2971,7 +2964,7 @@ export default function RoiCalculatorPage() {
                   <select
                     value={selectedProjectId}
                     onChange={(event) => handleProjectChange(event.target.value)}
-                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                    className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                   >
                     <option value="">Manual entry</option>
                     {projects.map((project) => (
@@ -2995,7 +2988,7 @@ export default function RoiCalculatorPage() {
                     value={selectedUnitTypeId}
                     onChange={(event) => handleUnitTypeChange(event.target.value)}
                     disabled={!selectedProjectId || isLoadingUnitTypes}
-                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
                       {selectedProjectId
@@ -3024,11 +3017,12 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-300 bg-white p-6 shadow-[0_12px_34px_rgba(15,23,42,0.05)]">
-              <h2 className="border-b border-zinc-100 pb-3 text-lg font-semibold text-zinc-950">
-                Property & Unit
-              </h2>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader
+                title="Property & Unit"
+                description="Keep the presentation details accurate for the customer proposal."
+              />
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Project Name
@@ -3036,7 +3030,7 @@ export default function RoiCalculatorPage() {
                   <input
                     value={form.projectName}
                     onChange={(event) => updateField("projectName", event.target.value)}
-                    className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.projectName.trim())}`}
+                    className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.projectName.trim())}`}
                     placeholder="Optional"
                   />
                 </label>
@@ -3047,27 +3041,27 @@ export default function RoiCalculatorPage() {
                   <input
                     value={form.unitNumber}
                     onChange={(event) => handleUnitNumberChange(event.target.value)}
-                    className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.unitNumber.trim())}`}
+                    className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.unitNumber.trim())}`}
                     placeholder="Optional"
                   />
                 </label>
                 {selectedProjectId ? (
-                  <div className="rounded-2xl border border-zinc-300 bg-zinc-50 p-4 text-sm md:col-span-2">
+                  <div className="rounded-[22px] border border-[#e4d7b8] bg-[#fbf8ef] p-4 text-sm shadow-sm md:col-span-2">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold text-zinc-900">Floor Plan Detection</p>
-                          <span
-                            className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                          <StatusBadge
+                            variant={
                               detectionState.status === "auto" || detectionState.status === "manual"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                ? "success"
                                 : detectionState.status === "mismatch" || detectionState.status === "conflict"
-                                  ? "border-amber-200 bg-amber-50 text-amber-800"
-                                  : "border-zinc-200 bg-white text-zinc-600"
-                            }`}
+                                  ? "warning"
+                                  : "neutral"
+                            }
                           >
                             {getDetectionLabel(detectionState.status)}
-                          </span>
+                          </StatusBadge>
                         </div>
                         <p className="mt-1 text-xs text-zinc-500">
                           {detectionState.message}
@@ -3094,7 +3088,7 @@ export default function RoiCalculatorPage() {
                     </div>
 
                     {detectionState.floorPlan && detectionState.stack && !detectionState.requiresConfirmation ? (
-                      <div className="mt-3 rounded-xl border border-emerald-100 bg-white px-3 py-2">
+                      <div className="mt-3 rounded-2xl border border-emerald-100 bg-white px-3 py-2">
                         <p className="text-xs font-medium text-zinc-500">Auto highlight</p>
                         <p className="mt-1 font-semibold text-zinc-900">
                           {getFloorPlanLabel(detectionState.floorPlan)} · Stack{" "}
@@ -3104,7 +3098,7 @@ export default function RoiCalculatorPage() {
                     ) : null}
 
                     {selectedFacing ? (
-                      <div className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-2">
+                      <div className="mt-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2">
                         <p className="text-xs font-medium text-zinc-500">Facing / View</p>
                         <p className="mt-1 font-semibold text-zinc-900">
                           {selectedFacing.name}
@@ -3128,7 +3122,7 @@ export default function RoiCalculatorPage() {
                               setManualStackId("");
                               setSavedFloorPlanPresentation(null);
                             }}
-                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none"
+                            className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--falcon-gold-dark)]"
                           >
                             <option value="">
                               {detectionState.floorPlan
@@ -3152,7 +3146,7 @@ export default function RoiCalculatorPage() {
                               setSavedFloorPlanPresentation(null);
                             }}
                             disabled={!activeManualFloorPlan}
-                            className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                            className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--falcon-gold-dark)] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <option value="">
                               {detectionState.stack && !detectionState.requiresConfirmation
@@ -3178,7 +3172,7 @@ export default function RoiCalculatorPage() {
                   <input
                     value={form.unitType}
                     onChange={(event) => updateField("unitType", event.target.value)}
-                    className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.unitType.trim())}`}
+                    className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.unitType.trim())}`}
                     placeholder="e.g. 3 Bedrooms"
                   />
                 </label>
@@ -3189,7 +3183,7 @@ export default function RoiCalculatorPage() {
                   <input
                     value={form.unitConfiguration}
                     onChange={(event) => updateField("unitConfiguration", event.target.value)}
-                    className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.unitConfiguration.trim())}`}
+                    className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.unitConfiguration.trim())}`}
                     placeholder="e.g. 3R2B"
                   />
                 </label>
@@ -3203,7 +3197,7 @@ export default function RoiCalculatorPage() {
                     onChange={(event) =>
                       updateField("calculationDate", event.target.value)
                     }
-                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                    className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                   />
                 </label>
                 <label className="block text-sm text-zinc-600">
@@ -3211,13 +3205,13 @@ export default function RoiCalculatorPage() {
                     Unit Size
                   </span>
                   <div
-                    className={`flex rounded-2xl border ${getPendingInputClass(!form.unitSizeSqft.trim(), hasEnteredValue(form.unitSizeSqft) && (!Number.isFinite(numericInput.unitSizeSqft) || numericInput.unitSizeSqft < 0))}`}
+                    className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.unitSizeSqft.trim(), hasEnteredValue(form.unitSizeSqft) && (!Number.isFinite(numericInput.unitSizeSqft) || numericInput.unitSizeSqft < 0))}`}
                   >
                     <input
                       inputMode="decimal"
                       value={form.unitSizeSqft}
                       onChange={(event) => updateField("unitSizeSqft", event.target.value)}
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
                       placeholder="950"
                     />
                     <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">
@@ -3232,18 +3226,19 @@ export default function RoiCalculatorPage() {
                   <input
                     value={form.carpark}
                     onChange={(event) => updateField("carpark", event.target.value)}
-                    className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.carpark.trim())}`}
+                    className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.carpark.trim())}`}
                     placeholder="e.g. 2 car parks"
                   />
                 </label>
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
-                SPA Price
-              </h2>
-              <label className="mt-5 block text-sm text-zinc-600">
+            <section className="rounded-[26px] border border-[#d8c48e] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader
+                title="SPA Price"
+                description="Main loan and statutory calculation basis."
+              />
+              <label className="mt-4 block text-sm text-zinc-600">
                 <span className="mb-1 block font-medium text-zinc-900">
                   SPA Price
                 </span>
@@ -3251,23 +3246,23 @@ export default function RoiCalculatorPage() {
                   inputMode="decimal"
                   value={form.spaPrice}
                   onChange={(event) => updateField("spaPrice", event.target.value)}
-                  className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.spaPrice.trim(), hasEnteredValue(form.spaPrice) && (!Number.isFinite(numericInput.spaPrice) || numericInput.spaPrice <= 0))}`}
+                  className={`w-full rounded-2xl border px-4 py-3 text-lg font-semibold outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.spaPrice.trim(), hasEnteredValue(form.spaPrice) && (!Number.isFinite(numericInput.spaPrice) || numericInput.spaPrice <= 0))}`}
                   placeholder="500000"
                 />
               </label>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 xl:max-w-[520px]">
                   <h2 className="text-lg font-semibold text-zinc-950">
                     Discounts & Benefits
                   </h2>
-                  <p className="mt-1 text-sm text-zinc-500">
+                  <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
                     Discounts are applied in order. Cashback affects final price, not Nett Price.
                   </p>
                 </div>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end xl:w-auto xl:justify-end">
                   <label className="block min-w-[180px] text-sm text-zinc-600">
                     <span className="mb-1 block text-xs font-semibold text-[#9A6B1F]">
                       Package Valid Until
@@ -3278,17 +3273,17 @@ export default function RoiCalculatorPage() {
                       onChange={(event) =>
                         updateField("packageValidUntil", event.target.value)
                       }
-                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-[#d8c18d]"
+                      className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[#d8c18d] focus:bg-white"
                     />
                   </label>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
                     {(["discount", "cash_benefit", "non_cash_benefit"] as const).map(
                       (type) => (
                         <button
                           key={type}
                           type="button"
                           onClick={() => addPackageItem(type)}
-                          className="rounded-full border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 hover:text-zinc-950"
+                          className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm font-semibold text-zinc-800 transition hover:border-[#d8c48e] hover:bg-[#fbf8ef]"
                         >
                           {getPackageAddLabel(type)}
                         </button>
@@ -3304,7 +3299,7 @@ export default function RoiCalculatorPage() {
                     const items = packageItems.filter((item) => item.type === type);
 
                     return (
-                      <div key={type} className="rounded-[22px] border border-zinc-200 bg-zinc-50 p-3">
+                      <div key={type} className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-3">
                         <div className="flex items-center justify-between gap-3">
                           <h3 className="text-sm font-semibold text-zinc-900">
                             {getPackageGroupTitle(type)}
@@ -3335,7 +3330,7 @@ export default function RoiCalculatorPage() {
                               return (
                                 <div
                                   key={item.id}
-                                  className="grid gap-3 rounded-2xl border border-zinc-200 bg-white p-3 md:grid-cols-[minmax(150px,1fr)_minmax(220px,1.4fr)_auto] md:items-end"
+                                  className="grid gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-white p-3 shadow-[0_8px_20px_rgba(23,23,23,0.03)] lg:grid-cols-[minmax(220px,1fr)_minmax(280px,1.35fr)_minmax(150px,auto)] lg:items-end"
                                 >
                                   <label className="block text-sm text-zinc-600">
                                     <span className="mb-1 block font-medium text-zinc-900">
@@ -3348,7 +3343,7 @@ export default function RoiCalculatorPage() {
                                           description: event.target.value,
                                         })
                                       }
-                                      className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                      className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                                       placeholder={getPackageDescriptionPlaceholder(item.type)}
                                     />
                                   </label>
@@ -3366,7 +3361,7 @@ export default function RoiCalculatorPage() {
                                               method: event.target.value as DiscountMethod,
                                             })
                                           }
-                                          className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                          className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                                         >
                                           <option value="percentage_spa">% of SPA</option>
                                           <option value="percentage_previous_balance">% of Balance</option>
@@ -3385,7 +3380,7 @@ export default function RoiCalculatorPage() {
                                               value: event.target.value,
                                             })
                                           }
-                                          className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!hasEnteredValue(item.value), discountValueIsInvalid)}`}
+                                          className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!hasEnteredValue(item.value), discountValueIsInvalid)}`}
                                           placeholder={item.method === "fixed" ? "30000" : "10"}
                                         />
                                       </label>
@@ -3406,7 +3401,7 @@ export default function RoiCalculatorPage() {
                                               amount: event.target.value,
                                             })
                                           }
-                                          className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!hasEnteredValue(item.amount), cashBenefitAmountIsInvalid)}`}
+                                          className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!hasEnteredValue(item.amount), cashBenefitAmountIsInvalid)}`}
                                           placeholder="30000"
                                         />
                                       </label>
@@ -3421,7 +3416,7 @@ export default function RoiCalculatorPage() {
                                               treatment: event.target.value as CashBenefitTreatment,
                                             })
                                           }
-                                          className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                          className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                                         >
                                           <option value="immediate_offset">Immediate Offset</option>
                                           <option value="refund_later">Refund Later</option>
@@ -3439,7 +3434,7 @@ export default function RoiCalculatorPage() {
                                                 receiveAt: event.target.value,
                                               })
                                             }
-                                            className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                            className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                                             placeholder="Stage 2B, VP, upon loan disbursement"
                                           />
                                         </label>
@@ -3460,14 +3455,14 @@ export default function RoiCalculatorPage() {
                                             amount: event.target.value,
                                           })
                                         }
-                                        className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                                        className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
                                         placeholder="Optional RM value"
                                       />
                                     </label>
                                   ) : null}
 
-                                  <div className="flex items-center justify-between gap-3 md:justify-end">
-                                    <div className="text-left md:text-right">
+                                  <div className="flex min-w-[150px] items-center justify-between gap-3 lg:justify-end">
+                                    <div className="text-left lg:text-right">
                                       <p className="text-xs font-medium uppercase tracking-[0.12em] text-zinc-400">
                                         Effect
                                       </p>
@@ -3483,7 +3478,7 @@ export default function RoiCalculatorPage() {
                                     <button
                                       type="button"
                                       onClick={() => removePackageItem(item.id)}
-                                      className="rounded-full border border-red-100 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 hover:text-red-800"
+                                      className="rounded-full border border-red-100 bg-white px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 hover:text-red-800"
                                     >
                                       Remove
                                     </button>
@@ -3500,17 +3495,13 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <div>
-                <h2 className="text-lg font-semibold text-zinc-950">
-                  Purchase Costs
-                </h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Enter confirmed package costs. Only Customer Pay rows affect total cash required.
-                </p>
-              </div>
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader
+                title="Purchase Costs"
+                description="Enter confirmed package costs. Only Customer Pay rows affect total cash required."
+              />
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-4 space-y-3">
                 {resolvedPurchaseCosts.map((item) => {
                   const amount = item.resolvedAmountNumber;
                   const amountIsInvalid =
@@ -3529,18 +3520,18 @@ export default function RoiCalculatorPage() {
                   return (
                     <div
                       key={item.id}
-                      className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 md:grid-cols-[1fr_220px_180px]"
+                      className="grid gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-3 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,0.72fr)_minmax(170px,0.66fr)]"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold text-zinc-900">
                             {item.name}
                           </p>
                           <span
-                            className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                            className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                               item.source === "auto" || item.source === "estimate"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-zinc-200 bg-white text-zinc-600"
+                                ? "border-[#d8c48e] bg-white text-[var(--falcon-gold-dark)]"
+                                : "border-[var(--falcon-soft-border)] bg-white text-zinc-600"
                             }`}
                           >
                             {item.source === "auto"
@@ -3553,7 +3544,7 @@ export default function RoiCalculatorPage() {
                             <button
                               type="button"
                               onClick={() => resetPurchaseCostToAuto(item.id)}
-                              className="text-xs font-medium text-[#087F6B] hover:text-[#066a59]"
+                              className="text-xs font-semibold text-[#087F6B] hover:text-[#066a59]"
                             >
                               Reset to{" "}
                               {defaultPurchaseCosts.find(
@@ -3591,7 +3582,7 @@ export default function RoiCalculatorPage() {
                               treatment: event.target.value as PurchaseCostTreatment,
                             })
                           }
-                          className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(false)}`}
+                          className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(false)}`}
                         >
                           <option value="customer_pay">Customer Pay</option>
                           <option value="developer_absorbed">FREE / Developer Absorbed</option>
@@ -3608,7 +3599,7 @@ export default function RoiCalculatorPage() {
                               : getPendingInputClass(amountIsPending || freeAmountNeedsConfirmation, amountIsInvalid)
                           }`}
                         >
-                          <span className="border-r border-zinc-200 px-3 py-2 text-zinc-500">
+                          <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">
                             RM
                           </span>
                           <input
@@ -3621,7 +3612,7 @@ export default function RoiCalculatorPage() {
                                 source: "manual",
                               })
                             }
-                            className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none disabled:cursor-not-allowed"
+                            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none disabled:cursor-not-allowed"
                             placeholder={item.treatment === "not_applicable" ? "N/A" : "0"}
                           />
                         </div>
@@ -3637,11 +3628,12 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
-                Financing & Rental
-              </h2>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader
+                title="Financing & Rental"
+                description="Assumptions for instalment, cash flow and yield."
+              />
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Loan Margin %
@@ -3652,7 +3644,7 @@ export default function RoiCalculatorPage() {
                       onChange={(event) =>
                         updateField("loanMarginPercent", event.target.value)
                       }
-                      className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.loanMarginPercent.trim(), hasEnteredValue(form.loanMarginPercent) && (!Number.isFinite(numericInput.loanMarginPercent) || numericInput.loanMarginPercent < 0 || numericInput.loanMarginPercent > 100))}`}
+                      className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.loanMarginPercent.trim(), hasEnteredValue(form.loanMarginPercent) && (!Number.isFinite(numericInput.loanMarginPercent) || numericInput.loanMarginPercent < 0 || numericInput.loanMarginPercent > 100))}`}
                     />
                   </label>
                 <label className="block text-sm text-zinc-600">
@@ -3665,23 +3657,23 @@ export default function RoiCalculatorPage() {
                       onChange={(event) =>
                         updateField("annualInterestRatePercent", event.target.value)
                       }
-                      className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.annualInterestRatePercent.trim(), hasEnteredValue(form.annualInterestRatePercent) && (!Number.isFinite(numericInput.annualInterestRatePercent) || numericInput.annualInterestRatePercent < 0))}`}
+                      className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.annualInterestRatePercent.trim(), hasEnteredValue(form.annualInterestRatePercent) && (!Number.isFinite(numericInput.annualInterestRatePercent) || numericInput.annualInterestRatePercent < 0))}`}
                     />
                   </label>
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Loan Tenure
                   </span>
-                  <div className={`flex rounded-2xl border ${getPendingInputClass(!form.loanTenureYears.trim(), hasEnteredValue(form.loanTenureYears) && (!Number.isFinite(numericInput.loanTenureYears) || numericInput.loanTenureYears <= 0))}`}>
+                  <div className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.loanTenureYears.trim(), hasEnteredValue(form.loanTenureYears) && (!Number.isFinite(numericInput.loanTenureYears) || numericInput.loanTenureYears <= 0))}`}>
                     <input
                       inputMode="decimal"
                       value={form.loanTenureYears}
                       onChange={(event) =>
                         updateField("loanTenureYears", event.target.value)
                       }
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
                     />
-                    <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">
+                    <span className="border-l border-zinc-200 px-3 py-2.5 text-zinc-500">
                       years
                     </span>
                   </div>
@@ -3696,7 +3688,7 @@ export default function RoiCalculatorPage() {
                       onChange={(event) =>
                         updateField("expectedMonthlyRental", event.target.value)
                       }
-                      className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(!form.expectedMonthlyRental.trim(), hasEnteredValue(form.expectedMonthlyRental) && (!Number.isFinite(numericInput.expectedMonthlyRental) || numericInput.expectedMonthlyRental < 0))}`}
+                      className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.expectedMonthlyRental.trim(), hasEnteredValue(form.expectedMonthlyRental) && (!Number.isFinite(numericInput.expectedMonthlyRental) || numericInput.expectedMonthlyRental < 0))}`}
                       placeholder="2500"
                     />
                   </label>
@@ -3704,8 +3696,8 @@ export default function RoiCalculatorPage() {
                   <span className="mb-1 block font-medium text-zinc-900">
                     Maintenance Rate
                   </span>
-                  <div className={`flex rounded-2xl border ${getPendingInputClass(!form.maintenanceRatePerSqft.trim(), hasEnteredValue(form.maintenanceRatePerSqft) && (!Number.isFinite(numericInput.maintenanceRatePerSqft) || numericInput.maintenanceRatePerSqft < 0))}`}>
-                    <span className="border-r border-zinc-200 px-3 py-2 text-zinc-500">
+                  <div className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.maintenanceRatePerSqft.trim(), hasEnteredValue(form.maintenanceRatePerSqft) && (!Number.isFinite(numericInput.maintenanceRatePerSqft) || numericInput.maintenanceRatePerSqft < 0))}`}>
+                    <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">
                       RM
                     </span>
                     <input
@@ -3714,10 +3706,10 @@ export default function RoiCalculatorPage() {
                       onChange={(event) =>
                         updateField("maintenanceRatePerSqft", event.target.value)
                       }
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
                       placeholder="0.35"
                     />
-                    <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">
+                    <span className="border-l border-zinc-200 px-3 py-2.5 text-zinc-500">
                       /psf
                     </span>
                   </div>
@@ -3735,25 +3727,27 @@ export default function RoiCalculatorPage() {
                     onChange={(event) =>
                       updateField("otherUpfrontCosts", event.target.value)
                     }
-                    className={`w-full rounded-2xl border px-3 py-2 outline-none ${getPendingInputClass(false, hasEnteredValue(form.otherUpfrontCosts) && (!Number.isFinite(numericInput.otherUpfrontCosts) || numericInput.otherUpfrontCosts < 0))}`}
+                    className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(false, hasEnteredValue(form.otherUpfrontCosts) && (!Number.isFinite(numericInput.otherUpfrontCosts) || numericInput.otherUpfrontCosts < 0))}`}
                   />
                 </label>
               </div>
             </section>
           </div>
 
-          <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+          <div className="space-y-5 xl:sticky xl:top-6 xl:self-start">
             <section
-              className={`rounded-[28px] border p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] ${
+              className={`rounded-[26px] border p-5 shadow-sm sm:p-6 ${
                 cashFlowIsPositive
-                  ? "border-emerald-200 bg-emerald-50"
-                  : "border-rose-200 bg-rose-50"
+                  ? "border-emerald-200 bg-[#f1fbf8]"
+                  : "border-rose-200 bg-[#fff7f7]"
               }`}
             >
-              <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--falcon-muted-text)]">
                 Estimated Monthly Cash Flow
               </p>
-              <p className="mt-3 text-4xl font-semibold tracking-tight text-zinc-950">
+              <p className={`mt-3 text-3xl font-semibold tracking-tight sm:text-4xl ${
+                cashFlowIsPositive ? "text-[#087F6B]" : "text-[#8B3A3A]"
+              }`}>
                 {formatCurrencyDetailed(result.monthlyCashFlow)}
               </p>
               <p className="mt-2 text-sm text-zinc-600">
@@ -3761,11 +3755,9 @@ export default function RoiCalculatorPage() {
               </p>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
-                Customer Summary
-              </h2>
-              <div className="mt-5 rounded-[24px] border border-zinc-200 bg-zinc-50 p-4">
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader title="Customer Summary" />
+              <div className="mt-4 rounded-[22px] border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-4">
                 <p className="font-semibold text-zinc-950">
                   {form.projectName || "Property Calculation"}
                 </p>
@@ -3784,7 +3776,7 @@ export default function RoiCalculatorPage() {
                 </p>
               </div>
 
-              <div className="mt-5">
+              <div className="mt-4">
                 <ResultRow label="SPA Price" value={formatCurrency(result.spaPrice)} />
                 <ResultRow label="Nett Price" value={formatCurrency(result.nettPrice)} />
                 <ResultRow
@@ -3800,21 +3792,19 @@ export default function RoiCalculatorPage() {
                 <ResultRow
                   label="Total Savings"
                   value={formatCurrencyDetailed(purchaseCostSummary.developerAbsorbedPurchaseCosts)}
-                  valueClassName="text-lg font-bold text-[#087F6B]"
-                  rowClassName="rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] px-4"
+                  valueClassName="text-xl font-bold text-[#087F6B]"
+                  rowClassName="mt-3 rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] px-4 py-3"
                 />
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
-                Purchase Package
-              </h2>
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader title="Purchase Package" />
               <div className="mt-4 space-y-3">
                 {result.processedDiscounts.map((discount) => (
                   <div
                     key={discount.id}
-                    className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3"
+                    className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-4 py-3"
                   >
                     <p className="text-sm font-medium text-zinc-900">
                       {discount.description}
@@ -3827,7 +3817,7 @@ export default function RoiCalculatorPage() {
                 {result.cashBenefits.map((benefit) => (
                   <div
                     key={benefit.id}
-                    className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3"
+                    className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-4 py-3"
                   >
                     <p className="text-sm font-medium text-zinc-900">
                       {benefit.description}
@@ -3845,7 +3835,7 @@ export default function RoiCalculatorPage() {
                 {result.nonCashBenefits.map((benefit) => (
                   <div
                     key={benefit.id}
-                    className="rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3"
+                    className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-4 py-3"
                   >
                     <p className="text-sm font-medium text-zinc-900">
                       {benefit.description}
@@ -3858,8 +3848,8 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">Financing</h2>
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader title="Financing" />
               <div className="mt-4">
                 <ResultRow
                   label="Loan Margin"
@@ -3878,10 +3868,8 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">
-                Cash Required
-              </h2>
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader title="Cash Required" />
               <div className="mt-4">
                 <ResultRow
                   label="Upfront Cash Required"
@@ -3898,20 +3886,20 @@ export default function RoiCalculatorPage() {
                 <ResultRow
                   label="Total Savings"
                   value={formatCurrencyDetailed(purchaseCostSummary.developerAbsorbedPurchaseCosts)}
-                  valueClassName="text-lg font-bold text-[#087F6B]"
-                  rowClassName="mt-3 rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] px-4"
+                  valueClassName="text-xl font-bold text-[#087F6B]"
+                  rowClassName="mt-3 rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] px-4 py-3"
                 />
                 <ResultRow
                   label="Estimated Total Cash Required"
                   value={formatCurrencyDetailed(result.estimatedTotalCashRequired)}
                   valueClassName="font-bold text-[#8B3A3A]"
-                  rowClassName="mt-2 rounded-2xl border border-[#f0dddd] bg-[#fffdfd] px-4"
+                  rowClassName="mt-2 rounded-2xl border border-[#f0dddd] bg-white px-4 py-2"
                 />
               </div>
             </section>
 
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-              <h2 className="text-lg font-semibold text-zinc-950">Returns</h2>
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <SectionHeader title="Returns" />
               <div className="mt-4">
                 <ResultRow
                   label="Expected Monthly Rental"
