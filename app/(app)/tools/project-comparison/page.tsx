@@ -35,6 +35,7 @@ import {
 } from "@/lib/project-comparison-saved-work";
 import { getPurchaseCostEstimates } from "@/lib/purchase-costs";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { Button, PageHeader, StatusBadge } from "../../components/ui";
 
 type ProjectOption = {
   id: string;
@@ -268,6 +269,8 @@ const exportSectionOptions: Array<{ id: ExportSectionId; label: string }> = [
 ];
 
 const allExportSectionIds = exportSectionOptions.map((section) => section.id);
+
+const comparisonLetters = ["A", "B", "C"];
 
 function createBlankSlot(index: number): ComparisonSlot {
   return {
@@ -909,7 +912,7 @@ function renderPurchaseCostValue(purchaseCost: OwnershipCostRow) {
     return (
       <span className="space-y-1">
         <span className="block text-zinc-900">{amount}</span>
-        <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-700">
+        <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-[#087F6B]">
           FREE
         </span>
       </span>
@@ -1035,15 +1038,18 @@ function renderConnectivityItems(items: ConnectivityPoint[]) {
   if (!items.length) return "—";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {items.map((point) => (
-        <div key={point.id}>
-          <p className="font-semibold text-zinc-900">{point.name}</p>
-          <p className="mt-1 text-xs font-medium text-zinc-500">
+        <div
+          key={point.id}
+          className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)]/60 px-3 py-3"
+        >
+          <p className="font-semibold text-[var(--falcon-charcoal)]">{point.name}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--falcon-gold-dark)]">
             {formatConnectivityMeta(point)}
           </p>
           {point.customer_description ? (
-            <p className="mt-2 text-xs font-normal leading-5 text-zinc-600">
+            <p className="mt-2 text-xs font-normal leading-5 text-[var(--falcon-muted-text)]">
               {point.customer_description}
             </p>
           ) : null}
@@ -2322,25 +2328,50 @@ function ComparisonTable({
   rows: ComparisonRow[];
 }) {
   return (
-    <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-      <div>
-        <p className="text-sm font-semibold text-zinc-900">{title}</p>
-        <p className="text-sm text-zinc-500">{description}</p>
+    <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+      <div className="flex flex-col gap-2 border-b border-[var(--falcon-soft-border)] pb-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+            Compare
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--falcon-muted-text)]">
+            {description}
+          </p>
+        </div>
+        <div className="flex gap-1.5">
+          {comparedOptions.map((option, index) => (
+            <span
+              key={`${title}-legend-${option.slot.id}`}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#d8c48e] bg-[#fbf8ef] text-xs font-semibold text-[var(--falcon-gold-dark)]"
+            >
+              {comparisonLetters[index] ?? index + 1}
+            </span>
+          ))}
+        </div>
       </div>
 
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left text-sm">
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[900px] border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr>
-              <th className="sticky left-0 border-b border-zinc-200 bg-white py-3 pr-4 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              <th className="sticky left-0 z-10 border-b border-[var(--falcon-soft-border)] bg-white py-3 pr-4 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
                 Detail
               </th>
-              {comparedOptions.map((option) => (
+              {comparedOptions.map((option, index) => (
                 <th
                   key={`${title}-${option.slot.id}`}
-                  className="border-b border-zinc-200 px-4 py-3"
+                  className="border-b border-[var(--falcon-soft-border)] px-4 py-3"
                 >
-                  <div className="mb-3 aspect-video w-full max-w-[220px] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--falcon-charcoal)] text-xs font-semibold text-white">
+                      {comparisonLetters[index] ?? index + 1}
+                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--falcon-gold-dark)]">
+                      Project {comparisonLetters[index] ?? index + 1}
+                    </span>
+                  </div>
+                  <div className="mb-3 aspect-video w-full max-w-[240px] overflow-hidden rounded-[18px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)]">
                     {option.project.cover_media?.signed_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -2354,7 +2385,7 @@ function ComparisonTable({
                       </div>
                     )}
                   </div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-900">
+                  <p className="text-sm font-semibold normal-case tracking-normal text-[var(--falcon-charcoal)]">
                     {option.project.name}
                   </p>
                   <p className="mt-1 text-xs font-medium normal-case tracking-normal text-zinc-500">
@@ -2367,13 +2398,13 @@ function ComparisonTable({
           <tbody>
             {rows.map((row) => (
               <tr key={row.label}>
-                <th className="sticky left-0 border-b border-zinc-200 bg-white py-4 pr-4 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <th className="sticky left-0 z-10 border-b border-[var(--falcon-soft-border)] bg-white py-4 pr-4 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
                   {row.label}
                 </th>
                 {row.values.map((value, index) => (
                   <td
                     key={`${row.label}-${index}`}
-                    className="border-b border-zinc-200 px-4 py-4 font-medium text-zinc-900"
+                    className="border-b border-[var(--falcon-soft-border)] px-4 py-4 font-medium leading-6 text-zinc-900"
                   >
                     {value}
                   </td>
@@ -3479,78 +3510,90 @@ export default function ProjectComparisonPage() {
 
   return (
     <>
-      <header className="flex flex-col gap-4 border-b border-zinc-200 bg-white/80 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm text-zinc-500">Tools - Project Comparison</p>
-          <p className="text-base font-semibold text-zinc-900">Compare trusted project facts</p>
-          {currentSavedWorkTitle ? (
-            <p className="mt-1 truncate text-xs text-zinc-500">
-              Saved Work:{" "}
-              <span className="font-medium text-zinc-700">{currentSavedWorkTitle}</span>
-            </p>
-          ) : null}
-          {saveMessage ? (
-            <p
-              className={`mt-1 text-xs font-medium ${
-                saveStatus === "error" ? "text-amber-700" : "text-[#087F6B]"
-              }`}
-            >
-              {saveMessage}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-          <button
-            type="button"
-            onClick={handleSaveClick}
-            disabled={saveStatus === "saving" || !canSaveComparisonWork}
-            className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {saveStatus === "saving" ? "Saving..." : "Save"}
-          </button>
-          {currentSavedWorkId ? (
-            <button
-              type="button"
-              onClick={() => openSaveModal("save-as")}
-              disabled={saveStatus === "saving"}
-              className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Save As
-            </button>
-          ) : null}
-        </div>
-      </header>
+      <main className="min-h-screen bg-[var(--falcon-warm-background)] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <PageHeader
+            eyebrow="Comparison Desk"
+            title="Project Comparison"
+            description="Compare 2 to 3 projects using trusted project facts, selected Unit Types, Sales Packages, and shared financing assumptions."
+            meta={
+              <div className="flex flex-col gap-2 text-xs text-[var(--falcon-muted-text)] sm:flex-row sm:flex-wrap sm:items-center">
+                <span className="font-medium text-zinc-700">Tools - Project Comparison</span>
+                {currentSavedWorkTitle ? (
+                  <span className="max-w-full truncate rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-1 font-medium text-zinc-700">
+                    Saved Work: {currentSavedWorkTitle}
+                  </span>
+                ) : null}
+                {saveMessage ? (
+                  <span
+                    className={`rounded-full px-3 py-1 font-semibold ${
+                      saveStatus === "error"
+                        ? "border border-amber-200 bg-amber-50 text-amber-800"
+                        : "border border-emerald-200 bg-emerald-50 text-[#087F6B]"
+                    }`}
+                  >
+                    {saveMessage}
+                  </span>
+                ) : null}
+              </div>
+            }
+            actions={
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                <Button
+                  type="button"
+                  onClick={handleSaveClick}
+                  disabled={saveStatus === "saving" || !canSaveComparisonWork}
+                >
+                  {saveStatus === "saving" ? "Saving..." : "Save"}
+                </Button>
+                {currentSavedWorkId ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => openSaveModal("save-as")}
+                    disabled={saveStatus === "saving"}
+                  >
+                    Save As
+                  </Button>
+                ) : null}
+                {hasCompared && comparedOptions.length > 0 ? (
+                  <Button type="button" variant="secondary" onClick={openExportModal}>
+                    Export PDF
+                  </Button>
+                ) : null}
+              </div>
+            }
+          />
 
-      <main className="p-6 lg:p-8">
         {reopenWarning ? (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {reopenWarning}
           </div>
         ) : null}
 
-        <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.24em] text-zinc-500">
-                Express Comparison
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+                Setup
               </p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-                Project Comparison
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-zinc-600">
-                Compare 2 to 3 projects using final net selling price, Unit Type facts,
-                rental estimates, and shared financing assumptions.
+              <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+                Build the comparison
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--falcon-muted-text)]">
+                Select equal project columns, then run the comparison when each side has a Project
+                and Unit Type.
               </p>
             </div>
 
-            <button
+            <Button
               type="button"
               onClick={handleCompare}
               disabled={!canCompare}
-              className="rounded-2xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
+              className="w-full sm:w-auto"
             >
               Compare Projects
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -3560,17 +3603,24 @@ export default function ProjectComparisonPage() {
           </div>
         ) : null}
 
-        <section className="mt-6 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+        <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-zinc-900">Shared Loan Assumptions</p>
-              <p className="text-sm text-zinc-500">Applied equally to every selected project.</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+                Shared Assumptions
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">
+                Financing basis
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
+                Applied equally to every selected project.
+              </p>
             </div>
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             <label className="block text-sm">
-              <span className="font-medium text-zinc-700">Loan Margin %</span>
+              <span className="font-semibold text-zinc-700">Loan Margin %</span>
               <input
                 type="number"
                 min="0"
@@ -3582,12 +3632,12 @@ export default function ProjectComparisonPage() {
                   setComparisonConfigChanged(true);
                   setHasCompared(false);
                 }}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+                className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15"
               />
             </label>
 
             <label className="block text-sm">
-              <span className="font-medium text-zinc-700">Interest Rate %</span>
+              <span className="font-semibold text-zinc-700">Interest Rate %</span>
               <input
                 type="number"
                 min="0"
@@ -3598,12 +3648,12 @@ export default function ProjectComparisonPage() {
                   setComparisonConfigChanged(true);
                   setHasCompared(false);
                 }}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+                className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15"
               />
             </label>
 
             <label className="block text-sm">
-              <span className="font-medium text-zinc-700">Loan Tenure Years</span>
+              <span className="font-semibold text-zinc-700">Loan Tenure Years</span>
               <input
                 type="number"
                 min="1"
@@ -3614,7 +3664,7 @@ export default function ProjectComparisonPage() {
                   setComparisonConfigChanged(true);
                   setHasCompared(false);
                 }}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400"
+                className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15"
               />
             </label>
           </div>
@@ -3627,7 +3677,7 @@ export default function ProjectComparisonPage() {
           ) : null}
         </section>
 
-        <section className="mt-6 grid gap-4 xl:grid-cols-3">
+        <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {slots.map((slot, index) => {
             const projectOptions = projectOptionsById[slot.projectId];
             const selectedUnitType = projectOptions?.unit_types.find(
@@ -3637,33 +3687,51 @@ export default function ProjectComparisonPage() {
             const applicablePackages = getApplicablePackages(projectOptions, slot.unitTypeId);
             const spaPriceWarning = getSpaPriceWarning(slot, selectedUnitType);
             const finalNetPriceWarning = getFinalNetPriceWarning(slot, selectedUnitType);
+            const comparisonLetter = comparisonLetters[index] ?? `${index + 1}`;
 
             return (
-              <article key={slot.id} className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <article
+                key={slot.id}
+                className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
+              >
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-900">Project {index + 1}</p>
-                    <p className="text-sm text-zinc-500">Choose project, unit and package.</p>
+                  <div className="flex items-start gap-3">
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--falcon-charcoal)] text-sm font-semibold text-white">
+                      {comparisonLetter}
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--falcon-gold-dark)]">
+                        Project {comparisonLetter}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--falcon-muted-text)]">
+                        Project, Unit Type, layout and package.
+                      </p>
+                    </div>
                   </div>
-                  {slots.length > 2 ? (
-                    <button
-                      type="button"
-                      onClick={() => removeSlot(slot.id)}
-                      className="text-sm font-medium text-red-500 hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <StatusBadge variant={slot.projectId && slot.unitTypeId ? "accent" : "neutral"}>
+                      {slot.projectId && slot.unitTypeId ? "Ready" : "Setup"}
+                    </StatusBadge>
+                    {slots.length > 2 ? (
+                      <button
+                        type="button"
+                        onClick={() => removeSlot(slot.id)}
+                        className="rounded-full px-3 py-1 text-sm font-medium text-red-500 transition hover:bg-red-50 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="mt-5 space-y-4">
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Project</span>
+                    <span className="font-semibold text-zinc-700">Project</span>
                     <select
                       value={slot.projectId}
                       disabled={isLoadingProjects}
                       onChange={(event) => handleProjectChange(slot.id, event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:border-zinc-400"
+                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15"
                     >
                       <option value="">{isLoadingProjects ? "Loading Projects..." : "Select Project"}</option>
                       {getAvailableProjects(slot.id).map((project) => (
@@ -3681,7 +3749,7 @@ export default function ProjectComparisonPage() {
                   ) : null}
 
                   {projectOptions ? (
-                    <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+                    <div className="overflow-hidden rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)]">
                       {projectOptions.project.cover_media?.signed_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -3690,7 +3758,7 @@ export default function ProjectComparisonPage() {
                           className="aspect-video w-full object-cover"
                         />
                       ) : (
-                        <div className="flex aspect-video items-center justify-center px-4 text-center text-sm text-zinc-500">
+                        <div className="flex aspect-video items-center justify-center px-4 text-center text-sm text-[var(--falcon-muted-text)]">
                           No Project Cover added yet.
                         </div>
                       )}
@@ -3698,12 +3766,12 @@ export default function ProjectComparisonPage() {
                   ) : null}
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Unit Type</span>
+                    <span className="font-semibold text-zinc-700">Unit Type</span>
                     <select
                       value={slot.unitTypeId}
                       disabled={!slot.projectId || slot.isLoadingOptions || !projectOptions}
                       onChange={(event) => handleUnitTypeChange(slot.id, event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15 disabled:bg-zinc-50"
                     >
                       <option value="">
                         {slot.isLoadingOptions
@@ -3721,20 +3789,20 @@ export default function ProjectComparisonPage() {
                   </label>
 
                   {slot.projectId && projectOptions && projectOptions.unit_types.length === 0 ? (
-                    <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                    <p className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
                       No Unit Types available for this Project.
                     </p>
                   ) : null}
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Layout Plan</span>
+                    <span className="font-semibold text-zinc-700">Layout Plan</span>
                     <select
                       value={slot.layoutPlanId}
                       disabled={!slot.unitTypeId || eligibleLayoutPlans.length <= 1}
                       onChange={(event) =>
                         updateSlot(slot.id, { layoutPlanId: event.target.value })
                       }
-                      className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15 disabled:bg-zinc-50"
                     >
                       {eligibleLayoutPlans.length === 0 ? (
                         <option value="">No Layout Plan available</option>
@@ -3756,7 +3824,7 @@ export default function ProjectComparisonPage() {
                   </label>
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">SPA Price</span>
+                    <span className="font-semibold text-zinc-700">SPA Price</span>
                     <input
                       type="number"
                       min="0"
@@ -3766,7 +3834,7 @@ export default function ProjectComparisonPage() {
                       onChange={(event) =>
                         updateSlot(slot.id, { spaPrice: event.target.value })
                       }
-                      className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15 disabled:bg-zinc-50"
                       placeholder={
                         selectedUnitType?.spa_price_from
                           ? `${selectedUnitType.spa_price_from}`
@@ -3786,7 +3854,7 @@ export default function ProjectComparisonPage() {
                   </label>
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Final Net Price</span>
+                    <span className="font-semibold text-zinc-700">Final Net Price</span>
                     <input
                       type="number"
                       min="0"
@@ -3796,7 +3864,7 @@ export default function ProjectComparisonPage() {
                       onChange={(event) =>
                         updateSlot(slot.id, { comparisonPrice: event.target.value })
                       }
-                      className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15 disabled:bg-zinc-50"
                       placeholder={
                         selectedUnitType?.price_from
                           ? `${selectedUnitType.price_from}`
@@ -3816,12 +3884,12 @@ export default function ProjectComparisonPage() {
                   </label>
 
                   <label className="block text-sm">
-                    <span className="font-medium text-zinc-700">Sales Package</span>
+                    <span className="font-semibold text-zinc-700">Sales Package</span>
                     <select
                       value={slot.packageId}
                       disabled={!slot.unitTypeId}
                       onChange={(event) => updateSlot(slot.id, { packageId: event.target.value })}
-                      className="mt-2 w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 outline-none focus:border-zinc-400 disabled:bg-zinc-50"
+                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15 disabled:bg-zinc-50"
                     >
                       <option value="">No Package</option>
                       {applicablePackages.map((commercialPackage) => (
@@ -3833,7 +3901,7 @@ export default function ProjectComparisonPage() {
                   </label>
 
                   {slot.unitTypeId && applicablePackages.length === 0 ? (
-                    <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                    <p className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
                       No applicable Sales Packages. No Package is allowed.
                     </p>
                   ) : null}
@@ -3846,7 +3914,7 @@ export default function ProjectComparisonPage() {
             <button
               type="button"
               onClick={addSlot}
-              className="flex min-h-[220px] items-center justify-center rounded-[28px] border border-dashed border-zinc-300 bg-white/70 p-5 text-sm font-semibold text-zinc-600 transition hover:border-zinc-400 hover:bg-white"
+              className="flex min-h-[220px] items-center justify-center rounded-[28px] border border-dashed border-[#d8c48e] bg-white/70 p-5 text-sm font-semibold text-[var(--falcon-gold-dark)] shadow-sm transition hover:bg-white hover:shadow"
             >
               + Add Project
             </button>
@@ -3855,34 +3923,35 @@ export default function ProjectComparisonPage() {
 
         {hasCompared && comparedOptions.length > 0 ? (
           <>
-            <section className="mt-8 flex flex-col gap-3 rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between">
+            <section className="flex flex-col gap-3 rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-zinc-900">Customer Proposal Export</p>
-                <p className="text-sm text-zinc-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+                  Proposal
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">
+                  Customer Proposal Export
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
                   Choose comparison sections and generate a customer-facing PDF.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={openExportModal}
-                className="rounded-2xl bg-[#087F6B] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#066b5b]"
-              >
+              <Button type="button" variant="secondary" onClick={openExportModal}>
                 Export PDF
-              </button>
+              </Button>
             </section>
 
-            <section className="mt-6 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+            <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-zinc-900">
+                    <h2 className="text-lg font-semibold text-[var(--falcon-charcoal)]">
                       Agent Insights & Recommendation
-                    </p>
-                    <span className="rounded-full bg-zinc-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    </h2>
+                    <span className="rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
                       Optional
                     </span>
                   </div>
-                  <p className="mt-1 text-sm text-zinc-500">
+                  <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
                     Add your observations or recommendation before exporting the customer proposal.
                   </p>
                 </div>
@@ -3895,14 +3964,19 @@ export default function ProjectComparisonPage() {
                 maxLength={1200}
                 onChange={(event) => setAgentInsights(event.target.value)}
                 placeholder="Add your recommendation, key observations, or notes for the customer..."
-                className="mt-4 min-h-44 w-full resize-y rounded-2xl border border-zinc-200 px-4 py-3 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400"
+                className="mt-4 min-h-40 w-full resize-y rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)]/35 px-4 py-3 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-[var(--falcon-gold-dark)] focus:bg-white focus:ring-2 focus:ring-[#b8924a]/15"
               />
             </section>
 
-            <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+            <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
               <div>
-                <p className="text-sm font-semibold text-zinc-900">Objective Insights</p>
-                <p className="text-sm text-zinc-500">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+                  Deterministic Highlights
+                </p>
+                <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">
+                  Objective Insights
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
                   Data-driven highlights from the current comparison.
                 </p>
               </div>
@@ -3917,15 +3991,18 @@ export default function ProjectComparisonPage() {
                     if (!groupInsights.length) return null;
 
                     return (
-                      <div key={group.label} className="rounded-2xl border border-zinc-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      <div
+                        key={group.label}
+                        className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)]/35 p-4"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
                           {group.label}
                         </p>
                         <div className="mt-3 space-y-3">
                           {groupInsights.map((insight) => (
                             <article
                               key={insight.id}
-                              className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4"
+                              className="rounded-2xl border border-[var(--falcon-soft-border)] bg-white p-4 shadow-sm"
                             >
                               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
@@ -3946,7 +4023,7 @@ export default function ProjectComparisonPage() {
                                 {renderInsightEvidence(insight)}
                               </div>
                               {insight.explanation ? (
-                                <p className="mt-3 text-xs leading-5 text-zinc-500">
+                                <p className="mt-3 text-xs leading-5 text-[var(--falcon-muted-text)]">
                                   {insight.explanation}
                                 </p>
                               ) : null}
@@ -3958,7 +4035,7 @@ export default function ProjectComparisonPage() {
                   })}
                 </div>
               ) : (
-                <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                <p className="mt-5 rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
                   No objective insights available from the current comparison yet.
                 </p>
               )}
@@ -4263,14 +4340,19 @@ export default function ProjectComparisonPage() {
                 }))}
               />
             ) : (
-              <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+              <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
                 <div>
-                  <p className="text-sm font-semibold text-zinc-900">Connectivity & Convenience</p>
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+                    Location Context
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">
+                    Connectivity & Convenience
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
                     Customer-facing connectivity facts grouped by category.
                   </p>
                 </div>
-                <p className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+                <p className="mt-5 rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
                   No connectivity information added yet.
                 </p>
               </section>
@@ -4278,16 +4360,21 @@ export default function ProjectComparisonPage() {
 
             {isExportModalOpen ? (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 py-6">
-                <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+                <div className="w-full max-w-lg rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-6 shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
                   <div>
-                    <p className="text-lg font-semibold text-zinc-950">Export Comparison PDF</p>
-                    <p className="mt-1 text-sm text-zinc-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">
+                      Customer Proposal
+                    </p>
+                    <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">
+                      Export Comparison PDF
+                    </h2>
+                    <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
                       Choose which sections to include in the customer proposal.
                     </p>
                   </div>
 
                   <div className="mt-6 space-y-3">
-                    <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900">
+                    <label className="flex items-center gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3 text-sm font-semibold text-zinc-900">
                       <input
                         type="checkbox"
                         checked={selectedExportSections.length === allExportSectionIds.length}
@@ -4301,7 +4388,7 @@ export default function ProjectComparisonPage() {
                       {exportSectionOptions.map((section) => (
                         <label
                           key={section.id}
-                          className="flex items-center gap-3 rounded-2xl border border-zinc-200 px-4 py-3 text-sm font-medium text-zinc-700"
+                            className="flex items-center gap-3 rounded-2xl border border-[var(--falcon-soft-border)] px-4 py-3 text-sm font-medium text-zinc-700 transition hover:bg-[var(--falcon-warm-background)]"
                         >
                           <input
                             type="checkbox"
@@ -4316,27 +4403,27 @@ export default function ProjectComparisonPage() {
                   </div>
 
                   <div className="mt-6 flex justify-end gap-3">
-                    <button
+                    <Button
                       type="button"
                       onClick={() => setIsExportModalOpen(false)}
-                      className="rounded-2xl border border-zinc-200 px-5 py-3 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+                      variant="secondary"
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       type="button"
                       onClick={handleGenerateComparisonPdf}
                       disabled={selectedExportSections.length === 0}
-                      className="rounded-2xl bg-zinc-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
                     >
                       Generate PDF
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>
             ) : null}
           </>
         ) : null}
+        </div>
       </main>
 
       {saveModalMode ? (
