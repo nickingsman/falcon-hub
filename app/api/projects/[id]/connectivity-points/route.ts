@@ -6,7 +6,7 @@ import {
   validateConnectivityPointPayload,
 } from "@/lib/project-comparison";
 import { projectExists } from "@/lib/project-content";
-import { requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
+import { canManageProjects, requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 type RouteContext = {
@@ -23,7 +23,7 @@ export async function GET(request: Request, { params }: RouteContext) {
   try {
     const { id } = await params;
     const audience = new URL(request.url).searchParams.get("audience");
-    const customerSafe = audience === "customer";
+    const customerSafe = audience === "customer" || !canManageProjects(authorization.profile);
     const supabase = createSupabaseAdminClient();
 
     const { data, error } = await supabase
