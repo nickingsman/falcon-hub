@@ -2819,11 +2819,16 @@ export default function ProjectDetailPage() {
 
   function renderProjectCover() {
     return (
-      <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <section className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-surface)] p-5 shadow-[0_12px_32px_rgba(23,23,23,0.04)] sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Project Cover</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Media
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Project Cover
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Customer-facing image used in Project Comparison and future sales materials.
             </p>
           </div>
@@ -2835,10 +2840,10 @@ export default function ProjectDetailPage() {
           </div>
         ) : null}
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+        <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="overflow-hidden rounded-[20px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)]">
             {projectCoverLoading ? (
-              <div className="flex aspect-video items-center justify-center text-sm text-zinc-500">
+              <div className="flex aspect-video items-center justify-center text-sm font-medium text-[var(--falcon-muted-text)]">
                 Loading Project Cover...
               </div>
             ) : projectCover?.signed_url ? (
@@ -2846,21 +2851,28 @@ export default function ProjectDetailPage() {
               <img
                 src={projectCover.signed_url}
                 alt={`${project?.project_name ?? "Project"} cover`}
-                className="aspect-video w-full object-cover"
+                className="aspect-video w-full bg-white object-contain"
               />
             ) : (
-              <div className="flex aspect-video items-center justify-center px-4 text-center text-sm text-zinc-500">
-                No Project Cover added yet.
+              <div className="flex aspect-video items-center justify-center px-5 text-center">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--falcon-charcoal)]">
+                    No Project Cover added yet.
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-[var(--falcon-muted-text)]">
+                    Add a customer-facing cover image when ready.
+                  </p>
+                </div>
               </div>
             )}
           </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-            <p className="text-sm font-semibold text-zinc-900">
-              {projectCover ? projectCover.title : "Cover Image"}
+          <div className="rounded-[20px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Cover Image
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
-              JPG, PNG, or WebP. Maximum 10MB.
+            <p className="mt-1 text-xs leading-5 text-[var(--falcon-muted-text)]">
+              JPG, PNG, or WebP · Maximum 10MB
             </p>
 
             {canManageProjects ? (
@@ -2869,34 +2881,35 @@ export default function ProjectDetailPage() {
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={(event) => setProjectCoverFile(event.target.files?.[0] ?? null)}
-                  className="block w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+                  className="block w-full rounded-xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm text-zinc-700 file:mr-3 file:rounded-full file:border-0 file:bg-zinc-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-zinc-700 hover:file:bg-zinc-200"
                 />
                 <div className="flex flex-wrap gap-2">
-                  <button
+                  <Button
                     type="submit"
                     disabled={!projectCoverFile || projectCoverSaving}
-                    className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-10 px-4"
                   >
                     {projectCoverSaving
                       ? "Saving..."
                       : projectCover
                         ? "Replace Cover Image"
                         : "Upload Cover Image"}
-                  </button>
+                  </Button>
                   {projectCover ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="destructive"
                       onClick={handleDeleteProjectCover}
                       disabled={projectCoverSaving}
-                      className="rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      className="min-h-10 bg-white px-4 text-red-700 hover:bg-red-50"
                     >
                       Remove Cover Image
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </form>
             ) : (
-              <p className="mt-4 text-sm text-zinc-500">Preview only.</p>
+              <p className="mt-4 text-sm text-[var(--falcon-muted-text)]">Preview only.</p>
             )}
           </div>
         </div>
