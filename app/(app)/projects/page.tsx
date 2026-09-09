@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAppPermissions } from "../components/AppPermissionProvider";
 import {
@@ -104,6 +104,20 @@ function ProjectInfoItem({
   );
 }
 
+function getSearchableProjectText(project: Project) {
+  return [
+    project.project_name,
+    project.developer,
+    project.location,
+    project.property_type,
+    project.tenure,
+    project.title_type,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 export default function ProjectsPage() {
   const { canManageProjects } = useAppPermissions();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -113,6 +127,7 @@ export default function ProjectsPage() {
   const [form, setForm] = useState<ProjectForm>(emptyForm);
   const [errorMessage, setErrorMessage] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const openEditProject = useCallback((project: Project) => {
   if (!canManageProjects) return;
@@ -345,6 +360,15 @@ if (projectsResponse.ok) {
     { label: "Active Projects", value: activeProjects.length },
     { label: "Developers", value: developers.size },
   ];
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const filteredProjects = useMemo(() => {
+    if (!normalizedSearchQuery) return projects;
+
+    return projects.filter((project) =>
+      getSearchableProjectText(project).includes(normalizedSearchQuery)
+    );
+  }, [normalizedSearchQuery, projects]);
+  const hasSearchQuery = normalizedSearchQuery.length > 0;
 
   return (
     <main className="min-h-screen bg-[var(--falcon-warm-background)] p-4 sm:p-6 lg:p-8">
@@ -380,6 +404,48 @@ if (projectsResponse.ok) {
             </article>
           ))}
         </section>
+
+        {projects.length > 0 ? (
+          <section className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <label className="block flex-1">
+                <span className="sr-only">Search projects</span>
+                <div className="flex min-h-12 overflow-hidden rounded-2xl border border-[var(--falcon-soft-border)] bg-white transition focus-within:border-[var(--falcon-gold-dark)] focus-within:ring-2 focus-within:ring-[#b8924a]/15">
+                  <span
+                    className="flex w-12 items-center justify-center border-r border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] text-[var(--falcon-muted-text)]"
+                    aria-hidden
+                  >
+                    ⌕
+                  </span>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search projects, developer or location..."
+                    className="w-full bg-white px-4 py-3 text-sm font-medium text-zinc-950 outline-none placeholder:text-zinc-400"
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="px-4 text-lg leading-none text-zinc-400 transition hover:text-zinc-900"
+                      aria-label="Clear project search"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </div>
+              </label>
+
+              {hasSearchQuery ? (
+                <p className="text-sm font-medium text-[var(--falcon-muted-text)]">
+                  {filteredProjects.length}{" "}
+                  {filteredProjects.length === 1 ? "project" : "projects"} found
+                </p>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         <section>
           <div className="mb-4 flex flex-col gap-1">
@@ -439,9 +505,20 @@ if (projectsResponse.ok) {
                 ) : null
               }
             />
+          ) : hasSearchQuery && filteredProjects.length === 0 ? (
+            <EmptyState
+              title="No matching projects"
+              description="Try searching by project name, developer or location."
+              variant="dashed"
+              action={
+                <Button type="button" variant="secondary" onClick={() => setSearchQuery("")}>
+                  Clear search
+                </Button>
+              }
+            />
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
-              {projects.map((project) => (
+              {filteredProjects.map((project) => (
                 <article
                   key={project.id}
                   className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[0_12px_30px_rgba(23,23,23,0.05)]"
