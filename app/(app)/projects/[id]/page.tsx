@@ -2919,23 +2919,28 @@ export default function ProjectDetailPage() {
 
   function renderUnitTypes() {
     return (
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6">
+      <section className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-surface)] p-5 shadow-[0_12px_32px_rgba(23,23,23,0.04)] sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-zinc-900">Unit Types</h2>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+              Layouts
+            </p>
+            <h2 className="mt-1 text-xl font-semibold text-[var(--falcon-charcoal)]">
+              Unit Types
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--falcon-muted-text)]">
               Unit layouts, configurations, carparks, and assigned furnishing packages.
             </p>
           </div>
 
           {canManageProjects ? (
-            <button
+            <Button
               type="button"
               onClick={openAddUnitType}
-              className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="min-h-10 px-4"
             >
               Add Unit Type
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -2947,167 +2952,196 @@ export default function ProjectDetailPage() {
           ) : null}
 
           {unitTypesLoading ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
               Loading unit types...
             </p>
           ) : unitTypes.length === 0 ? (
-            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+            <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No unit types added yet.
             </p>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className={`grid gap-4 ${unitTypes.length > 1 ? "md:grid-cols-2" : ""}`}>
               {unitTypes.map((unitType) => (
                 <article
                   key={unitType.id}
-                  className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5"
+                  className="overflow-hidden rounded-[22px] border border-[var(--falcon-soft-border)] bg-white shadow-[0_10px_28px_rgba(23,23,23,0.035)]"
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Sort Order {unitType.sort_order ?? 0}
-                      </p>
-                      <h3 className="mt-1 text-base font-semibold text-zinc-900">
-                        {unitType.type_name || unitType.type_code}
-                      </h3>
-                      {unitType.type_name ? (
-                        <p className="mt-1 text-sm text-zinc-500">
+                  <div className="border-b border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-5 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
                           Type {unitType.type_code}
                         </p>
+                        <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                          {unitType.type_name || unitType.type_code}
+                        </h3>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                          <span className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1 font-semibold text-zinc-800">
+                            {unitType.display_configuration || "—"}
+                          </span>
+                          <span className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1 font-semibold text-zinc-800">
+                            {unitType.size_sqft ? `${unitType.size_sqft} sqft` : "—"}
+                          </span>
+                          <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-[var(--falcon-muted-text)]">
+                            Order {unitType.sort_order ?? 0}
+                          </span>
+                        </div>
+                      </div>
+
+                      {canManageProjects ? (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditUnitType(unitType)}
+                            className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUnitType(unitType)}
+                            className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       ) : null}
                     </div>
+                  </div>
 
-                    {canManageProjects ? (
-                      <div className="flex items-center gap-4">
-                        <button
-                          type="button"
-                          onClick={() => openEditUnitType(unitType)}
-                          className="text-sm font-medium text-zinc-700 hover:text-black"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteUnitType(unitType)}
-                          className="text-sm font-medium text-red-500 hover:text-red-700"
-                        >
-                          Delete
-                        </button>
+                  <div className="p-5">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Bedrooms
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-zinc-800">
+                          {unitType.bedrooms ?? "—"}
+                        </p>
                       </div>
-                    ) : null}
-                  </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Additional Rooms
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-zinc-800">
+                          {unitType.additional_rooms ?? "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Bathrooms
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-zinc-800">
+                          {unitType.bathrooms ?? "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Carparks
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-zinc-800">
+                          {getCarparkDisplay(unitType)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Balcony
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-zinc-800">
+                          {formatBoolean(unitType.has_balcony)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Dual Key
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-zinc-800">
+                          {formatBoolean(unitType.is_dual_key)}
+                        </p>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                          Furnishing
+                        </p>
+                        <p className="mt-1 inline-flex max-w-full rounded-full bg-[var(--falcon-warm-background)] px-3 py-1 text-sm font-semibold text-zinc-800">
+                          <span className="truncate">
+                            {unitType.furnishing_package?.package_name || "—"}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Configuration
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {unitType.display_configuration || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Size
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {unitType.size_sqft ? `${unitType.size_sqft} sqft` : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Carparks
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {getCarparkDisplay(unitType)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Furnishing
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {unitType.furnishing_package?.package_name || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        SPA Price Range
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {unitType.spa_price_from !== null
-                          ? unitType.spa_price_to !== null
-                            ? `${formatMoney(unitType.spa_price_from)} - ${formatMoney(unitType.spa_price_to)}`
-                            : `From ${formatMoney(unitType.spa_price_from)}`
-                          : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Final Net Price Range
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {unitType.price_from !== null
-                          ? unitType.price_to !== null
-                            ? `${formatMoney(unitType.price_from)} - ${formatMoney(unitType.price_to)}`
-                            : `From ${formatMoney(unitType.price_from)}`
-                          : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Estimated Rental
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {unitType.estimated_rental_from !== null
-                          ? unitType.estimated_rental_to !== null
-                            ? `${formatMoney(unitType.estimated_rental_from)} - ${formatMoney(unitType.estimated_rental_to)}`
-                            : `From ${formatMoney(unitType.estimated_rental_from)}`
-                          : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Balcony
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {formatBoolean(unitType.has_balcony)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                        Dual Key
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-zinc-800">
-                        {formatBoolean(unitType.is_dual_key)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {unitType.layout ? (
-                    <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-3">
+                    <div className="mt-4 rounded-[18px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-4">
+                      <div className="grid gap-3 sm:grid-cols-3">
                         <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                            SPA Price
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-[var(--falcon-charcoal)]">
+                            {unitType.spa_price_from !== null
+                              ? unitType.spa_price_to !== null
+                                ? `${formatMoney(unitType.spa_price_from)} - ${formatMoney(unitType.spa_price_to)}`
+                                : `From ${formatMoney(unitType.spa_price_from)}`
+                              : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                            Final Net
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-[var(--falcon-charcoal)]">
+                            {unitType.price_from !== null
+                              ? unitType.price_to !== null
+                                ? `${formatMoney(unitType.price_from)} - ${formatMoney(unitType.price_to)}`
+                                : `From ${formatMoney(unitType.price_from)}`
+                              : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                            Est. Rental
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-[var(--falcon-charcoal)]">
+                            {unitType.estimated_rental_from !== null
+                              ? unitType.estimated_rental_to !== null
+                                ? `${formatMoney(unitType.estimated_rental_from)} - ${formatMoney(unitType.estimated_rental_to)}`
+                                : `From ${formatMoney(unitType.estimated_rental_from)}`
+                              : "—"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[18px] border border-[var(--falcon-soft-border)] bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
                           <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
                             Layout Plan
                           </p>
-                          <p className="mt-1 text-sm font-medium text-zinc-800">
-                            {unitType.layout.title}
+                          <p className="mt-1 truncate text-sm font-semibold text-zinc-800">
+                            {unitType.layout?.title || "No layout plan added"}
                           </p>
                         </div>
-                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                          Available
-                        </span>
+                        {unitType.layout ? (
+                          <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            Available
+                          </span>
+                        ) : null}
                       </div>
-                      {unitType.layout.signed_url ? (
+                      {unitType.layout?.signed_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={unitType.layout.signed_url}
                           alt={`${unitType.type_code} layout plan`}
-                          className="mt-3 max-h-48 w-full rounded-lg object-contain"
+                          className="mt-3 max-h-48 w-full rounded-xl bg-[var(--falcon-warm-background)] object-contain"
                         />
-                      ) : null}
+                      ) : (
+                        <div className="mt-3 flex h-28 items-center justify-center rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 text-center text-xs font-medium text-[var(--falcon-muted-text)]">
+                          Layout preview not available.
+                        </div>
+                      )}
                     </div>
-                  ) : null}
+                  </div>
                 </article>
               ))}
             </div>
