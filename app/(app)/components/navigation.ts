@@ -29,8 +29,7 @@ export const desktopNavItems: AppNavItem[] = [
   { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
   { label: "Progressive Interest", href: "/tools/progressive-interest" },
   { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
-  { label: "DSR Calculator", href: "#" },
-  { label: "Proposal Generator", href: "#" },
+  { label: "DSR Calculator", href: "/tools/dsr-calculator" },
   { label: "Check In", href: "/check-in" },
   { label: "Calendar", href: "/calendar" },
   { label: "Customer Birthdays", href: "/customer-birthdays" },
@@ -109,6 +108,7 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
         { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
         { label: "Progressive Interest", href: "/tools/progressive-interest" },
         { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
+        { label: "DSR Calculator", href: "/tools/dsr-calculator" },
       ],
     },
     {
