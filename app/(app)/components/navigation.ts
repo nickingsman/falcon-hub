@@ -46,7 +46,7 @@ export const desktopNavItems: AppNavItem[] = [
   {
     label: "Sales",
     href: "#",
-    children: [{ label: "Sales Records", href: "#" }],
+    children: [{ label: "Sales Records", href: "/sales" }],
   },
   { label: "Falcon Academy", href: "/academy" },
   { label: "Settings", href: "#" },
@@ -114,6 +114,7 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
     {
       title: "My Work",
       items: [
+        { label: "Sales", href: "/sales" },
         { label: "Saved Work", href: "/saved-work" },
         { label: "Customer Birthdays", href: "/customer-birthdays" },
       ],
@@ -149,6 +150,7 @@ export function isNavHrefActive(pathname: string, item: AppNavItem) {
 
 export function isDesktopNavItemActive(pathname: string, item: AppNavItem) {
   if (item.label === "Team") return pathname.startsWith("/team/");
+  if (item.label === "Sales") return pathname === "/sales" || pathname.startsWith("/sales/");
   if (item.label === "Projects") return pathname === "/projects" || pathname.startsWith("/projects/");
 
   return isNavHrefActive(pathname, item);

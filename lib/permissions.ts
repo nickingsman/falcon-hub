@@ -45,6 +45,26 @@ export function canManageMembers(profile: UserProfile | null) {
   return hasRole(profile, ["super_admin", "admin"]);
 }
 
+export function canViewSales(profile: UserProfile | null) {
+  return hasRole(profile, ["super_admin", "admin", "leader", "agent"]);
+}
+
+export function canManageSales(profile: UserProfile | null) {
+  return hasRole(profile, ["super_admin", "admin"]);
+}
+
+export async function requireSalesApiAccess(write = false) {
+  const authContext = await getAuthenticatedUserProfile();
+  if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
+  if (!authContext.profile || authContext.profile.status !== "active") {
+    return { authorized: false, response: forbiddenJson("Active user profile is required") } as const;
+  }
+  if (write ? !canManageSales(authContext.profile) : !canViewSales(authContext.profile)) {
+    return { authorized: false, response: forbiddenJson() } as const;
+  }
+  return { authorized: true, ...authContext } as const;
+}
+
 export function getAssignableUserRoles(profile: UserProfile | null): UserRole[] {
   if (!profile || profile.status !== "active") {
     return [];
