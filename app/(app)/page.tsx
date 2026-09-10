@@ -1204,6 +1204,10 @@ export default function Home() {
     }, 220);
   }, []);
 
+  if (showIntro) {
+    return <FalconIntroOverlay isExiting={isIntroExiting} onSkip={dismissIntro} />;
+  }
+
   if (status === "loading" && !dashboard) {
     return <LoadingDashboard />;
   }
@@ -1236,10 +1240,6 @@ export default function Home() {
 
   return (
     <main className="overflow-x-hidden p-4 sm:p-6 lg:p-8">
-      {showIntro ? (
-        <FalconIntroOverlay isExiting={isIntroExiting} onSkip={dismissIntro} />
-      ) : null}
-
       <div className="mx-auto max-w-6xl space-y-5">
         <section className="rounded-[24px] border border-zinc-200 bg-white px-5 py-4 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:px-6">
           <p className="text-sm font-medium text-zinc-500">
