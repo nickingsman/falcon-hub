@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -29,6 +30,7 @@ export default function RegisterPage() {
           email,
           password,
           confirmPassword,
+          inviteCode,
         }),
       });
       const result = await response.json();
@@ -76,6 +78,20 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+          <label className="block text-sm text-zinc-600">
+            <span className="mb-2 block font-medium text-zinc-900">Invite Code</span>
+            <input
+              type="text"
+              required
+              autoCapitalize="characters"
+              autoComplete="off"
+              value={inviteCode}
+              onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
+              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 font-mono uppercase tracking-wide outline-none transition focus:border-zinc-900"
+              placeholder="FALCON-XXXX-XXXX-XXXX-XXXX"
+            />
+          </label>
+
           <label className="block text-sm text-zinc-600">
             <span className="mb-2 block font-medium text-zinc-900">Email</span>
             <input

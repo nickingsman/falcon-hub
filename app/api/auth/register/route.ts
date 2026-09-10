@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { hashInvitationCode, normalizeInvitationCode, normalizeInvitationEmail } from "@/lib/falcon-invitations";
 
 const minimumPasswordLength = 8;
-
-function normalizeEmail(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
-}
 
 function getStringValue(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -14,9 +11,10 @@ function getStringValue(value: unknown) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const email = normalizeEmail(body.email);
+    const email = normalizeInvitationEmail(body.email);
     const password = getStringValue(body.password);
     const confirmPassword = getStringValue(body.confirmPassword);
+    const inviteCode = normalizeInvitationCode(body.inviteCode);
 
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
@@ -41,6 +39,28 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseAdminClient();
+    const codeHash = hashInvitationCode(inviteCode);
+    const { data: invitation, error: invitationError } = await supabase
+      .from("falcon_invitations")
+      .select("id, expires_at")
+      .eq("email", email)
+      .eq("code_hash", codeHash)
+      .eq("status", "active")
+      .is("used_at", null)
+      .is("revoked_at", null)
+      .maybeSingle();
+
+    if (
+      invitationError ||
+      !invitation ||
+      (invitation.expires_at && new Date(invitation.expires_at) <= new Date())
+    ) {
+      return NextResponse.json(
+        { error: "Invalid or expired invitation code." },
+        { status: 400 },
+      );
+    }
+
     const { data: createdUser, error: createUserError } =
       await supabase.auth.admin.createUser({
         email,
@@ -49,19 +69,21 @@ export async function POST(request: Request) {
       });
 
     if (createUserError || !createdUser.user) {
-      const errorMessage = createUserError?.message || "Unable to register account";
-      const isDuplicateEmail =
-        errorMessage.toLowerCase().includes("already") ||
-        errorMessage.toLowerCase().includes("registered") ||
-        errorMessage.toLowerCase().includes("exists");
-
       return NextResponse.json(
-        {
-          error: isDuplicateEmail
-            ? "An account with this email already exists"
-            : errorMessage,
-        },
-        { status: isDuplicateEmail ? 409 : 400 }
+        { error: "Unable to register with this invitation." },
+        { status: 400 },
+      );
+    }
+
+    const { data: consumedInvitationId, error: consumeError } = await supabase.rpc(
+      "consume_falcon_invitation",
+      { p_email: email, p_code_hash: codeHash, p_auth_user_id: createdUser.user.id },
+    );
+    if (consumeError || !consumedInvitationId) {
+      await supabase.auth.admin.deleteUser(createdUser.user.id);
+      return NextResponse.json(
+        { error: "Invalid or expired invitation code." },
+        { status: 400 },
       );
     }
 
@@ -73,6 +95,10 @@ export async function POST(request: Request) {
     });
 
     if (profileError) {
+      await supabase.rpc("release_falcon_invitation", {
+        p_invitation_id: consumedInvitationId,
+        p_auth_user_id: createdUser.user.id,
+      });
       await supabase.auth.admin.deleteUser(createdUser.user.id);
       throw profileError;
     }
@@ -87,9 +113,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Unable to register account",
+          "Unable to register account",
       },
       { status: 500 }
     );

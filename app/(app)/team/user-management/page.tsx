@@ -9,6 +9,7 @@ import {
   memberPositionOptions,
   memberStatusOptions,
 } from "@/lib/member-options";
+import InvitationManagement from "./InvitationManagement";
 
 type ManagedMember = {
   id: string;
@@ -377,6 +378,8 @@ export default function UserManagementPage() {
             </div>
           ) : null}
         </section>
+
+        <InvitationManagement />
 
         <section className="mt-8 rounded-[28px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
           <div className="overflow-x-auto">
