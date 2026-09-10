@@ -344,7 +344,8 @@ export default function CustomerBirthdaysPage() {
   }, []);
 
   useEffect(() => {
-    void loadBirthdays();
+    const timeoutId = window.setTimeout(() => void loadBirthdays(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [loadBirthdays]);
 
   const recordsWithTiming = useMemo(() => {

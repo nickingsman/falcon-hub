@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import {
+  canManageProjects,
   requireProjectApiReadAccess,
   requireProjectApiWriteAccess,
 } from "@/lib/permissions";
@@ -23,7 +24,7 @@ export async function GET(
     const { id } = await params;
     const supabase = createSupabaseAdminClient();
 
-    const { data, error } = await supabase
+    const query = supabase
       .from("project_resources")
       .select(`
         id,
@@ -38,7 +39,13 @@ export async function GET(
         updated_at
       `)
       .eq("project_id", id)
-      .eq("is_deleted", false)
+      .eq("is_deleted", false);
+
+    if (!canManageProjects(authorization.profile)) {
+      query.eq("visibility", "customer");
+    }
+
+    const { data, error } = await query
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: true });
 
@@ -51,12 +58,7 @@ export async function GET(
     console.error("GET /api/projects/[id]/resources error:", error);
 
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to load project resources",
-      },
+      { error: "Unable to load project resources" },
       { status: 500 }
     );
   }
@@ -101,12 +103,7 @@ export async function POST(
     console.error("POST /api/projects/[id]/resources error:", error);
 
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to create project resource",
-      },
+      { error: "Unable to create project resource" },
       { status: 500 }
     );
   }

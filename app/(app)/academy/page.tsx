@@ -36,12 +36,13 @@ function getCourseActionLabel(course: AcademyCourse) {
 }
 
 export default function AcademyPage() {
-  const { canManageProjects, role } = useAppPermissions();
+  const { role } = useAppPermissions();
   const [courses, setCourses] = useState<AcademyCourse[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const canViewTeamProgress =
     role === "super_admin" || role === "admin" || role === "leader";
+  const canManageAcademy = role === "super_admin" || role === "admin";
 
   const loadCourses = useCallback(async () => {
     setLoadState("loading");
@@ -98,7 +99,7 @@ export default function AcademyPage() {
                 Team Progress
               </Link>
             ) : null}
-            {canManageProjects ? (
+            {canManageAcademy ? (
               <Link
                 href="/academy/manage"
                 className="inline-flex min-h-11 items-center justify-center rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type AcademyCourseStatus = "draft" | "published" | "archived";
@@ -69,6 +70,7 @@ function coursePayload(form: CourseForm) {
 }
 
 export default function AcademyManageClient() {
+  const router = useRouter();
   const [courses, setCourses] = useState<AcademyCourse[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [errorMessage, setErrorMessage] = useState("");
@@ -135,7 +137,7 @@ export default function AcademyManageClient() {
         throw new Error(result.error || "Unable to create course");
       }
 
-      window.location.href = `/academy/manage/${result.course.id}`;
+      router.push(`/academy/manage/${result.course.id}`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create course");
     } finally {
@@ -176,7 +178,7 @@ export default function AcademyManageClient() {
 
   async function deleteCourse(course: AcademyCourse) {
     const confirmed = window.confirm(
-      `Delete "${course.title}"?\n\nThis will remove it from Academy management and learner views.`,
+      `Delete course "${course.title}"?\n\nThis will remove the course and its lessons from management and learner views. Existing lesson progress is retained in the database.`,
     );
     if (!confirmed) return;
 

@@ -217,7 +217,8 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => {
-    fetchProjects();
+    const timeoutId = window.setTimeout(() => void fetchProjects(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, []);
 
   function updateField(

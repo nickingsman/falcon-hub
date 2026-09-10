@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type AcademyCourseStatus = "draft" | "published" | "archived";
@@ -159,6 +160,7 @@ function formatDateTime(value: string) {
 }
 
 export default function AcademyCourseEditorClient({ courseId }: { courseId: string }) {
+  const router = useRouter();
   const [course, setCourse] = useState<AcademyCourse | null>(null);
   const [lessons, setLessons] = useState<AcademyLesson[]>([]);
   const [courseForm, setCourseForm] = useState<CourseForm | null>(null);
@@ -286,6 +288,36 @@ export default function AcademyCourseEditorClient({ courseId }: { courseId: stri
     }
   }
 
+  async function deleteCourse() {
+    if (!course) return;
+
+    const confirmed = window.confirm(
+      `Delete course "${course.title}"?\n\nThis will remove the course and its lessons from management and learner views. Existing lesson progress is retained in the database.`,
+    );
+    if (!confirmed) return;
+
+    setSavingCourse(true);
+    setErrorMessage("");
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/academy/courses/${courseId}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to delete course");
+      }
+
+      router.push("/academy/manage");
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to delete course");
+      setSavingCourse(false);
+    }
+  }
+
   function openAddLesson() {
     setEditingLesson(null);
     setLessonForm(emptyLessonForm);
@@ -346,7 +378,9 @@ export default function AcademyCourseEditorClient({ courseId }: { courseId: stri
   }
 
   async function deleteLesson(lesson: AcademyLesson) {
-    const confirmed = window.confirm(`Delete "${lesson.title}" from this course?`);
+    const confirmed = window.confirm(
+      `Delete lesson "${lesson.title}"?\n\nLearners will no longer be able to open this lesson. Existing progress is retained in the database.`,
+    );
     if (!confirmed) return;
 
     setLessonActionId(lesson.id);
@@ -488,6 +522,14 @@ export default function AcademyCourseEditorClient({ courseId }: { courseId: stri
               Archive
             </button>
           ) : null}
+          <button
+            type="button"
+            disabled={savingCourse}
+            onClick={() => void deleteCourse()}
+            className="min-h-11 rounded-full border border-red-200 px-5 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+          >
+            Delete Course
+          </button>
         </div>
       </div>
 

@@ -29,6 +29,10 @@ export function parseSalesPercentage(value: unknown) {
   return { scaled, normalized: `${Math.floor(scaled / 10_000)}.${String(scaled % 10_000).padStart(4, "0")}` };
 }
 
+export function normalizeSalesUnit(value: string) {
+  return value.trim().toLowerCase();
+}
+
 export type SalesContributor = {
   memberId: string;
   memberName: string;

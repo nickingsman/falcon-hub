@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useAppPermissions } from "@/app/(app)/components/AppPermissionProvider";
 import { getAcademyProgressStatus, type AcademyProgressStatus } from "@/lib/academy";
 
 type AcademyVideoSourceType = "youtube" | "vimeo" | "google_drive" | "external";
@@ -77,6 +78,8 @@ export default function AcademyCoursePage({
 }: {
   params: Promise<{ courseId: string }>;
 }) {
+  const { role } = useAppPermissions();
+  const canManageAcademy = role === "super_admin" || role === "admin";
   const [courseId, setCourseId] = useState<string | null>(null);
   const [course, setCourse] = useState<AcademyCourse | null>(null);
   const [lessons, setLessons] = useState<AcademyLesson[]>([]);
@@ -157,9 +160,19 @@ export default function AcademyCoursePage({
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 pb-24 sm:px-6 lg:px-8">
-      <Link href="/academy" className="text-sm font-semibold text-zinc-500 hover:text-zinc-950">
-        Back to Falcon Academy
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Link href="/academy" className="text-sm font-semibold text-zinc-500 hover:text-zinc-950">
+          Back to Falcon Academy
+        </Link>
+        {canManageAcademy ? (
+          <Link
+            href={`/academy/manage/${course.id}`}
+            className="inline-flex min-h-10 items-center justify-center rounded-full border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+          >
+            Edit Course
+          </Link>
+        ) : null}
+      </div>
 
       <section className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.05)]">
         {course.coverImageUrl ? (

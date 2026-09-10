@@ -2828,8 +2828,10 @@ export default function RoiCalculatorPage() {
     const savedWorkId = new URL(window.location.href).searchParams.get("savedWork");
 
     if (savedWorkId) {
-      void openSavedRoi(savedWorkId);
+      const timeoutId = window.setTimeout(() => void openSavedRoi(savedWorkId), 0);
+      return () => window.clearTimeout(timeoutId);
     }
+    return undefined;
     // Run only once so normal editing after reopen is never rehydrated over.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

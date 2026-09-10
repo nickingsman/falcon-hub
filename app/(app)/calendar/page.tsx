@@ -827,21 +827,25 @@ export default function CalendarPage() {
   }, [visibleFrom, visibleTo]);
 
   useEffect(() => {
-    void loadEvents();
+    const timeoutId = window.setTimeout(() => void loadEvents(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [loadEvents]);
 
   useEffect(() => {
     if (!selectedDate.startsWith(monthKey)) {
       const monthToday = today.startsWith(monthKey) ? today : getMonthStart(monthKey);
-      setSelectedDate(monthToday);
+      const timeoutId = window.setTimeout(() => setSelectedDate(monthToday), 0);
+      return () => window.clearTimeout(timeoutId);
     }
+    return undefined;
   }, [monthKey, selectedDate, today]);
 
   useEffect(() => {
     if (!showCreateModal && !editingEvent) return;
     if (membersLoadState !== "idle") return;
 
-    void loadTargetMembers();
+    const timeoutId = window.setTimeout(() => void loadTargetMembers(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [editingEvent, loadTargetMembers, membersLoadState, showCreateModal]);
 
   function goToToday() {

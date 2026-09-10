@@ -998,7 +998,8 @@ export default function ProgressiveInterestPage() {
     }
 
     savedWorkHydratedRef.current = true;
-    void openSavedProgressiveInterest(savedWorkId);
+    const timeoutId = window.setTimeout(() => void openSavedProgressiveInterest(savedWorkId), 0);
+    return () => window.clearTimeout(timeoutId);
     // Run only once so normal editing after reopen is never rehydrated over.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1008,7 +1009,8 @@ export default function ProgressiveInterestPage() {
     if (projects.length === 0) return;
     if (projects.some((project) => project.id === selectedProjectId)) return;
 
-    setReopenWarning("Current Project reference is unavailable. Saved project details were preserved.");
+    const timeoutId = window.setTimeout(() => setReopenWarning("Current Project reference is unavailable. Saved project details were preserved."), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [projects, projectsError, savedProjectSnapshot, selectedProjectId]);
 
   function updateStageTiming(stageId: TimelineStageId, field: keyof StageTiming, value: string) {

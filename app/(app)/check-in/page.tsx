@@ -287,11 +287,13 @@ export default function CheckInPage() {
   }, []);
 
   useEffect(() => {
-    void loadToday();
+    const timeoutId = window.setTimeout(() => void loadToday(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [loadToday]);
 
   useEffect(() => {
-    void loadPresence();
+    const timeoutId = window.setTimeout(() => void loadPresence(), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [loadPresence]);
 
   async function submitLocationAction(action: ActionType, endpoint: string) {

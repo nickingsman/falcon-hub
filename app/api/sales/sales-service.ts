@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { canManageSales, requireSalesApiAccess } from "@/lib/permissions";
-import { calculateSalesAnalytics, getSalesDateRange, parseSalesPercentage, salesStatuses, type SalesCase, type SalesStatus } from "@/lib/sales";
+import { calculateSalesAnalytics, getSalesDateRange, normalizeSalesUnit, parseSalesPercentage, salesStatuses, type SalesCase, type SalesStatus } from "@/lib/sales";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { isValidDateString } from "@/lib/malaysia-date";
 
@@ -30,6 +30,7 @@ type SalesCaseDbRow = {
 };
 
 function badRequest(error: string) { return NextResponse.json({ error }, { status: 400 }); }
+function conflict(error = "This unit already has an active Sales Case. The existing case must be cancelled before a new case can be submitted.") { return NextResponse.json({ error }, { status: 409 }); }
 function numeric(value: unknown) { const result = Number(value); return Number.isFinite(result) ? result : null; }
 
 async function parseInput(request: Request) {
@@ -128,7 +129,7 @@ export async function listSales(request: Request) {
     return NextResponse.json({ range, canManage, analytics: calculateSalesAnalytics(allCases, range.from, range.to), records, projects: projects ?? [], members: canManage ? members ?? [] : [] });
   } catch (error) {
     console.error("GET /api/sales error:", error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load Sales" }, { status: 500 });
+    return NextResponse.json({ error: "Unable to load Sales" }, { status: 500 });
   }
 }
 
@@ -149,23 +150,28 @@ async function saveSales(request: Request, caseId: string | null) {
       if (existing.status === "sign_spa" && input.status !== "sign_spa" && input.status !== "cancelled") return badRequest("Use Remove Incorrect SPA Record to correct an erroneous conversion");
       if (input.status === "cancelled" && existing.spa_signed_date && input.cancelDate && input.cancelDate < existing.spa_signed_date) return badRequest("Cancel Date cannot be before SPA Signed Date");
     }
-    const [{ data: project }, { data: validMembers }] = await Promise.all([
+    const [{ data: project }, { data: validMembers }, { data: activeProjectCases, error: activeCasesError }] = await Promise.all([
       supabase.from("projects").select("id").eq("id", input.projectId).eq("is_deleted", false).maybeSingle(),
       supabase.from("users").select("id").in("id", input.contributors.map((item) => item.memberId)).eq("is_deleted", false).eq("status", "Active"),
+      supabase.from("sales_cases").select("id, unit_no").eq("project_id", input.projectId).eq("is_deleted", false).neq("status", "cancelled"),
     ]);
+    if (activeCasesError) throw activeCasesError;
     if (!project) return badRequest("Project is not available");
     if ((validMembers ?? []).length !== input.contributors.length) return badRequest("Every contributor must be an active Falcon member");
+    const duplicateCase = (activeProjectCases ?? []).find((item) => item.id !== caseId && normalizeSalesUnit(item.unit_no) === normalizeSalesUnit(input.unitNo));
+    if (duplicateCase) return conflict();
     const { data, error } = await supabase.rpc("save_sales_case", {
       p_case_id: caseId, p_project_id: input.projectId, p_unit_no: input.unitNo,
       p_booking_date: input.bookingDate, p_nett_price: input.nettPrice, p_falcon_portion: input.falconPortion,
       p_status: input.status, p_spa_signed_date: input.spaSignedDate, p_cancel_date: input.cancelDate,
       p_remark: input.remark ?? "", p_contributors: input.contributors, p_actor: authorization.user.id,
     });
+    if (error?.code === "23505") return conflict();
     if (error) throw error;
     return NextResponse.json({ id: data }, { status: caseId ? 200 : 201 });
   } catch (error) {
     console.error(`${caseId ? "PATCH" : "POST"} /api/sales error:`, error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save Sales case" }, { status: 500 });
+    return NextResponse.json({ error: "Unable to save Sales case" }, { status: 500 });
   }
 }
 
@@ -194,6 +200,6 @@ export async function correctSalesSpa(request: Request, caseId: string) {
     return NextResponse.json({ corrected: true });
   } catch (error) {
     console.error("POST /api/sales/[id]/correct-spa error:", error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to correct SPA record" }, { status: 500 });
+    return NextResponse.json({ error: "Unable to correct SPA record" }, { status: 500 });
   }
 }

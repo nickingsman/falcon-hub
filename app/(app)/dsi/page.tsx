@@ -481,8 +481,8 @@ export default function DsiPage() {
     if (activeView !== "team") return;
 
     if (!canViewTeamDsi) {
-      setActiveView("history");
-      return;
+      const timeoutId = window.setTimeout(() => setActiveView("history"), 0);
+      return () => window.clearTimeout(timeoutId);
     }
 
     const timeoutId = window.setTimeout(() => {
