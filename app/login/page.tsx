@@ -5,6 +5,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
+const welcomeAfterLoginSessionKey = "falcon-hub:welcome-after-login";
+
+function getSafeNextDestination() {
+  const requested = new URLSearchParams(window.location.search).get("next");
+  if (!requested || !requested.startsWith("/") || requested.startsWith("//")) return "/";
+
+  const destination = new URL(requested, window.location.origin);
+  if (destination.origin !== window.location.origin) return "/";
+  if (destination.pathname === "/login" || destination.pathname === "/welcome") return "/";
+
+  return `${destination.pathname}${destination.search}${destination.hash}`;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -39,11 +52,16 @@ export default function LoginPage() {
       }
 
       if (currentUser.statusRoute === "/") {
+        const destination = getSafeNextDestination();
+
         try {
-          window.sessionStorage.setItem("falcon-hub:play-intro-after-login", "true");
+          window.sessionStorage.setItem(welcomeAfterLoginSessionKey, "true");
         } catch {
           // Storage restrictions must not turn a successful login into an error.
         }
+
+        router.replace(`/welcome?next=${encodeURIComponent(destination)}`);
+        return;
       }
 
       router.replace(currentUser.statusRoute || "/account-disabled");
