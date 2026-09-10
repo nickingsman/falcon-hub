@@ -20,6 +20,29 @@ type DashboardUpcomingEvent = {
   audienceLabel: string;
 };
 
+type CustomerDashboardBirthday = {
+  customerName: string;
+  project: string | null;
+  unit: string | null;
+  month: number;
+  day: number;
+  daysUntil: number;
+};
+
+type MemberDashboardBirthday = {
+  id: string;
+  fullName: string;
+  month: number;
+  day: number;
+  position: string | null;
+  daysUntil?: number;
+};
+
+type BirthdayReminderResponse<T> = {
+  today: T[];
+  upcoming: T[];
+};
+
 type AgentDashboardResponse = {
   date: string;
   timezone: "Asia/Kuala_Lumpur";
@@ -148,6 +171,12 @@ const upcomingCategoryLabels: Record<string, string> = {
   other: "Event",
 };
 
+const sectionHeaderClass = "mb-3";
+const dashboardCardClass =
+  "rounded-[24px] border border-[#E5E2DA] bg-white p-5 shadow-sm";
+const quietPanelClass =
+  "rounded-2xl border border-[#E5E2DA] bg-[#F8F6F0]";
+
 function formatMalaysiaDate(value: string) {
   return new Intl.DateTimeFormat("en-MY", {
     weekday: "long",
@@ -168,6 +197,21 @@ function formatShortEventDate(value: string) {
     .format(new Date(`${value}T00:00:00.000Z`))
     .replace(",", "")
     .toUpperCase();
+}
+
+function formatBirthdayMonthDay(month: number, day: number) {
+  return new Intl.DateTimeFormat("en-MY", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2000, month - 1, day)));
+}
+
+function getBirthdayTimingLabel(daysUntil: number) {
+  if (daysUntil === 0) return "Today";
+  if (daysUntil === 1) return "Tomorrow";
+
+  return `In ${daysUntil} days`;
 }
 
 function formatDashboardEventTime(event: DashboardUpcomingEvent) {
@@ -287,11 +331,11 @@ function MetricCard({
   note?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+    <div className="flex min-h-28 flex-col justify-between rounded-[22px] border border-[#E5E2DA] border-t-[#B8924A]/50 bg-white p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
         {label}
       </p>
-      <p className="mt-2 text-[26px] font-semibold leading-none tracking-tight text-zinc-950">
+      <p className="mt-3 text-[28px] font-semibold leading-none tracking-tight text-zinc-950">
         {value}
       </p>
       {note ? <p className="mt-1 text-sm text-zinc-500">{note}</p> : null}
@@ -309,7 +353,7 @@ function TeamMetricGrid({
   }[];
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map((metric) => (
         <MetricCard
           key={metric.label}
@@ -319,6 +363,205 @@ function TeamMetricGrid({
         />
       ))}
     </div>
+  );
+}
+
+function CustomerBirthdaysPreview({
+  birthdays,
+  status,
+}: {
+  birthdays: BirthdayReminderResponse<CustomerDashboardBirthday>;
+  status: LoadStatus;
+}) {
+  const visibleBirthdays = [...birthdays.today, ...birthdays.upcoming].slice(0, 5);
+  const hiddenCount = Math.max(
+    birthdays.today.length + birthdays.upcoming.length - visibleBirthdays.length,
+    0,
+  );
+
+  return (
+    <article className={dashboardCardClass}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">Customer Birthdays</p>
+          <p className="mt-1 text-sm text-zinc-500">Private customer reminders</p>
+        </div>
+        <Link
+          href="/customer-birthdays"
+          className="shrink-0 rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+        >
+          View Birthday Book
+        </Link>
+      </div>
+
+      {status === "loading" ? (
+        <p className={`${quietPanelClass} mt-4 px-4 py-3 text-sm text-zinc-500`}>
+          Loading customer birthdays...
+        </p>
+      ) : null}
+
+      {status === "error" ? (
+        <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Customer birthday reminders are unavailable right now.
+        </p>
+      ) : null}
+
+      {status === "ready" && visibleBirthdays.length === 0 ? (
+        <p className={`${quietPanelClass} mt-4 px-4 py-3 text-sm text-zinc-500`}>
+          No customer birthdays in the next 30 days.
+        </p>
+      ) : null}
+
+      {status === "ready" && visibleBirthdays.length > 0 ? (
+        <div className="mt-4 divide-y divide-zinc-100">
+          {visibleBirthdays.map((birthday, index) => (
+            <div
+              key={`${birthday.customerName}-${birthday.project ?? "project"}-${birthday.unit ?? "unit"}-${birthday.month}-${birthday.day}-${index}`}
+              className="py-3 first:pt-0 last:pb-0"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-semibold text-zinc-950">
+                    {birthday.customerName}
+                  </p>
+                  {birthday.project || birthday.unit ? (
+                    <p className="mt-1 break-words text-sm text-zinc-500">
+                      {[birthday.project, birthday.unit ? `Unit ${birthday.unit}` : ""]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-xs font-medium text-zinc-500">
+                    {formatBirthdayMonthDay(birthday.month, birthday.day)}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                    birthday.daysUntil === 0
+                      ? "border-[#B8924A]/30 bg-[#B8924A]/10 text-[#8F6E35]"
+                      : "border-zinc-200 bg-zinc-50 text-zinc-600"
+                  }`}
+                >
+                  {getBirthdayTimingLabel(birthday.daysUntil)}
+                </span>
+              </div>
+            </div>
+          ))}
+          {hiddenCount > 0 ? (
+            <p className="pt-3 text-xs font-medium text-zinc-500">+{hiddenCount} more in the next 30 days</p>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function MemberBirthdaysPreview({
+  birthdays,
+  status,
+}: {
+  birthdays: BirthdayReminderResponse<MemberDashboardBirthday>;
+  status: LoadStatus;
+}) {
+  const visibleBirthdays = [
+    ...birthdays.today.map((birthday) => ({ ...birthday, daysUntil: 0 })),
+    ...birthdays.upcoming,
+  ].slice(0, 5);
+  const hiddenCount = Math.max(
+    birthdays.today.length + birthdays.upcoming.length - visibleBirthdays.length,
+    0,
+  );
+
+  return (
+    <article className={dashboardCardClass}>
+      <div>
+        <p className="text-sm font-semibold text-zinc-900">Member Birthdays</p>
+        <p className="mt-1 text-sm text-zinc-500">Team reminders for the next 30 days</p>
+      </div>
+
+      {status === "loading" ? (
+        <p className={`${quietPanelClass} mt-4 px-4 py-3 text-sm text-zinc-500`}>
+          Loading member birthdays...
+        </p>
+      ) : null}
+
+      {status === "error" ? (
+        <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Member birthday reminders are unavailable right now.
+        </p>
+      ) : null}
+
+      {status === "ready" && visibleBirthdays.length === 0 ? (
+        <p className={`${quietPanelClass} mt-4 px-4 py-3 text-sm text-zinc-500`}>
+          No member birthdays in the next 30 days.
+        </p>
+      ) : null}
+
+      {status === "ready" && visibleBirthdays.length > 0 ? (
+        <div className="mt-4 divide-y divide-zinc-100">
+          {visibleBirthdays.map((birthday) => {
+            const daysUntil = birthday.daysUntil ?? 0;
+
+            return (
+              <div key={birthday.id} className="py-3 first:pt-0 last:pb-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-semibold text-zinc-950">
+                      {birthday.fullName}
+                    </p>
+                    {birthday.position ? (
+                      <p className="mt-1 break-words text-sm text-zinc-500">
+                        {birthday.position}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-xs font-medium text-zinc-500">
+                      {formatBirthdayMonthDay(birthday.month, birthday.day)}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                      daysUntil === 0
+                        ? "border-[#B8924A]/30 bg-[#B8924A]/10 text-[#8F6E35]"
+                        : "border-zinc-200 bg-zinc-50 text-zinc-600"
+                    }`}
+                  >
+                    {getBirthdayTimingLabel(daysUntil)}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          {hiddenCount > 0 ? (
+            <p className="pt-3 text-xs font-medium text-zinc-500">+{hiddenCount} more in the next 30 days</p>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function BirthdaySection({
+  customerBirthdays,
+  customerStatus,
+  memberBirthdays,
+  memberStatus,
+}: {
+  customerBirthdays: BirthdayReminderResponse<CustomerDashboardBirthday>;
+  customerStatus: LoadStatus;
+  memberBirthdays: BirthdayReminderResponse<MemberDashboardBirthday>;
+  memberStatus: LoadStatus;
+}) {
+  return (
+    <section>
+      <div className={sectionHeaderClass}>
+        <p className="text-sm font-semibold text-zinc-900">Birthdays</p>
+        <p className="text-sm text-zinc-500">People worth remembering</p>
+      </div>
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <CustomerBirthdaysPreview birthdays={customerBirthdays} status={customerStatus} />
+        <MemberBirthdaysPreview birthdays={memberBirthdays} status={memberStatus} />
+      </div>
+    </section>
   );
 }
 
@@ -379,7 +622,7 @@ function UpcomingEventsCard({
 }) {
   return (
     <section>
-      <div className="mb-3 flex items-end justify-between gap-4">
+      <div className={`${sectionHeaderClass} flex items-end justify-between gap-4`}>
         <div>
           <p className="text-sm font-semibold text-zinc-900">Upcoming Events</p>
           <p className="text-sm text-zinc-500">Visible Falcon Calendar events in the next 7 days</p>
@@ -392,9 +635,9 @@ function UpcomingEventsCard({
         </Link>
       </div>
 
-      <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <article className={dashboardCardClass}>
         {upcomingEvents.events.length === 0 ? (
-          <p className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+          <p className={`${quietPanelClass} px-4 py-3 text-sm text-zinc-500`}>
             No upcoming events in the next 7 days.
           </p>
         ) : (
@@ -457,7 +700,7 @@ function TeamPresencePreview({
   groups,
 }: LeaderDashboardResponse["teamPresence"]) {
   return (
-    <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+    <article className={dashboardCardClass}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-semibold text-zinc-900">Team Presence</p>
@@ -472,7 +715,7 @@ function TeamPresencePreview({
       </div>
 
       {groups.length === 0 ? (
-        <p className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+        <p className={`${quietPanelClass} mt-4 px-4 py-3 text-sm text-zinc-500`}>
           No teammates are currently checked in.
         </p>
       ) : (
@@ -480,7 +723,7 @@ function TeamPresencePreview({
           {groups.map((group) => (
             <div
               key={group.locationName}
-              className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5"
+              className={`${quietPanelClass} flex items-center justify-between gap-4 px-4 py-2.5`}
             >
               <p className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-700">
                 {group.locationName}
@@ -656,7 +899,7 @@ function TeamDashboard({
 function LoadingDashboard() {
   return (
     <main className="p-5 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-6xl space-y-5">
+      <div className="mx-auto max-w-6xl space-y-6">
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
           <div className="h-4 w-36 rounded bg-zinc-100" />
           <div className="mt-4 h-8 w-72 max-w-full rounded bg-zinc-100" />
@@ -757,6 +1000,22 @@ export default function Home() {
   const [dashboard, setDashboard] = useState<AgentDashboardResponse | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
+  const [customerBirthdays, setCustomerBirthdays] = useState<
+    BirthdayReminderResponse<CustomerDashboardBirthday>
+  >({
+    today: [],
+    upcoming: [],
+  });
+  const [customerBirthdayStatus, setCustomerBirthdayStatus] =
+    useState<LoadStatus>("loading");
+  const [memberBirthdays, setMemberBirthdays] = useState<
+    BirthdayReminderResponse<MemberDashboardBirthday>
+  >({
+    today: [],
+    upcoming: [],
+  });
+  const [memberBirthdayStatus, setMemberBirthdayStatus] =
+    useState<LoadStatus>("loading");
   const [leaderDashboard, setLeaderDashboard] = useState<LeaderDashboardResponse | null>(null);
   const [leaderStatus, setLeaderStatus] = useState<LoadStatus>("ready");
   const [leaderErrorMessage, setLeaderErrorMessage] = useState("");
@@ -797,6 +1056,58 @@ export default function Home() {
     }
   }, []);
 
+  const loadCustomerBirthdays = useCallback(async () => {
+    setCustomerBirthdayStatus("loading");
+
+    try {
+      const response = await fetch("/api/dashboard/customer-birthdays", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as
+        | BirthdayReminderResponse<CustomerDashboardBirthday>
+        | { error?: string };
+
+      if (!response.ok) {
+        throw new Error("Unable to load customer birthdays");
+      }
+
+      setCustomerBirthdays({
+        today: "today" in payload ? payload.today ?? [] : [],
+        upcoming: "upcoming" in payload ? payload.upcoming ?? [] : [],
+      });
+      setCustomerBirthdayStatus("ready");
+    } catch {
+      setCustomerBirthdays({ today: [], upcoming: [] });
+      setCustomerBirthdayStatus("error");
+    }
+  }, []);
+
+  const loadMemberBirthdays = useCallback(async () => {
+    setMemberBirthdayStatus("loading");
+
+    try {
+      const response = await fetch("/api/dashboard/birthdays", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as
+        | BirthdayReminderResponse<MemberDashboardBirthday>
+        | { error?: string };
+
+      if (!response.ok) {
+        throw new Error("Unable to load member birthdays");
+      }
+
+      setMemberBirthdays({
+        today: "today" in payload ? payload.today ?? [] : [],
+        upcoming: "upcoming" in payload ? payload.upcoming ?? [] : [],
+      });
+      setMemberBirthdayStatus("ready");
+    } catch {
+      setMemberBirthdays({ today: [], upcoming: [] });
+      setMemberBirthdayStatus("error");
+    }
+  }, []);
+
   const loadLeaderDashboard = useCallback(async () => {
     setLeaderStatus("loading");
     setLeaderErrorMessage("");
@@ -830,10 +1141,12 @@ export default function Home() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadDashboard();
+      void loadCustomerBirthdays();
+      void loadMemberBirthdays();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [loadDashboard]);
+  }, [loadCustomerBirthdays, loadDashboard, loadMemberBirthdays]);
 
   useEffect(() => {
     if (visibleView !== "team") {
@@ -995,13 +1308,13 @@ export default function Home() {
         ) : null}
 
         <section>
-          <div className="mb-3">
+          <div className={sectionHeaderClass}>
             <p className="text-sm font-semibold text-zinc-900">Today</p>
             <p className="text-sm text-zinc-500">Your daily operating status</p>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <article className={dashboardCardClass}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
@@ -1037,7 +1350,7 @@ export default function Home() {
               </Link>
             </article>
 
-            <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <article className={dashboardCardClass}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
@@ -1052,25 +1365,25 @@ export default function Home() {
 
               {dashboard.todayDsi.status === "submitted" ? (
                 <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-2xl bg-zinc-50 p-3">
+                  <div className="rounded-2xl border border-zinc-100 bg-[#F8F6F0] p-3">
                     <p className="text-zinc-500">New Leads</p>
                     <p className="mt-1 text-lg font-semibold text-zinc-950">
                       {dashboard.todayDsi.newLeadsContact}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-zinc-50 p-3">
+                  <div className="rounded-2xl border border-zinc-100 bg-[#F8F6F0] p-3">
                     <p className="text-zinc-500">Appointment Made</p>
                     <p className="mt-1 text-lg font-semibold text-zinc-950">
                       {dashboard.todayDsi.appointmentMade}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-zinc-50 p-3">
+                  <div className="rounded-2xl border border-zinc-100 bg-[#F8F6F0] p-3">
                     <p className="text-zinc-500">Turn Up</p>
                     <p className="mt-1 text-lg font-semibold text-zinc-950">
                       {dashboard.todayDsi.turnUpAppt}
                     </p>
                   </div>
-                  <div className="rounded-2xl bg-zinc-50 p-3">
+                  <div className="rounded-2xl border border-zinc-100 bg-[#F8F6F0] p-3">
                     <p className="text-zinc-500">Unit Closed</p>
                     <p className="mt-1 text-lg font-semibold text-zinc-950">
                       {dashboard.todayDsi.unitClosed}
@@ -1102,8 +1415,15 @@ export default function Home() {
 
         <UpcomingEventsCard upcomingEvents={dashboard.upcomingEvents} today={dashboard.date} />
 
+        <BirthdaySection
+          customerBirthdays={customerBirthdays}
+          customerStatus={customerBirthdayStatus}
+          memberBirthdays={memberBirthdays}
+          memberStatus={memberBirthdayStatus}
+        />
+
         <section className="lg:hidden">
-          <div className="mb-3">
+          <div className={sectionHeaderClass}>
             <p className="text-sm font-semibold text-zinc-900">Quick Tools</p>
             <p className="text-sm text-zinc-500">Open the working sales tools</p>
           </div>
@@ -1112,7 +1432,7 @@ export default function Home() {
               <Link
                 key={tool.href}
                 href={tool.href}
-                className="flex min-h-28 flex-col justify-between rounded-[20px] border border-zinc-200 bg-white p-4 transition hover:-translate-y-0.5 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+                className="flex min-h-28 flex-col justify-between rounded-[20px] border border-[#E5E2DA] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[#B8924A]/40 hover:bg-[#F8F6F0] focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
               >
                 <div>
                   <p className="text-sm font-semibold text-zinc-950">{tool.title}</p>
@@ -1125,7 +1445,7 @@ export default function Home() {
         </section>
 
         <section>
-          <div className="mb-3">
+          <div className={sectionHeaderClass}>
             <p className="text-sm font-semibold text-zinc-900">My Week</p>
             <p className="text-sm text-zinc-500">Factual DSI activity this week</p>
           </div>
@@ -1144,17 +1464,17 @@ export default function Home() {
         </section>
 
         <section className="grid items-start gap-4 lg:grid-cols-[1.5fr_1fr]">
-          <article className="hidden rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)] lg:block">
+          <article className={`${dashboardCardClass} hidden lg:block`}>
             <div>
               <p className="text-sm font-semibold text-zinc-900">Quick Tools</p>
               <p className="mt-1 text-sm text-zinc-500">Open the working sales tools</p>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-4 grid grid-cols-2 gap-2.5">
               {quickTools.map((tool) => (
                 <Link
                   key={tool.href}
                   href={tool.href}
-                  className="group flex min-h-32 flex-col justify-between rounded-[20px] border border-zinc-200 bg-zinc-50 p-4 transition hover:-translate-y-0.5 hover:bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+                  className="group flex min-h-28 flex-col justify-between rounded-2xl border border-[#E5E2DA] bg-[#F8F6F0] p-4 transition hover:-translate-y-0.5 hover:border-[#B8924A]/40 hover:bg-white focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
                 >
                   <div>
                     <p className="text-sm font-semibold text-zinc-950">{tool.title}</p>
@@ -1170,7 +1490,7 @@ export default function Home() {
             </div>
           </article>
 
-          <article className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+          <article className={dashboardCardClass}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-zinc-900">Team Presence</p>
@@ -1187,7 +1507,7 @@ export default function Home() {
             </div>
 
             {dashboard.teamPresence.groups.length === 0 ? (
-              <p className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-500">
+              <p className={`${quietPanelClass} mt-4 px-4 py-3 text-sm text-zinc-500`}>
                 No teammates are currently checked in.
               </p>
             ) : (
@@ -1195,7 +1515,7 @@ export default function Home() {
                 {dashboard.teamPresence.groups.map((group) => (
                   <div
                     key={group.locationName}
-                    className="flex items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-2.5"
+                    className={`${quietPanelClass} flex items-center justify-between gap-4 px-4 py-2.5`}
                   >
                     <p className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-700">
                       {group.locationName}
