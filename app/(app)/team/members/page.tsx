@@ -5,6 +5,7 @@ import { useAppPermissions } from "@/app/(app)/components/AppPermissionProvider"
 import { formatMemberCode, formatMemberDisplayName } from "@/lib/member-display";
 import {
   employmentTypeOptions,
+  falconPositionRankings,
   memberPositionOptions,
   memberStatusOptions,
 } from "@/lib/member-options";
@@ -47,7 +48,7 @@ const initialFormState: MemberFormState = {
   phone: "",
   birthday: "",
   employment_type: "Core Agent",
-  position: "Team Leader",
+  position: memberPositionOptions[0],
   leader_id: "",
   join_date: "",
   status: "Active",
@@ -198,7 +199,7 @@ export default function MembersPage() {
       phone: member.phone || "",
       birthday: member.birthday || "",
       employment_type: member.employment_type || "Core Agent",
-      position: member.position || "Team Leader",
+      position: member.position || memberPositionOptions[0],
       leader_id: member.leader_id || "",
       join_date: member.join_date || "",
       status: member.status || "Active",
@@ -399,9 +400,9 @@ export default function MembersPage() {
                 onChange={(event) => setPositionFilter(event.target.value)}
               >
                 <option value="All">All</option>
-                {memberPositionOptions.map((position) => (
-                  <option key={position} value={position}>
-                    {position}
+                {falconPositionRankings.map((position) => (
+                  <option key={position.value} value={position.value}>
+                    {position.label}
                   </option>
                 ))}
               </select>
@@ -650,9 +651,9 @@ export default function MembersPage() {
                   }
                   className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
                 >
-                  {memberPositionOptions.map((position) => (
-                    <option key={position} value={position}>
-                      {position}
+                  {falconPositionRankings.map((position) => (
+                    <option key={position.value} value={position.value}>
+                      {position.label}
                     </option>
                   ))}
                 </select>

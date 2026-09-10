@@ -6,6 +6,7 @@ import { useAppPermissions } from "@/app/(app)/components/AppPermissionProvider"
 import { formatMemberCode, formatMemberDisplayName } from "@/lib/member-display";
 import {
   employmentTypeOptions,
+  falconPositionRankings,
   memberPositionOptions,
   memberStatusOptions,
 } from "@/lib/member-options";
@@ -608,9 +609,9 @@ export default function UserManagementPage() {
                           onChange={(event) => updateFormField("position", event.target.value)}
                           className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
                         >
-                          {memberPositionOptions.map((position) => (
-                            <option key={position} value={position}>
-                              {position}
+                          {falconPositionRankings.map((position) => (
+                            <option key={position.value} value={position.value}>
+                              {position.label}
                             </option>
                           ))}
                         </select>

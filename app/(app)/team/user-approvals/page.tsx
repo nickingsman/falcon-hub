@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { UserRole } from "@/lib/auth";
 import { formatMemberDisplayName } from "@/lib/member-display";
-import { employmentTypeOptions } from "@/lib/member-options";
+import { employmentTypeOptions, falconPositionRankings } from "@/lib/member-options";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 
 type PendingRegistration = {
@@ -116,6 +116,7 @@ export default function UserApprovalsPage() {
     setApprovalForm({
       ...emptyApprovalForm,
       role: assignableRoles[0] ?? "",
+      position: falconPositionRankings[0].value,
       employment_type: employmentTypeOptions[0],
     });
     setErrorMessage("");
@@ -381,13 +382,18 @@ export default function UserApprovalsPage() {
                     <span className="mb-2 block font-medium text-zinc-900">
                       Position *
                     </span>
-                    <input
+                    <select
                       required
                       value={approvalForm.position}
                       onChange={(event) => updateApprovalField("position", event.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                      placeholder="e.g. Team Leader"
-                    />
+                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                    >
+                      {falconPositionRankings.map((position) => (
+                        <option key={position.value} value={position.value}>
+                          {position.label}
+                        </option>
+                      ))}
+                    </select>
                   </label>
 
                   <label className="block text-sm text-zinc-600">

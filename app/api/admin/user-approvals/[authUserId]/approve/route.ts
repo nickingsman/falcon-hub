@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/lib/auth";
-import { isEmploymentType } from "@/lib/member-options";
+import { isEmploymentType, isMemberPosition } from "@/lib/member-options";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import {
   canAssignUserRole,
@@ -62,9 +62,9 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
-    if (!approvedPosition) {
+    if (!approvedPosition || !isMemberPosition(approvedPosition)) {
       return NextResponse.json(
-        { error: "Position is required" },
+        { error: "Select a valid Falcon position" },
         { status: 400 }
       );
     }

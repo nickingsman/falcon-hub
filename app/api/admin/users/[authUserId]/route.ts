@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminUserManagementAccess } from "@/lib/permissions";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
+import { isMemberPosition } from "@/lib/member-options";
 
 type RouteContext = {
   params: Promise<{ authUserId: string }>;
@@ -34,6 +35,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const memberProfile = body.memberProfile;
+    if (
+      memberProfile &&
+      (typeof memberProfile.position !== "string" || !isMemberPosition(memberProfile.position))
+    ) {
+      return NextResponse.json(
+        { error: "Select a valid Falcon position" },
+        { status: 400 },
+      );
+    }
+
     const supabase = await createSupabaseSsrClient();
     const { error } = await supabase.rpc("manage_falconhub_user", {
       p_target_auth_user_id: authUserId,
