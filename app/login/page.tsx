@@ -38,6 +38,14 @@ export default function LoginPage() {
         throw new Error(currentUser.error || "Unable to load account status");
       }
 
+      if (currentUser.statusRoute === "/") {
+        try {
+          window.sessionStorage.setItem("falcon-hub:play-intro-after-login", "true");
+        } catch {
+          // Storage restrictions must not turn a successful login into an error.
+        }
+      }
+
       router.replace(currentUser.statusRoute || "/account-disabled");
       router.refresh();
     } catch (error) {

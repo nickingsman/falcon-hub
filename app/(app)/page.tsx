@@ -136,7 +136,7 @@ type LeaderDashboardResponse = {
 
 type LoadStatus = "loading" | "ready" | "error";
 
-const introSessionKey = "falcon-hub:intro-played";
+const introAfterLoginSessionKey = "falcon-hub:play-intro-after-login";
 
 const quickTools = [
   {
@@ -1164,11 +1164,11 @@ export default function Home() {
     const timeoutIds: number[] = [];
 
     try {
-      if (window.sessionStorage.getItem(introSessionKey) === "played") {
+      if (window.sessionStorage.getItem(introAfterLoginSessionKey) !== "true") {
         return undefined;
       }
 
-      window.sessionStorage.setItem(introSessionKey, "played");
+      window.sessionStorage.removeItem(introAfterLoginSessionKey);
     } catch {
       return undefined;
     }
