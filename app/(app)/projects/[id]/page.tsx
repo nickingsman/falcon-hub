@@ -4,6 +4,7 @@ import { FormEvent, PointerEvent, useCallback, useEffect, useRef, useState } fro
 import { useParams, useRouter } from "next/navigation";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
+import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
 type Project = {
   id: string;
@@ -109,6 +110,22 @@ type ProjectMedia = {
   updated_at: string;
   signed_url: string | null;
 };
+
+type ApiPayload<T> = T & { error?: string };
+
+async function readApiPayload<T>(response: Response, fallbackMessage: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      return (await response.json()) as ApiPayload<T>;
+    } catch {
+      return { error: fallbackMessage } as ApiPayload<T>;
+    }
+  }
+
+  return { error: fallbackMessage } as ApiPayload<T>;
+}
 
 type FurnishingItem = {
   id: string;
@@ -2076,21 +2093,55 @@ export default function ProjectDetailPage() {
   async function uploadFacingMedia(id: string, name: string) {
     if (!facingFile) return null;
 
-    const formData = new FormData();
-    formData.append("file", facingFile);
-    formData.append("title", `${name} Facing View`);
-    formData.append("media_type", "facing_view");
-    formData.append("visibility", "customer");
-    formData.append("description", "Facing / view image");
-    formData.append("sort_order", "0");
-
-    const response = await fetch(`/api/projects/${id}/media`, {
+    const uploadDetails = {
+      file_name: facingFile.name,
+      mime_type: facingFile.type,
+      file_size_bytes: facingFile.size,
+    };
+    const prepareResponse = await fetch(`/api/projects/${id}/media/facing-upload`, {
       method: "POST",
-      body: formData,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(uploadDetails),
     });
-    const result = await response.json();
+    const prepared = await readApiPayload<{
+      media_id: string;
+      storage_path: string;
+      upload_token: string;
+    }>(prepareResponse, "Unable to prepare facing image upload");
 
-    if (!response.ok) {
+    if (!prepareResponse.ok || !prepared.media_id || !prepared.storage_path || !prepared.upload_token) {
+      throw new Error(prepared.error || "Unable to prepare facing image upload");
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    const { error: uploadError } = await supabase.storage
+      .from("project-media")
+      .uploadToSignedUrl(prepared.storage_path, prepared.upload_token, facingFile, {
+        contentType: facingFile.type,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error("Unable to upload facing image. Please try again.");
+    }
+
+    const completeResponse = await fetch(`/api/projects/${id}/media/facing-upload`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...uploadDetails,
+        media_id: prepared.media_id,
+        title: `${name} Facing View`,
+        description: "Facing / view image",
+        sort_order: 0,
+      }),
+    });
+    const result = await readApiPayload<ProjectMedia>(
+      completeResponse,
+      "Unable to complete facing image upload",
+    );
+
+    if (!completeResponse.ok) {
       throw new Error(result.error || "Unable to upload facing image");
     }
 
