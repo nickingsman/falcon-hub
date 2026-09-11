@@ -88,7 +88,36 @@ type ResolvedPurchaseCostItem = PurchaseCostItem & {
 type ProjectOption = {
   id: string;
   project_name: string;
+  maintenance_fee_per_sqft: number | null;
   unit_number_format: UnitNumberFormat | null;
+};
+
+type CommercialPackageItem = {
+  id: string;
+  item_type: PackageItemType;
+  description: string;
+  discount_method: DiscountMethod | null;
+  value: number | null;
+  cash_benefit_treatment: CashBenefitTreatment | null;
+  receive_at: string | null;
+};
+
+type CommercialPackagePurchaseCost = {
+  cost_key: string;
+  treatment: PurchaseCostTreatment;
+  amount_override: number | null;
+};
+
+type CommercialPackage = {
+  id: string;
+  package_name: string;
+  customer_description: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  applies_to_all_unit_types: boolean;
+  applicable_unit_types: Array<{ id: string }>;
+  items: CommercialPackageItem[];
+  purchase_costs: CommercialPackagePurchaseCost[];
 };
 
 type ProjectLayout = {
@@ -507,6 +536,57 @@ function getDiscountMethodLabel(method: DiscountMethod) {
   if (method === "percentage_previous_balance") return "% of Balance";
 
   return "Fixed RM";
+}
+
+function formatDiscountValue(method: DiscountMethod, value: string) {
+  const amount = parseMoney(value);
+
+  if (!hasEnteredValue(value) || !Number.isFinite(amount)) return "Not set";
+  return method === "fixed" ? formatCurrency(amount) : `${amount}%`;
+}
+
+function isPackageApplicable(commercialPackage: CommercialPackage, unitTypeId: string) {
+  return (
+    commercialPackage.applies_to_all_unit_types ||
+    commercialPackage.applicable_unit_types.some((unitType) => unitType.id === unitTypeId)
+  );
+}
+
+function packageItemsFromCommercialPackage(
+  commercialPackage: CommercialPackage,
+): EditablePackageItem[] {
+  return commercialPackage.items.map((item) => ({
+    id: item.id,
+    type: item.item_type,
+    description: item.description,
+    method: item.discount_method ?? "percentage_spa",
+    value: item.item_type === "discount" && item.value !== null ? String(item.value) : "",
+    amount: item.item_type !== "discount" && item.value !== null ? String(item.value) : "",
+    treatment: item.cash_benefit_treatment ?? "refund_later",
+    receiveAt: item.receive_at ?? "",
+  }));
+}
+
+function purchaseCostsFromCommercialPackage(
+  commercialPackage: CommercialPackage,
+): PurchaseCostItem[] {
+  const costsByKey = new Map(
+    commercialPackage.purchase_costs.map((cost) => [cost.cost_key, cost]),
+  );
+
+  return defaultPurchaseCosts.map((item) => {
+    const costKey = item.estimateKey ?? item.id.replaceAll("-", "_");
+    const cost = costsByKey.get(costKey);
+
+    if (!cost) return { ...item, treatment: "not_applicable" as const };
+
+    return {
+      ...item,
+      treatment: cost.treatment,
+      amount: cost.amount_override === null ? "" : String(cost.amount_override),
+      source: cost.amount_override === null ? item.source : ("manual" as const),
+    };
+  });
 }
 
 function getPackageItemEffectLabel(
@@ -1018,6 +1098,7 @@ function buildRoiProposalHtml({
   unitPresentation,
   floorPlanPresentation,
   purchaseCosts,
+  packageItems,
 }: {
   form: CalculatorForm;
   numericInput: {
@@ -1032,6 +1113,7 @@ function buildRoiProposalHtml({
   unitPresentation: UnitPresentationSnapshot | null;
   floorPlanPresentation: FloorPlanPresentationSnapshot | null;
   purchaseCosts: ResolvedPurchaseCostItem[];
+  packageItems: EditablePackageItem[];
 }) {
   const projectName = form.projectName.trim() || "Unit Calculation Proposal";
   const renderUnitPresentation = shouldRenderUnitPresentation(
@@ -1059,9 +1141,18 @@ function buildRoiProposalHtml({
         ? "Negative Cash Flow"
         : "Break-even Cash Flow";
   const discountRows = result.processedDiscounts
-    .map((discount) =>
-      purchaseLine(discount.description, `- ${formatCurrency(discount.amount)}`),
-    )
+    .map((discount) => {
+      const source = packageItems.find((item) => item.id === discount.id);
+      const methodNote = source
+        ? `${formatDiscountValue(source.method, source.value)} · ${getDiscountMethodLabel(source.method)}`
+        : undefined;
+
+      return purchaseLine(
+        discount.description,
+        `- ${formatCurrency(discount.amount)}`,
+        methodNote,
+      );
+    })
     .join("");
   const cashBenefitRows = result.cashBenefits
     .map((benefit) =>
@@ -2175,9 +2266,7 @@ export default function RoiCalculatorPage() {
     maintenanceRatePerSqft: "",
     otherUpfrontCosts: "0",
   });
-  const [packageItems, setPackageItems] = useState<EditablePackageItem[]>([
-    createPackageItem("discount"),
-  ]);
+  const [packageItems, setPackageItems] = useState<EditablePackageItem[]>([]);
   const [purchaseCosts, setPurchaseCosts] = useState<PurchaseCostItem[]>(defaultPurchaseCosts);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectsError, setProjectsError] = useState("");
@@ -2186,6 +2275,10 @@ export default function RoiCalculatorPage() {
   const [unitTypesError, setUnitTypesError] = useState("");
   const [isLoadingUnitTypes, setIsLoadingUnitTypes] = useState(false);
   const [selectedUnitTypeId, setSelectedUnitTypeId] = useState("");
+  const [commercialPackages, setCommercialPackages] = useState<CommercialPackage[]>([]);
+  const [commercialPackagesError, setCommercialPackagesError] = useState("");
+  const [isLoadingCommercialPackages, setIsLoadingCommercialPackages] = useState(false);
+  const [selectedCommercialPackageId, setSelectedCommercialPackageId] = useState("");
   const [unitPresentation, setUnitPresentation] = useState<UnitPresentationSnapshot | null>(null);
   const [floorPlans, setFloorPlans] = useState<ProjectFloorPlan[]>([]);
   const [floorPlansError, setFloorPlansError] = useState("");
@@ -2438,6 +2531,60 @@ export default function RoiCalculatorPage() {
     }
   }
 
+  async function loadCommercialPackages(projectId: string) {
+    setIsLoadingCommercialPackages(true);
+    setCommercialPackagesError("");
+
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/commercial-packages?audience=customer`,
+      );
+
+      if (!response.ok) throw new Error("Unable to load Sales Packages");
+
+      const data = (await response.json()) as CommercialPackage[];
+      setCommercialPackages(data);
+      return data;
+    } catch (error) {
+      setCommercialPackages([]);
+      setCommercialPackagesError(
+        error instanceof Error ? error.message : "Unable to load Sales Packages",
+      );
+      return [];
+    } finally {
+      setIsLoadingCommercialPackages(false);
+    }
+  }
+
+  function clearPackageConfiguration() {
+    setSelectedCommercialPackageId("");
+    setPackageItems([]);
+    setPurchaseCosts(defaultPurchaseCosts.map((item) => ({ ...item })));
+    updateField("packageValidUntil", "");
+  }
+
+  function applyCommercialPackage(commercialPackage: CommercialPackage) {
+    setSelectedCommercialPackageId(commercialPackage.id);
+    setPackageItems(packageItemsFromCommercialPackage(commercialPackage));
+    setPurchaseCosts(purchaseCostsFromCommercialPackage(commercialPackage));
+    updateField("packageValidUntil", commercialPackage.valid_until ?? "");
+  }
+
+  function resolveCommercialPackageForUnitType(
+    unitTypeId: string,
+    packages = commercialPackages,
+  ) {
+    const applicablePackages = packages.filter((commercialPackage) =>
+      isPackageApplicable(commercialPackage, unitTypeId),
+    );
+
+    if (applicablePackages.length === 1) {
+      applyCommercialPackage(applicablePackages[0]);
+    } else {
+      clearPackageConfiguration();
+    }
+  }
+
   function handleProjectChange(projectId: string) {
     setSelectedProjectId(projectId);
     setSelectedUnitTypeId("");
@@ -2449,16 +2596,27 @@ export default function RoiCalculatorPage() {
     setManualFloorPlanId("");
     setManualStackId("");
     setSavedFloorPlanPresentation(null);
+    setCommercialPackages([]);
+    setCommercialPackagesError("");
+    clearPackageConfiguration();
 
     const selectedProject = projects.find((project) => project.id === projectId);
 
-    if (selectedProject?.project_name) {
-      updateField("projectName", selectedProject.project_name);
-    }
+    setForm((current) => ({
+      ...current,
+      projectName: selectedProject?.project_name ?? "",
+      maintenanceRatePerSqft:
+        selectedProject?.maintenance_fee_per_sqft === null ||
+        selectedProject?.maintenance_fee_per_sqft === undefined
+          ? ""
+          : String(selectedProject.maintenance_fee_per_sqft),
+      packageValidUntil: "",
+    }));
 
     if (projectId) {
       void loadUnitTypes(projectId);
       void loadFloorPlans(projectId);
+      void loadCommercialPackages(projectId);
     }
   }
 
@@ -2490,6 +2648,7 @@ export default function RoiCalculatorPage() {
     setManualFloorPlanId("");
     setManualStackId("");
     setSavedFloorPlanPresentation(null);
+    resolveCommercialPackageForUnitType(unitTypeId);
 
     const selectedUnitType = unitTypes.find((unitType) => unitType.id === unitTypeId);
 
@@ -2500,6 +2659,16 @@ export default function RoiCalculatorPage() {
 
     applyUnitTypeSnapshot(selectedUnitType);
   }
+
+  const applicableCommercialPackages = useMemo(
+    () =>
+      selectedUnitTypeId
+        ? commercialPackages.filter((commercialPackage) =>
+            isPackageApplicable(commercialPackage, selectedUnitTypeId),
+          )
+        : [],
+    [commercialPackages, selectedUnitTypeId],
+  );
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const unitNumberFormat = getProjectUnitNumberFormat(selectedProject);
@@ -2745,7 +2914,7 @@ export default function RoiCalculatorPage() {
 
   function hydrateSavedRoiPayload(payload: RoiSavedWorkPayloadV1) {
     setForm(payload.form);
-    setPackageItems(payload.packageItems.length ? payload.packageItems : [createPackageItem("discount")]);
+    setPackageItems(payload.packageItems);
     setPurchaseCosts(payload.purchaseCosts.length ? payload.purchaseCosts : defaultPurchaseCosts);
     setSelectedProjectId(payload.projectReference.selectedProjectId);
     setSelectedUnitTypeId(payload.projectReference.selectedUnitTypeId);
@@ -2863,6 +3032,7 @@ export default function RoiCalculatorPage() {
         unitPresentation: freshUnitPresentation,
         floorPlanPresentation: freshFloorPlanPresentation,
         purchaseCosts: resolvedPurchaseCosts,
+        packageItems,
       }),
     );
     proposalWindow.document.close();
@@ -2951,14 +3121,14 @@ export default function RoiCalculatorPage() {
           </section>
         ) : null}
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.72fr)]">
           <div className="space-y-5">
             <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
               <SectionHeader
                 title="Project Defaults"
                 description="Optional project data can prefill presentation fields. Manual entry remains available."
               />
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Project
@@ -2989,7 +3159,9 @@ export default function RoiCalculatorPage() {
                   <select
                     value={selectedUnitTypeId}
                     onChange={(event) => handleUnitTypeChange(event.target.value)}
-                    disabled={!selectedProjectId || isLoadingUnitTypes}
+                    disabled={
+                      !selectedProjectId || isLoadingUnitTypes || isLoadingCommercialPackages
+                    }
                     className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">
@@ -3013,6 +3185,64 @@ export default function RoiCalculatorPage() {
                   {selectedProjectId && !isLoadingUnitTypes && !unitTypesError && unitTypes.length === 0 ? (
                     <span className="mt-1 block text-xs text-zinc-500">
                       No Unit Types found for this project yet. Manual entry is still available.
+                    </span>
+                  ) : null}
+                </label>
+
+                <label className="block text-sm text-zinc-600">
+                  <span className="mb-1 block font-medium text-zinc-900">
+                    Sales Package
+                  </span>
+                  <select
+                    value={selectedCommercialPackageId}
+                    onChange={(event) => {
+                      const commercialPackage = applicableCommercialPackages.find(
+                        (item) => item.id === event.target.value,
+                      );
+
+                      if (commercialPackage) applyCommercialPackage(commercialPackage);
+                      else clearPackageConfiguration();
+                    }}
+                    disabled={
+                      !selectedUnitTypeId ||
+                      isLoadingCommercialPackages ||
+                      applicableCommercialPackages.length === 0
+                    }
+                    className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">
+                      {!selectedUnitTypeId
+                        ? "Select Unit Type first"
+                        : isLoadingCommercialPackages
+                          ? "Loading Sales Packages..."
+                          : applicableCommercialPackages.length === 0
+                            ? "No applicable package"
+                            : "Select Sales Package"}
+                    </option>
+                    {applicableCommercialPackages.map((commercialPackage) => (
+                      <option key={commercialPackage.id} value={commercialPackage.id}>
+                        {commercialPackage.package_name}
+                      </option>
+                    ))}
+                  </select>
+                  {commercialPackagesError ? (
+                    <span className="mt-1 block text-xs text-amber-700">
+                      {commercialPackagesError}. Manual package entry is still available.
+                    </span>
+                  ) : selectedUnitTypeId && applicableCommercialPackages.length > 1 ? (
+                    <span className="mt-1 block text-xs text-zinc-500">
+                      Choose the package to use for this calculation.
+                    </span>
+                  ) : selectedCommercialPackageId ? (
+                    <span className="mt-1 block text-xs text-emerald-700">
+                      Project package applied. Changes here remain local.
+                      {applicableCommercialPackages.find(
+                        (item) => item.id === selectedCommercialPackageId,
+                      )?.customer_description
+                        ? ` ${applicableCommercialPackages.find(
+                            (item) => item.id === selectedCommercialPackageId,
+                          )?.customer_description}`
+                        : ""}
                     </span>
                   ) : null}
                 </label>
@@ -3332,9 +3562,9 @@ export default function RoiCalculatorPage() {
                               return (
                                 <div
                                   key={item.id}
-                                  className="grid gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-white p-3 shadow-[0_8px_20px_rgba(23,23,23,0.03)] lg:grid-cols-[minmax(220px,1fr)_minmax(280px,1.35fr)_minmax(150px,auto)] lg:items-end"
+                                  className="grid gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-white p-3 shadow-[0_8px_20px_rgba(23,23,23,0.03)] lg:grid-cols-[minmax(0,1fr)_minmax(170px,auto)] lg:items-end"
                                 >
-                                  <label className="block text-sm text-zinc-600">
+                                  <label className="block text-sm text-zinc-600 lg:col-span-2">
                                     <span className="mb-1 block font-medium text-zinc-900">
                                       Description
                                     </span>
@@ -3372,7 +3602,7 @@ export default function RoiCalculatorPage() {
                                       </label>
                                       <label className="block text-sm text-zinc-600">
                                         <span className="mb-1 block font-medium text-zinc-900">
-                                          Value
+                                          {item.method === "fixed" ? "Value (RM)" : "Value (%)"}
                                         </span>
                                         <input
                                           inputMode="decimal"
@@ -3473,7 +3703,7 @@ export default function RoiCalculatorPage() {
                                       </p>
                                       {item.type === "discount" ? (
                                         <p className="mt-1 text-xs text-zinc-500">
-                                          {getDiscountMethodLabel(item.method)}
+                                          {formatDiscountValue(item.method, item.value)} · {getDiscountMethodLabel(item.method)}
                                         </p>
                                       ) : null}
                                     </div>
@@ -3522,9 +3752,9 @@ export default function RoiCalculatorPage() {
                   return (
                     <div
                       key={item.id}
-                      className="grid gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-3 lg:grid-cols-[minmax(260px,1fr)_minmax(180px,0.72fr)_minmax(170px,0.66fr)]"
+                      className="grid gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-3 md:grid-cols-2"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 md:col-span-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-sm font-semibold text-zinc-900">
                             {item.name}
@@ -3812,7 +4042,12 @@ export default function RoiCalculatorPage() {
                       {discount.description}
                     </p>
                     <p className="mt-1 text-sm text-zinc-500">
-                      -{formatCurrency(discount.amount)}
+                      {(() => {
+                        const source = packageItems.find((item) => item.id === discount.id);
+                        return source
+                          ? `${formatDiscountValue(source.method, source.value)} · -${formatCurrency(discount.amount)}`
+                          : `-${formatCurrency(discount.amount)}`;
+                      })()}
                     </p>
                   </div>
                 ))}

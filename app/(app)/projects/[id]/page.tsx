@@ -832,6 +832,13 @@ function formatMoney(value: number | null) {
   })}`;
 }
 
+function formatCommercialPackageValue(item: CommercialPackageItem) {
+  if (item.value === null) return null;
+  if (item.item_type !== "discount") return formatMoney(item.value);
+
+  return item.discount_method === "fixed" ? formatMoney(item.value) : `${item.value}%`;
+}
+
 function formatBoolean(value: boolean | null) {
   if (value === true) return "Yes";
   if (value === false) return "No";
@@ -3369,8 +3376,10 @@ export default function ProjectDetailPage() {
                               : "Non-Cash Benefit"}
                         </span>
                         <span className="text-[var(--falcon-muted-text)]"> · {item.description}</span>
-                        {item.value !== null ? (
-                          <span className="text-[var(--falcon-muted-text)]"> · {item.value}</span>
+                        {formatCommercialPackageValue(item) ? (
+                          <span className="text-[var(--falcon-muted-text)]">
+                            {" · "}{formatCommercialPackageValue(item)}
+                          </span>
                         ) : null}
                       </div>
                     ))}
