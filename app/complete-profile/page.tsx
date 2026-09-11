@@ -114,7 +114,18 @@ export default function CompleteProfilePage() {
         throw new Error(result.error || "Unable to complete profile");
       }
 
-      router.replace("/");
+      let handoffCreated = false;
+
+      try {
+        const handoffResponse = await fetch("/api/auth/welcome-handoff", {
+          method: "POST",
+        });
+        handoffCreated = handoffResponse.ok;
+      } catch {
+        // A handoff failure must not turn a successful activation into an error.
+      }
+
+      router.replace(handoffCreated ? "/welcome" : "/");
       router.refresh();
     } catch (error) {
       setErrorMessage(
