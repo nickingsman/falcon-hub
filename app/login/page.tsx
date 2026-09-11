@@ -87,7 +87,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthFrame eyebrow="Secure sign in" title="Falcon Hub" description="One place to run Falcon.">
+    <AuthFrame eyebrow="Secure sign in" title="Falcon Hub" description="Built for Falcon.">
         <form onSubmit={handleSubmit} className="space-y-5">
           <label className="block text-sm text-zinc-600">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Email</span>
