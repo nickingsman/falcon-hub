@@ -26,15 +26,36 @@ function normalizeDecimal(value: unknown) {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function normalizePolygonPoints(value: unknown) {
+  if (!Array.isArray(value)) return null;
+
+  return value.map((point) => {
+    const item = point && typeof point === "object" ? point as Record<string, unknown> : {};
+    return {
+      xPercent: normalizeDecimal(item.xPercent),
+      yPercent: normalizeDecimal(item.yPercent),
+    };
+  });
+}
+
 function getStackPayload(body: Record<string, unknown>): FloorPlanStackPayload {
+  const shapeType = body.shape_type === "polygon" ? "polygon" : "rectangle";
+  const polygonPoints = shapeType === "polygon" ? normalizePolygonPoints(body.polygon_points) : null;
+  const xs = polygonPoints?.map((point) => point.xPercent) ?? [];
+  const ys = polygonPoints?.map((point) => point.yPercent) ?? [];
+  const minX = xs.length ? Math.min(...xs) : normalizeDecimal(body.x_percent);
+  const minY = ys.length ? Math.min(...ys) : normalizeDecimal(body.y_percent);
+
   return {
     stack_code: normalizeNullableText(body.stack_code) || "",
     unit_type_id: normalizeNullableText(body.unit_type_id),
     facing_id: normalizeNullableText(body.facing_id),
-    x_percent: normalizeDecimal(body.x_percent),
-    y_percent: normalizeDecimal(body.y_percent),
-    width_percent: normalizeDecimal(body.width_percent),
-    height_percent: normalizeDecimal(body.height_percent),
+    x_percent: minX,
+    y_percent: minY,
+    width_percent: xs.length ? Math.max(...xs) - minX : normalizeDecimal(body.width_percent),
+    height_percent: ys.length ? Math.max(...ys) - minY : normalizeDecimal(body.height_percent),
+    shape_type: shapeType,
+    polygon_points: polygonPoints,
     sort_order: normalizeInteger(body.sort_order, 0),
   };
 }
@@ -205,6 +226,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         y_percent: payload.y_percent,
         width_percent: payload.width_percent,
         height_percent: payload.height_percent,
+        shape_type: payload.shape_type,
+        polygon_points: payload.polygon_points,
         sort_order: payload.sort_order,
       })
       .eq("id", stackId)
@@ -220,6 +243,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         y_percent,
         width_percent,
         height_percent,
+        shape_type,
+        polygon_points,
         sort_order,
         created_at,
         updated_at

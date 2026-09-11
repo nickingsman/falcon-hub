@@ -104,6 +104,8 @@ export type RoiSavedFloorPlanPresentationSnapshotV1 = {
     y_percent: number;
     width_percent: number;
     height_percent: number;
+    shape_type?: "rectangle" | "polygon";
+    polygon_points?: Array<{ xPercent: number; yPercent: number }> | null;
   };
   facing: RoiSavedFacingSnapshotV1 | null;
 };
@@ -217,6 +219,13 @@ function normalizeFloorPlanPresentationSnapshot(
       y_percent: nullableNumber(value.stack.y_percent) ?? 0,
       width_percent: nullableNumber(value.stack.width_percent) ?? 0,
       height_percent: nullableNumber(value.stack.height_percent) ?? 0,
+      shape_type: value.stack.shape_type === "polygon" ? "polygon" : "rectangle",
+      polygon_points: Array.isArray(value.stack.polygon_points)
+        ? value.stack.polygon_points.filter(isRecord).map((point) => ({
+            xPercent: nullableNumber(point.xPercent) ?? 0,
+            yPercent: nullableNumber(point.yPercent) ?? 0,
+          }))
+        : null,
     },
     facing: normalizeFacingSnapshot(value.facing),
   };

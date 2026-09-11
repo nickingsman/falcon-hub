@@ -28,6 +28,9 @@ type Project = {
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
   maintenance_fee_per_sqft: number | null;
+  contact_role: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
   notes: string | null;
   is_deleted: boolean;
 };
@@ -47,6 +50,9 @@ type ProjectForm = {
   estimated_vp_year: string;
   estimated_vp_quarter: string;
   maintenance_fee_per_sqft: string;
+  contact_role: string;
+  contact_name: string;
+  contact_phone: string;
   notes: string;
 };
 
@@ -65,6 +71,9 @@ const emptyForm: ProjectForm = {
   estimated_vp_year: "",
   estimated_vp_quarter: "",
   maintenance_fee_per_sqft: "",
+  contact_role: "",
+  contact_name: "",
+  contact_phone: "",
   notes: "",
 };
 
@@ -164,6 +173,9 @@ export default function ProjectsPage() {
       project.maintenance_fee_per_sqft !== null
         ? String(project.maintenance_fee_per_sqft)
         : "",
+    contact_role: project.contact_role || "",
+    contact_name: project.contact_name || "",
+    contact_phone: project.contact_phone || "",
     notes: project.notes || "",
   });
 
@@ -947,6 +959,31 @@ if (projectsResponse.ok) {
                       <p className="mt-2 text-xs text-zinc-500">
                         Displayed as RM per psf, including sinking fund where applicable.
                       </p>
+                    </div>
+
+                    <div className="md:col-span-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-800">Person In Charge</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <input
+                          value={form.contact_role}
+                          onChange={(event) => updateField("contact_role", event.target.value)}
+                          placeholder="Role / Label, e.g. PE"
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                        />
+                        <input
+                          value={form.contact_name}
+                          onChange={(event) => updateField("contact_name", event.target.value)}
+                          placeholder="Name"
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                        />
+                        <input
+                          type="tel"
+                          value={form.contact_phone}
+                          onChange={(event) => updateField("contact_phone", event.target.value)}
+                          placeholder="Phone"
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                        />
+                      </div>
                     </div>
 
                     <div className="md:col-span-2">

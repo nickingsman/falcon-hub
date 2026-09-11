@@ -19,6 +19,9 @@ type Project = {
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
   notes: string | null;
+  contact_role: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
 };
 
 type KnowledgeItem = {
@@ -313,6 +316,10 @@ export default function ProjectAgentViewPage() {
     { label: "Total Units", value: project.total_units },
     { label: "Estimated Completion", value: formatEstimatedCompletion(project) },
     { label: "Title Type", value: project.title_type },
+    {
+      label: "Person In Charge",
+      value: [project.contact_role, project.contact_name].filter(Boolean).join(" · ") || "—",
+    },
   ];
 
   return (
@@ -369,6 +376,11 @@ export default function ProjectAgentViewPage() {
                   <p className="mt-2 text-sm font-medium text-zinc-900">
                     {field.value || "—"}
                   </p>
+                  {field.label === "Person In Charge" && project.contact_phone ? (
+                    <a href={`tel:${project.contact_phone}`} className="mt-1 block text-sm text-zinc-600 hover:underline">
+                      {project.contact_phone}
+                    </a>
+                  ) : null}
                 </div>
               ))}
             </div>

@@ -69,6 +69,9 @@ export async function GET(
         estimated_vp_year,
         estimated_vp_quarter,
         maintenance_fee_per_sqft,
+        contact_role,
+        contact_name,
+        contact_phone,
         status,
         launch_date,
         unit_number_format,
@@ -175,6 +178,9 @@ export async function PATCH(
       launch_date: body.launch_date || null,
       unit_number_format: unitNumberFormat,
       notes: body.notes || null,
+      contact_role: body.contact_role?.trim() || null,
+      contact_name: body.contact_name?.trim() || null,
+      contact_phone: body.contact_phone?.trim() || null,
       ...(hasEstimatedVp
         ? {
             estimated_vp_year: estimatedVpYear,

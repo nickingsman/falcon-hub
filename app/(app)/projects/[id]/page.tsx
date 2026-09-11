@@ -22,6 +22,9 @@ type Project = {
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
   maintenance_fee_per_sqft: number | null;
+  contact_role: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
   notes: string | null;
 };
 
@@ -195,6 +198,8 @@ type FloorPlanStack = {
   y_percent: number;
   width_percent: number;
   height_percent: number;
+  shape_type: "rectangle" | "polygon";
+  polygon_points: PolygonPoint[] | null;
   sort_order: number | null;
   unit_type?: {
     id: string;
@@ -204,6 +209,8 @@ type FloorPlanStack = {
   } | null;
   facing?: ProjectFacing | null;
 };
+
+type PolygonPoint = { xPercent: number; yPercent: number };
 
 type ProjectFloorPlan = {
   id: string;
@@ -344,6 +351,8 @@ type StackForm = {
   y_percent: string;
   width_percent: string;
   height_percent: string;
+  shape_type: "rectangle" | "polygon";
+  polygon_points: PolygonPoint[];
   sort_order: string;
 };
 
@@ -467,6 +476,8 @@ const emptyStackForm: StackForm = {
   y_percent: "",
   width_percent: "",
   height_percent: "",
+  shape_type: "rectangle",
+  polygon_points: [],
   sort_order: "0",
 };
 
@@ -752,6 +763,8 @@ function getStackFormFromItem(item: FloorPlanStack): StackForm {
     y_percent: String(item.y_percent),
     width_percent: String(item.width_percent),
     height_percent: String(item.height_percent),
+    shape_type: item.shape_type ?? "rectangle",
+    polygon_points: item.polygon_points ?? [],
     sort_order: item.sort_order !== null ? String(item.sort_order) : "0",
   };
 }
@@ -920,6 +933,7 @@ export default function ProjectDetailPage() {
   const [stackSaving, setStackSaving] = useState(false);
   const [isDrawingStack, setIsDrawingStack] = useState(false);
   const [stackDragStart, setStackDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [draggingPolygonVertex, setDraggingPolygonVertex] = useState<number | null>(null);
   const [furnishingPackages, setFurnishingPackages] = useState<FurnishingPackage[]>([]);
   const [furnishingLoading, setFurnishingLoading] = useState(true);
   const [furnishingErrorMessage, setFurnishingErrorMessage] = useState("");
@@ -1653,13 +1667,14 @@ export default function ProjectDetailPage() {
     setStackDragStart(null);
   }
 
-  function openAddStack() {
+  function openAddStack(shapeType: "rectangle" | "polygon" = "rectangle") {
     if (!canManageProjects) return;
 
     setEditingStackId(null);
-    setStackForm(emptyStackForm);
+    setStackForm({ ...emptyStackForm, shape_type: shapeType });
     setIsDrawingStack(true);
     setStackDragStart(null);
+    setDraggingPolygonVertex(null);
     setFloorPlansErrorMessage("");
   }
 
@@ -1670,6 +1685,7 @@ export default function ProjectDetailPage() {
     setStackForm(getStackFormFromItem(stack));
     setIsDrawingStack(false);
     setStackDragStart(null);
+    setDraggingPolygonVertex(null);
     setFloorPlansErrorMessage("");
   }
 
@@ -2584,6 +2600,14 @@ export default function ProjectDetailPage() {
 
     if (!point) return;
 
+    if (stackForm.shape_type === "polygon") {
+      setStackForm((current) => ({
+        ...current,
+        polygon_points: [...current.polygon_points, { xPercent: point.x, yPercent: point.y }],
+      }));
+      return;
+    }
+
     setStackDragStart(point);
     setStackForm((current) => ({
       ...current,
@@ -2595,6 +2619,20 @@ export default function ProjectDetailPage() {
   }
 
   function handleStackPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (draggingPolygonVertex !== null) {
+      const point = getPointerPercent(event);
+      if (!point) return;
+      setStackForm((current) => ({
+        ...current,
+        polygon_points: current.polygon_points.map((vertex, index) =>
+          index === draggingPolygonVertex
+            ? { xPercent: point.x, yPercent: point.y }
+            : vertex,
+        ),
+      }));
+      return;
+    }
+
     if (!isDrawingStack || !stackDragStart) return;
 
     const point = getPointerPercent(event);
@@ -2616,6 +2654,10 @@ export default function ProjectDetailPage() {
   }
 
   function handleStackPointerUp() {
+    if (draggingPolygonVertex !== null) {
+      setDraggingPolygonVertex(null);
+      return;
+    }
     if (!isDrawingStack || !stackDragStart) return;
 
     setStackDragStart(null);
@@ -2628,6 +2670,11 @@ export default function ProjectDetailPage() {
 
     if (!stackForm.stack_code.trim()) {
       setFloorPlansErrorMessage("Stack Code is required.");
+      return;
+    }
+
+    if (stackForm.shape_type === "polygon" && stackForm.polygon_points.length < 3) {
+      setFloorPlansErrorMessage("Polygon requires at least 3 points.");
       return;
     }
 
@@ -4029,6 +4076,12 @@ export default function ProjectDetailPage() {
           : "—",
       helper: project.maintenance_fee_per_sqft !== null ? "including sinking fund" : "",
     },
+    {
+      label: "Person In Charge",
+      value: [project.contact_role, project.contact_name].filter(Boolean).join(" · ") || "—",
+      helper: project.contact_phone || "",
+      href: project.contact_phone ? `tel:${project.contact_phone}` : undefined,
+    },
   ];
 
   return (
@@ -4080,14 +4133,24 @@ export default function ProjectDetailPage() {
                   {item.label === "Status" ? (
                     <StatusBadge>{item.value}</StatusBadge>
                   ) : (
-                    <p className="text-base font-semibold leading-snug text-[var(--falcon-charcoal)]">
-                      {item.value}
-                    </p>
+                    "href" in item && item.href ? (
+                      <a href={item.href} className="text-base font-semibold leading-snug text-[var(--falcon-charcoal)] hover:underline">
+                        {item.value}
+                      </a>
+                    ) : (
+                      <p className="text-base font-semibold leading-snug text-[var(--falcon-charcoal)]">
+                        {item.value}
+                      </p>
+                    )
                   )}
                   {"helper" in item && item.helper ? (
-                    <p className="mt-1 text-xs text-[var(--falcon-muted-text)]">
-                      {item.helper}
-                    </p>
+                    "href" in item && item.href ? (
+                      <a href={item.href} className="mt-1 block text-xs text-[var(--falcon-muted-text)] hover:underline">
+                        {item.helper}
+                      </a>
+                    ) : (
+                      <p className="mt-1 text-xs text-[var(--falcon-muted-text)]">{item.helper}</p>
+                    )
                   ) : null}
                 </div>
               </div>
@@ -5195,15 +5258,16 @@ export default function ProjectDetailPage() {
               <div>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-zinc-500">
-                    Draw rectangles as percentages so mappings stay responsive.
+                    Rectangle and polygon coordinates use responsive percentages.
                   </p>
-                  <button
-                    type="button"
-                    onClick={openAddStack}
-                    className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-                  >
-                    Draw New Stack
-                  </button>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => openAddStack("rectangle")} className="rounded-xl bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800">
+                      Draw Rectangle
+                    </button>
+                    <button type="button" onClick={() => openAddStack("polygon")} className="rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50">
+                      Draw Polygon
+                    </button>
+                  </div>
                 </div>
 
                 {mappingFloorPlan.media?.signed_url ? (
@@ -5224,7 +5288,7 @@ export default function ProjectDetailPage() {
                       className="block w-full select-none"
                     />
 
-                    {mappingFloorPlan.stacks.map((stack) => (
+                    {mappingFloorPlan.stacks.filter((stack) => stack.shape_type !== "polygon").map((stack) => (
                       <button
                         key={stack.id}
                         type="button"
@@ -5242,7 +5306,24 @@ export default function ProjectDetailPage() {
                       </button>
                     ))}
 
-                    {stackForm.x_percent && stackForm.y_percent && stackForm.width_percent && stackForm.height_percent ? (
+                    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      {mappingFloorPlan.stacks.filter((stack) => stack.shape_type === "polygon" && stack.polygon_points).map((stack) => (
+                        <g key={stack.id} className="pointer-events-auto cursor-pointer" onClick={(event) => { event.stopPropagation(); openEditStack(stack); }}>
+                          <polygon points={stack.polygon_points!.map((point) => `${point.xPercent},${point.yPercent}`).join(" ")} className="fill-emerald-500/20 stroke-emerald-600" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+                          <text x={stack.x_percent + stack.width_percent / 2} y={stack.y_percent + stack.height_percent / 2} textAnchor="middle" dominantBaseline="middle" className="fill-emerald-950 text-[3px] font-semibold">{stack.stack_code}</text>
+                        </g>
+                      ))}
+                      {stackForm.shape_type === "polygon" && stackForm.polygon_points.length ? (
+                        <g>
+                          <polygon points={stackForm.polygon_points.map((point) => `${point.xPercent},${point.yPercent}`).join(" ")} className="fill-amber-400/25 stroke-amber-600" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+                          {stackForm.polygon_points.map((point, index) => (
+                            <circle key={`${index}-${point.xPercent}-${point.yPercent}`} cx={point.xPercent} cy={point.yPercent} r="1.2" className="pointer-events-auto cursor-move fill-white stroke-amber-700" strokeWidth="0.5" onPointerDown={(event) => { event.stopPropagation(); setDraggingPolygonVertex(index); }} />
+                          ))}
+                        </g>
+                      ) : null}
+                    </svg>
+
+                    {stackForm.shape_type === "rectangle" && stackForm.x_percent && stackForm.y_percent && stackForm.width_percent && stackForm.height_percent ? (
                       <div
                         className="pointer-events-none absolute border-2 border-amber-600 bg-amber-400/25"
                         style={{
@@ -5275,7 +5356,7 @@ export default function ProjectDetailPage() {
                     {editingStackId ? (
                       <button
                         type="button"
-                        onClick={openAddStack}
+                        onClick={() => openAddStack()}
                         className="text-xs font-medium text-zinc-600 hover:text-black"
                       >
                         New
@@ -5284,6 +5365,13 @@ export default function ProjectDetailPage() {
                   </div>
 
                   <div className="mt-4 space-y-4">
+                    <div className="flex rounded-xl border border-zinc-200 bg-white p-1">
+                      {(["rectangle", "polygon"] as const).map((shapeType) => (
+                        <button key={shapeType} type="button" onClick={() => openAddStack(shapeType)} className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${stackForm.shape_type === shapeType ? "bg-zinc-900 text-white" : "text-zinc-600"}`}>
+                          {shapeType === "rectangle" ? "Rectangle" : "Polygon"}
+                        </button>
+                      ))}
+                    </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-700">
                         Stack Code *
@@ -5334,7 +5422,7 @@ export default function ProjectDetailPage() {
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    {stackForm.shape_type === "rectangle" ? <div className="grid grid-cols-2 gap-3">
                       <input
                         type="number"
                         step="0.001"
@@ -5375,7 +5463,15 @@ export default function ProjectDetailPage() {
                         className="rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none transition focus:border-zinc-900"
                         placeholder="Height %"
                       />
-                    </div>
+                    </div> : (
+                      <div className="rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-600">
+                        <p>{stackForm.polygon_points.length} points added. Click the plan to add points, then drag handles to refine.</p>
+                        <div className="mt-2 flex gap-3">
+                          <button type="button" disabled={stackForm.polygon_points.length < 3} onClick={() => setIsDrawingStack(false)} className="font-semibold text-emerald-700 disabled:text-zinc-300">Finish Shape</button>
+                          <button type="button" onClick={() => setStackForm((current) => ({ ...current, polygon_points: [] }))} className="font-semibold text-red-600">Redraw</button>
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-700">

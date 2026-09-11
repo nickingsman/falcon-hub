@@ -166,6 +166,8 @@ type FloorPlanStack = {
   y_percent: number;
   width_percent: number;
   height_percent: number;
+  shape_type: "rectangle" | "polygon";
+  polygon_points: Array<{ xPercent: number; yPercent: number }> | null;
   unit_type?: {
     id: string;
     type_code: string;
@@ -198,6 +200,8 @@ type FloorPlanPresentationSnapshot = {
     y_percent: number;
     width_percent: number;
     height_percent: number;
+    shape_type: "rectangle" | "polygon";
+    polygon_points: Array<{ xPercent: number; yPercent: number }> | null;
   };
   facing: ProjectFacing | null;
 };
@@ -662,6 +666,8 @@ function getFloorPlanPresentationSnapshot(
       y_percent: stack.y_percent,
       width_percent: stack.width_percent,
       height_percent: stack.height_percent,
+      shape_type: stack.shape_type ?? "rectangle",
+      polygon_points: stack.polygon_points ?? null,
     },
     facing: stack.facing ?? null,
   };
@@ -762,7 +768,11 @@ function sanitizeFloorPlanPresentationSnapshot(
     floorTo: snapshot.floorTo,
     media: sanitizeLayoutSnapshot(snapshot.media),
     stackCode: snapshot.stackCode,
-    stack: snapshot.stack,
+    stack: {
+      ...snapshot.stack,
+      shape_type: snapshot.stack.shape_type ?? "rectangle",
+      polygon_points: snapshot.stack.polygon_points ?? null,
+    },
     facing: sanitizeFacingSnapshot(snapshot.facing),
   };
 }
@@ -779,7 +789,11 @@ function restoreFloorPlanPresentationSnapshot(
     floorTo: snapshot.floorTo,
     media: restoreLayoutSnapshot(snapshot.media),
     stackCode: snapshot.stackCode,
-    stack: snapshot.stack,
+    stack: {
+      ...snapshot.stack,
+      shape_type: snapshot.stack.shape_type ?? "rectangle",
+      polygon_points: snapshot.stack.polygon_points ?? null,
+    },
     facing: restoreFacingSnapshot(snapshot.facing),
   };
 }
@@ -1240,13 +1254,9 @@ function buildRoiProposalHtml({
             <div class="floor-plan-image-wrap">
               <img src="${escapeHtml(floorPlanPresentation.media.signed_url)}" alt="${escapeHtml(floorPlanPresentation.media.title || "Floor plan")}" onerror="this.parentElement.style.display='none'; this.parentElement.nextElementSibling.style.display='flex';" />
               <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                <rect
-                  x="${floorPlanPresentation.stack.x_percent}"
-                  y="${floorPlanPresentation.stack.y_percent}"
-                  width="${floorPlanPresentation.stack.width_percent}"
-                  height="${floorPlanPresentation.stack.height_percent}"
-                  rx="0.8"
-                ></rect>
+                ${floorPlanPresentation.stack.shape_type === "polygon" && floorPlanPresentation.stack.polygon_points
+                  ? `<polygon points="${floorPlanPresentation.stack.polygon_points.map((point) => `${point.xPercent},${point.yPercent}`).join(" ")}"></polygon>`
+                  : `<rect x="${floorPlanPresentation.stack.x_percent}" y="${floorPlanPresentation.stack.y_percent}" width="${floorPlanPresentation.stack.width_percent}" height="${floorPlanPresentation.stack.height_percent}" rx="0.8"></rect>`}
                 ${
                   unitLabelPosition
                     ? `<rect

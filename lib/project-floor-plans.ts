@@ -31,10 +31,14 @@ export type FloorPlanStackRow = {
   y_percent: number;
   width_percent: number;
   height_percent: number;
+  shape_type: "rectangle" | "polygon";
+  polygon_points: PolygonPoint[] | null;
   sort_order: number | null;
   created_at: string;
   updated_at: string;
 };
+
+export type PolygonPoint = { xPercent: number; yPercent: number };
 
 export type UnitTypeSummaryRow = {
   id: string;
@@ -51,6 +55,8 @@ export type FloorPlanStackPayload = {
   y_percent: number;
   width_percent: number;
   height_percent: number;
+  shape_type: "rectangle" | "polygon";
+  polygon_points: PolygonPoint[] | null;
   sort_order: number;
 };
 
@@ -61,6 +67,25 @@ export function stackCodesConflict(left: string, right: string) {
 export { normalizeStackCodeForMatching, normalizeTowerCode };
 
 export function validateCoordinatePayload(payload: FloorPlanStackPayload) {
+  if (payload.shape_type === "polygon") {
+    if (!payload.polygon_points || payload.polygon_points.length < 3) {
+      return "Polygon requires at least 3 points";
+    }
+
+    if (
+      payload.polygon_points.some(
+        (point) =>
+          !Number.isFinite(point.xPercent) ||
+          !Number.isFinite(point.yPercent) ||
+          point.xPercent < 0 ||
+          point.xPercent > 100 ||
+          point.yPercent < 0 ||
+          point.yPercent > 100,
+      )
+    ) {
+      return "Polygon points must remain within the floor plan";
+    }
+  }
   const values = [
     payload.x_percent,
     payload.y_percent,
@@ -150,6 +175,8 @@ export async function getFloorPlanStacks(
       y_percent,
       width_percent,
       height_percent,
+      shape_type,
+      polygon_points,
       sort_order,
       created_at,
       updated_at
