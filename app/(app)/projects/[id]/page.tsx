@@ -945,6 +945,34 @@ export default function ProjectDetailPage() {
   const [editingKnowledgeItemId, setEditingKnowledgeItemId] = useState<string | null>(null);
   const [knowledgeForm, setKnowledgeForm] = useState<KnowledgeForm>(emptyKnowledgeForm);
   const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+  const [duplicateMessage, setDuplicateMessage] = useState("");
+
+  async function handleDuplicate(
+    kind: "unit_type" | "sales_package" | "furnishing_package" | "floor_plan" | "facing",
+    recordId: string,
+  ) {
+    if (!canManageProjects || !projectId) return;
+
+    setDuplicateMessage("");
+    const response = await fetch(`/api/projects/${projectId}/duplicate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, recordId }),
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      setDuplicateMessage(result.error || "Unable to duplicate record.");
+      return;
+    }
+
+    if (kind === "unit_type") await fetchUnitTypes(projectId);
+    if (kind === "sales_package") await fetchCommercialPackages(projectId, canManageProjects);
+    if (kind === "furnishing_package") await fetchFurnishingPackages(projectId);
+    if (kind === "floor_plan") await fetchFloorPlans(projectId);
+    if (kind === "facing") await fetchFacings(projectId);
+    setDuplicateMessage("Copy created successfully.");
+  }
 
   async function fetchKnowledgeBase(id: string) {
     try {
@@ -3023,6 +3051,9 @@ export default function ProjectDetailPage() {
                           >
                             Edit
                           </button>
+                          <button type="button" onClick={() => void handleDuplicate("unit_type", unitType.id)} className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black">
+                            Duplicate
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteUnitType(unitType)}
@@ -3352,6 +3383,9 @@ export default function ProjectDetailPage() {
                         >
                           Edit
                         </button>
+                        <button type="button" onClick={() => void handleDuplicate("sales_package", commercialPackage.id)} className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black">
+                          Duplicate
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteCommercialPackage(commercialPackage)}
@@ -3483,6 +3517,9 @@ export default function ProjectDetailPage() {
                             className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
                           >
                             Edit
+                          </button>
+                          <button type="button" onClick={() => void handleDuplicate("floor_plan", floorPlan.id)} className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black">
+                            Duplicate
                           </button>
                           <button
                             type="button"
@@ -3618,6 +3655,9 @@ export default function ProjectDetailPage() {
                           >
                             Edit
                           </button>
+                          <button type="button" onClick={() => void handleDuplicate("facing", facing.id)} className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black">
+                            Duplicate
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteFacing(facing)}
@@ -3728,6 +3768,9 @@ export default function ProjectDetailPage() {
                           className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black"
                         >
                           Edit
+                        </button>
+                        <button type="button" onClick={() => void handleDuplicate("furnishing_package", item.id)} className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-black">
+                          Duplicate
                         </button>
                         <button
                           type="button"
@@ -4121,6 +4164,12 @@ export default function ProjectDetailPage() {
           }
           className="mb-5"
         />
+
+        {duplicateMessage ? (
+          <p className="mb-4 rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-zinc-700">
+            {duplicateMessage}
+          </p>
+        ) : null}
 
         <section className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-surface)] shadow-[0_12px_32px_rgba(23,23,23,0.04)]">
           <div className="grid gap-px overflow-hidden rounded-[24px] bg-[var(--falcon-soft-border)] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
