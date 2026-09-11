@@ -2,6 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  findProjectContactOption,
+  getProjectContactOptionValue,
+  getSelectedProjectContactValue,
+  PROJECT_CONTACT_OPTIONS,
+} from "@/lib/project-contacts";
 import { useAppPermissions } from "../components/AppPermissionProvider";
 import {
   Button,
@@ -963,26 +969,51 @@ if (projectsResponse.ok) {
 
                     <div className="md:col-span-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                       <p className="text-sm font-semibold text-zinc-800">Person In Charge</p>
-                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <input
                           value={form.contact_role}
                           onChange={(event) => updateField("contact_role", event.target.value)}
                           placeholder="Role / Label, e.g. PE"
                           className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
                         />
-                        <input
-                          value={form.contact_name}
-                          onChange={(event) => updateField("contact_name", event.target.value)}
-                          placeholder="Name"
+                        <select
+                          value={getSelectedProjectContactValue(form.contact_name, form.contact_phone)}
+                          onChange={(event) => {
+                            if (!event.target.value) {
+                              setForm((current) => ({
+                                ...current,
+                                contact_name: "",
+                                contact_phone: "",
+                              }));
+                              return;
+                            }
+
+                            const contact = findProjectContactOption(event.target.value);
+                            if (!contact) return;
+
+                            setForm((current) => ({
+                              ...current,
+                              contact_name: contact.name,
+                              contact_phone: contact.phone,
+                            }));
+                          }}
                           className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                        />
-                        <input
-                          type="tel"
-                          value={form.contact_phone}
-                          onChange={(event) => updateField("contact_phone", event.target.value)}
-                          placeholder="Phone"
-                          className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                        />
+                        >
+                          <option value="">No Person In Charge</option>
+                          {getSelectedProjectContactValue(form.contact_name, form.contact_phone) === "custom" ? (
+                            <option value="custom" disabled>
+                              Custom / Existing Contact — {form.contact_name || "Unnamed"} · {form.contact_phone || "No phone"}
+                            </option>
+                          ) : null}
+                          {PROJECT_CONTACT_OPTIONS.map((contact) => (
+                            <option
+                              key={contact.name}
+                              value={getProjectContactOptionValue(contact.name, contact.phone)}
+                            >
+                              {contact.name} — {contact.phone}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
