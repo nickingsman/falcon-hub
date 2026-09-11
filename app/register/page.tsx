@@ -4,6 +4,9 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import AuthFrame from "@/app/components/AuthFrame";
+
+const inputClass = "w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-4 py-3.5 text-[15px] text-zinc-950 outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 focus:border-[var(--falcon-gold-dark)] focus:bg-white focus:ring-4 focus:ring-[#b8924a]/10";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -65,21 +68,10 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f7f3] px-6 py-12 text-zinc-900">
-      <div className="w-full max-w-md rounded-[28px] border border-zinc-200 bg-white p-8 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-zinc-900 text-sm font-semibold text-white">
-            FH
-          </div>
-          <div>
-            <p className="text-lg font-semibold">Falcon Hub</p>
-            <p className="text-sm text-zinc-500">Create your account</p>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+    <AuthFrame eyebrow="Invited registration" title="Join Falcon Hub" description="Registration is available by Falcon invitation only.">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <label className="block text-sm text-zinc-600">
-            <span className="mb-2 block font-medium text-zinc-900">Invite Code</span>
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Invite Code</span>
             <input
               type="text"
               required
@@ -87,51 +79,55 @@ export default function RegisterPage() {
               autoComplete="off"
               value={inviteCode}
               onChange={(event) => setInviteCode(event.target.value.toUpperCase())}
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 font-mono uppercase tracking-wide outline-none transition focus:border-zinc-900"
+              className={`${inputClass} font-mono uppercase tracking-wide`}
               placeholder="FALCON-XXXX-XXXX-XXXX-XXXX"
             />
           </label>
 
           <label className="block text-sm text-zinc-600">
-            <span className="mb-2 block font-medium text-zinc-900">Email</span>
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Email</span>
             <input
               type="email"
               required
+              autoComplete="email"
+              inputMode="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
+              className={inputClass}
               placeholder="name@company.com"
             />
           </label>
 
           <label className="block text-sm text-zinc-600">
-            <span className="mb-2 block font-medium text-zinc-900">Password</span>
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Password</span>
             <input
               type="password"
               required
               minLength={8}
+              autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
+              className={inputClass}
               placeholder="At least 8 characters"
             />
           </label>
 
           <label className="block text-sm text-zinc-600">
-            <span className="mb-2 block font-medium text-zinc-900">Confirm Password</span>
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Confirm Password</span>
             <input
               type="password"
               required
               minLength={8}
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
+              className={inputClass}
               placeholder="Repeat your password"
             />
           </label>
 
           {errorMessage ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div role="alert" aria-live="polite" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-700">
               {errorMessage}
             </div>
           ) : null}
@@ -139,19 +135,18 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-full bg-zinc-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-70"
+            className="min-h-12 w-full rounded-full bg-zinc-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_8px_22px_rgba(24,24,27,0.16)] transition hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/15 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? "Creating account..." : "Register"}
           </button>
 
-          <p className="text-center text-sm text-zinc-500">
+          <p className="border-t border-[var(--falcon-soft-border)] pt-5 text-center text-sm text-zinc-500">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-zinc-900 hover:underline">
+            <Link href="/login" className="font-semibold text-[var(--falcon-gold-dark)] underline-offset-4 hover:underline focus:outline-none focus:ring-2 focus:ring-[var(--falcon-gold)]/40">
               Sign in
             </Link>
           </p>
         </form>
-      </div>
-    </main>
+    </AuthFrame>
   );
 }
