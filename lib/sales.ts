@@ -57,6 +57,14 @@ export type SalesCase = {
   unitHistory?: Array<{ previousUnitNo: string; newUnitNo: string; changedAt: string }>;
 };
 
+export type SalesTopCloser = {
+  memberId: string;
+  memberName: string;
+  position: string | null;
+  closingFigure: number;
+  creditedGdv: number;
+};
+
 export function getSalesDateRange(period: string | null, from?: string | null, to?: string | null) {
   if (period === "last_week") return getMalaysiaLastWeekRange();
   if (period === "this_month") return getMalaysiaThisMonthRange();
@@ -75,6 +83,35 @@ export function isLeaderboardExcluded(position: string | null) {
   return normalized === "project manager" || normalized === "managing partner";
 }
 
+export function calculateSalesTopClosers(
+  cases: Array<Pick<SalesCase, "nettPrice" | "contributors">>,
+) {
+  const memberMap = new Map<string, SalesTopCloser>();
+
+  for (const salesCase of cases) {
+    for (const contributor of salesCase.contributors) {
+      const current = memberMap.get(contributor.memberId) ?? {
+        memberId: contributor.memberId,
+        memberName: contributor.memberName,
+        position: contributor.position,
+        closingFigure: 0,
+        creditedGdv: 0,
+      };
+      current.closingFigure += contributor.portion / 100;
+      current.creditedGdv += salesCase.nettPrice * contributor.portion / 100;
+      memberMap.set(contributor.memberId, current);
+    }
+  }
+
+  return [...memberMap.values()].sort(
+    (a, b) =>
+      b.closingFigure - a.closingFigure ||
+      b.creditedGdv - a.creditedGdv ||
+      a.memberName.localeCompare(b.memberName) ||
+      a.memberId.localeCompare(b.memberId),
+  );
+}
+
 export function calculateSalesAnalytics(cases: SalesCase[], from: string, to: string) {
   const bookingCases = cases.filter((item) => item.bookingDate >= from && item.bookingDate <= to);
   const convertedCases = cases.filter(
@@ -86,21 +123,9 @@ export function calculateSalesAnalytics(cases: SalesCase[], from: string, to: st
   const convertedCreditedGdv = convertedCases.reduce((sum, item) => sum + item.nettPrice * item.falconPortion / 100, 0);
   const cancelledCases = bookingCases.filter((item) => item.status === "cancelled");
 
-  const memberMap = new Map<string, { memberId: string; memberName: string; position: string | null; closingFigure: number; creditedGdv: number }>();
-  for (const salesCase of bookingCases) {
-    for (const contributor of salesCase.contributors) {
-      const current = memberMap.get(contributor.memberId) ?? {
-        memberId: contributor.memberId, memberName: contributor.memberName, position: contributor.position,
-        closingFigure: 0, creditedGdv: 0,
-      };
-      current.closingFigure += contributor.portion / 100;
-      current.creditedGdv += salesCase.nettPrice * contributor.portion / 100;
-      memberMap.set(contributor.memberId, current);
-    }
-  }
-  const topClosers = [...memberMap.values()]
-    .filter((item) => !isLeaderboardExcluded(item.position))
-    .sort((a, b) => b.closingFigure - a.closingFigure || b.creditedGdv - a.creditedGdv);
+  const topClosers = calculateSalesTopClosers(bookingCases).filter(
+    (item) => !isLeaderboardExcluded(item.position),
+  );
 
   const projectMap = new Map<string, { projectId: string; projectName: string; closingFigure: number; creditedGdv: number; convertFigure: number }>();
   for (const salesCase of bookingCases) {

@@ -135,6 +135,43 @@ type LeaderDashboardResponse = {
 };
 
 type LoadStatus = "loading" | "ready" | "error";
+type SalesRankingPeriod = "this_week" | "this_month" | "this_year";
+
+type SalesRankingResponse = {
+  period: SalesRankingPeriod;
+  range: {
+    from: string;
+    to: string;
+  };
+  timezone: "Asia/Kuala_Lumpur";
+  topClosers: Array<{
+    memberId: string;
+    memberName: string;
+    closingFigure: number;
+    creditedGdv: number;
+  }>;
+};
+
+const salesRankingPeriodOptions: Array<{
+  value: SalesRankingPeriod;
+  label: string;
+}> = [
+  { value: "this_week", label: "This Week" },
+  { value: "this_month", label: "This Month" },
+  { value: "this_year", label: "This Year" },
+];
+
+const closingNumber = new Intl.NumberFormat("en-MY", {
+  maximumFractionDigits: 4,
+});
+
+const compactRinggit = new Intl.NumberFormat("en-MY", {
+  style: "currency",
+  currency: "MYR",
+  currencyDisplay: "narrowSymbol",
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
 
 const quickTools = [
   {
@@ -361,6 +398,91 @@ function TeamMetricGrid({
         />
       ))}
     </div>
+  );
+}
+
+function SalesTopClosersCard({
+  ranking,
+  period,
+  status,
+  onPeriodChange,
+}: {
+  ranking: SalesRankingResponse | null;
+  period: SalesRankingPeriod;
+  status: LoadStatus;
+  onPeriodChange: (period: SalesRankingPeriod) => void;
+}) {
+  return (
+    <section>
+      <div className={`${sectionHeaderClass} flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between`}>
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">Top Closers</p>
+          <p className="text-sm text-zinc-500">Closing and credited GDV</p>
+        </div>
+        <div className="grid grid-cols-3 gap-1 rounded-full border border-zinc-200 bg-zinc-100 p-1">
+          {salesRankingPeriodOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onPeriodChange(option.value)}
+              aria-pressed={period === option.value}
+              className={`min-h-9 rounded-full px-3 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-1 ${
+                period === option.value
+                  ? "bg-white text-zinc-950 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-900"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <article className={dashboardCardClass}>
+        <div className="grid grid-cols-[2rem_minmax(0,1fr)_auto_auto] gap-3 border-b border-zinc-100 pb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+          <span>Rank</span>
+          <span>Member</span>
+          <span className="text-right">Closing</span>
+          <span className="text-right">Credited GDV</span>
+        </div>
+
+        {status === "loading" ? (
+          <p className="py-6 text-center text-sm text-zinc-500">Loading Sales ranking...</p>
+        ) : null}
+
+        {status === "error" ? (
+          <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Sales ranking is unavailable right now.
+          </p>
+        ) : null}
+
+        {status === "ready" && !ranking?.topClosers.length ? (
+          <p className="py-6 text-center text-sm text-zinc-500">
+            No sales recorded for this period.
+          </p>
+        ) : null}
+
+        {status === "ready" && ranking?.topClosers.length ? (
+          <div className="divide-y divide-zinc-100">
+            {ranking.topClosers.map((closer, index) => (
+              <div
+                key={closer.memberId}
+                className="grid grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-3 py-3 text-sm"
+              >
+                <span className="font-semibold text-[#8F6E35]">{index + 1}</span>
+                <span className="truncate font-semibold text-zinc-950">{closer.memberName}</span>
+                <span className="text-right font-semibold tabular-nums text-zinc-900">
+                  {closingNumber.format(closer.closingFigure)}
+                </span>
+                <span className="min-w-[5rem] text-right font-medium tabular-nums text-zinc-600">
+                  {compactRinggit.format(closer.creditedGdv)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </article>
+    </section>
   );
 }
 
@@ -936,6 +1058,12 @@ export default function Home() {
   const [leaderDashboard, setLeaderDashboard] = useState<LeaderDashboardResponse | null>(null);
   const [leaderStatus, setLeaderStatus] = useState<LoadStatus>("ready");
   const [leaderErrorMessage, setLeaderErrorMessage] = useState("");
+  const [salesRankingPeriod, setSalesRankingPeriod] =
+    useState<SalesRankingPeriod>("this_week");
+  const [salesRanking, setSalesRanking] =
+    useState<SalesRankingResponse | null>(null);
+  const [salesRankingStatus, setSalesRankingStatus] =
+    useState<LoadStatus>("loading");
   const [activeView, setActiveView] = useState<DashboardView>("my");
   const canViewLeaderDashboard =
     role === "super_admin" || role === "admin" || role === "leader";
@@ -1074,6 +1202,49 @@ export default function Home() {
 
     return () => window.clearTimeout(timeoutId);
   }, [loadLeaderDashboard, visibleView]);
+
+  useEffect(() => {
+    if (visibleView !== "my") {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    async function loadSalesRanking() {
+      setSalesRankingStatus("loading");
+
+      try {
+        const response = await fetch(
+          `/api/dashboard/sales-ranking?period=${salesRankingPeriod}`,
+          {
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+        const payload = (await response.json()) as
+          | SalesRankingResponse
+          | { error?: string };
+
+        if (!response.ok) {
+          throw new Error("Unable to load Sales ranking");
+        }
+
+        setSalesRanking(payload as SalesRankingResponse);
+        setSalesRankingStatus("ready");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setSalesRanking(null);
+        setSalesRankingStatus("error");
+      }
+    }
+
+    void loadSalesRanking();
+
+    return () => controller.abort();
+  }, [salesRankingPeriod, visibleView]);
 
   const greeting = useMemo(() => getMalaysiaGreeting(), []);
 
@@ -1281,6 +1452,13 @@ export default function Home() {
             </article>
           </div>
         </section>
+
+        <SalesTopClosersCard
+          ranking={salesRanking}
+          period={salesRankingPeriod}
+          status={salesRankingStatus}
+          onPeriodChange={setSalesRankingPeriod}
+        />
 
         <UpcomingEventsCard upcomingEvents={dashboard.upcomingEvents} today={dashboard.date} />
 

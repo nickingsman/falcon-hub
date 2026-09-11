@@ -31,6 +31,17 @@ export function getFalconPositionRank(value: string | null | undefined) {
   return falconPositionRankings.find((position) => position.value === value)?.rank ?? null;
 }
 
+const dashboardSalesLeaderboardExcludedFromRank =
+  getFalconPositionRank("Project Manager") ?? Number.NEGATIVE_INFINITY;
+
+export function isDashboardSalesLeaderboardPosition(
+  value: string | null | undefined,
+) {
+  const rank = getFalconPositionRank(value);
+
+  return rank !== null && rank < dashboardSalesLeaderboardExcludedFromRank;
+}
+
 export function compareFalconPositions(
   first: string | null | undefined,
   second: string | null | undefined,
