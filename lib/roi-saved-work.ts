@@ -117,6 +117,8 @@ export type RoiSavedWorkPayloadV1 = {
   projectReference: {
     selectedProjectId: string;
     selectedUnitTypeId: string;
+    selectedCommercialPackageId: string;
+    selectedFurnishingPackageId: string;
     manualFloorPlanId: string;
     manualStackId: string;
   };
@@ -295,6 +297,8 @@ export function validateRoiSavedWorkPayload(value: unknown):
       projectReference: {
         selectedProjectId: stringValue(projectReference.selectedProjectId),
         selectedUnitTypeId: stringValue(projectReference.selectedUnitTypeId),
+        selectedCommercialPackageId: stringValue(projectReference.selectedCommercialPackageId),
+        selectedFurnishingPackageId: stringValue(projectReference.selectedFurnishingPackageId),
         manualFloorPlanId: stringValue(projectReference.manualFloorPlanId),
         manualStackId: stringValue(projectReference.manualStackId),
       },

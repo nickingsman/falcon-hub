@@ -846,17 +846,6 @@ function formatBoolean(value: boolean | null) {
   return "Unknown";
 }
 
-function getUnitTypeSummary(unitType: ProjectUnitType) {
-  return [
-    unitType.type_code,
-    unitType.display_configuration,
-    unitType.type_name,
-    unitType.size_sqft ? `${unitType.size_sqft} sqft` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -1369,15 +1358,6 @@ export default function ProjectDetailPage() {
     setCommercialPackageForm((current) => ({
       ...current,
       [field]: value,
-    }));
-  }
-
-  function toggleCommercialPackageUnitType(unitTypeId: string) {
-    setCommercialPackageForm((current) => ({
-      ...current,
-      unit_type_ids: current.unit_type_ids.includes(unitTypeId)
-        ? current.unit_type_ids.filter((id) => id !== unitTypeId)
-        : [...current.unit_type_ids, unitTypeId],
     }));
   }
 
@@ -2395,14 +2375,6 @@ export default function ProjectDetailPage() {
       return;
     }
 
-    if (
-      commercialPackageForm.applies_to_all_unit_types === "selected" &&
-      commercialPackageForm.unit_type_ids.length === 0
-    ) {
-      setCommercialPackagesErrorMessage("Select at least one Unit Type.");
-      return;
-    }
-
     try {
       setCommercialPackageSaving(true);
       setCommercialPackagesErrorMessage("");
@@ -3066,16 +3038,6 @@ export default function ProjectDetailPage() {
                           {formatBoolean(unitType.is_dual_key)}
                         </p>
                       </div>
-                      <div className="sm:col-span-2">
-                        <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
-                          Furnishing
-                        </p>
-                        <p className="mt-1 inline-flex max-w-full rounded-full bg-[var(--falcon-warm-background)] px-3 py-1 text-sm font-semibold text-zinc-800">
-                          <span className="truncate">
-                            {unitType.furnishing_package?.package_name || "—"}
-                          </span>
-                        </p>
-                      </div>
                     </div>
 
                     <div className="mt-4 rounded-[18px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-4">
@@ -3322,9 +3284,7 @@ export default function ProjectDetailPage() {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
-                        {commercialPackage.applies_to_all_unit_types
-                          ? "All Unit Types"
-                          : `${commercialPackage.applicable_unit_types.length} Selected Unit Types`}
+                        Project Sales Package
                       </p>
                       <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
                         {commercialPackage.package_name}
@@ -3395,11 +3355,6 @@ export default function ProjectDetailPage() {
                           {cost.amount_override !== null ? ` · ${formatMoney(cost.amount_override)}` : ""}
                         </div>
                       ))}
-                    {commercialPackage.furnishing_package ? (
-                      <div className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm font-medium text-zinc-700">
-                        Furnishing · {commercialPackage.furnishing_package.package_name}
-                      </div>
-                    ) : null}
                   </div>
                 </article>
               ))}
@@ -4336,24 +4291,6 @@ export default function ProjectDetailPage() {
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-zinc-700">
-                      Furnishing Package
-                    </label>
-                    <select
-                      value={unitTypeForm.furnishing_package_id}
-                      onChange={(event) => updateUnitTypeField("furnishing_package_id", event.target.value)}
-                      className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                    >
-                      <option value="">No package assigned</option>
-                      {furnishingPackages.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.package_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-700">
                       Sort Order
                     </label>
                     <input
@@ -4758,23 +4695,6 @@ export default function ProjectDetailPage() {
                         className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
                       />
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-zinc-700">
-                        Furnishing Package
-                      </label>
-                      <select
-                        value={commercialPackageForm.furnishing_package_id}
-                        onChange={(event) => updateCommercialPackageField("furnishing_package_id", event.target.value)}
-                        className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                      >
-                        <option value="">None</option>
-                        {furnishingPackages.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.package_name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
                     <div className="md:col-span-2">
                       <label className="mb-2 block text-sm font-medium text-zinc-700">
                         Customer Description
@@ -4798,64 +4718,6 @@ export default function ProjectDetailPage() {
                       />
                     </div>
                   </div>
-                </section>
-
-                <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                    Applicable Unit Types
-                  </h3>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
-                      <input
-                        type="radio"
-                        checked={commercialPackageForm.applies_to_all_unit_types === "all"}
-                        onChange={() =>
-                          setCommercialPackageForm((current) => ({
-                            ...current,
-                            applies_to_all_unit_types: "all",
-                            unit_type_ids: [],
-                          }))
-                        }
-                      />
-                      All Unit Types
-                    </label>
-                    <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
-                      <input
-                        type="radio"
-                        checked={commercialPackageForm.applies_to_all_unit_types === "selected"}
-                        onChange={() =>
-                          setCommercialPackageForm((current) => ({
-                            ...current,
-                            applies_to_all_unit_types: "selected",
-                          }))
-                        }
-                      />
-                      Selected Unit Types
-                    </label>
-                  </div>
-
-                  {commercialPackageForm.applies_to_all_unit_types === "selected" ? (
-                    <div className="mt-4 grid gap-2 md:grid-cols-2">
-                      {unitTypes.map((unitType) => (
-                        <label
-                          key={unitType.id}
-                          className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={commercialPackageForm.unit_type_ids.includes(unitType.id)}
-                            onChange={() => toggleCommercialPackageUnitType(unitType.id)}
-                            className="mt-1"
-                          />
-                          <span>{getUnitTypeSummary(unitType)}</span>
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-zinc-500">
-                      This package dynamically applies to all active Unit Types in this project.
-                    </p>
-                  )}
                 </section>
 
                 <section className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">

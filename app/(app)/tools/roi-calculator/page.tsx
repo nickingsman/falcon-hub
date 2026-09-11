@@ -114,8 +114,6 @@ type CommercialPackage = {
   customer_description: string | null;
   valid_from: string | null;
   valid_until: string | null;
-  applies_to_all_unit_types: boolean;
-  applicable_unit_types: Array<{ id: string }>;
   items: CommercialPackageItem[];
   purchase_costs: CommercialPackagePurchaseCost[];
 };
@@ -145,6 +143,8 @@ type FurnishingPackage = {
   description: string | null;
   items: FurnishingItem[];
 };
+
+type ProjectFurnishingPackage = FurnishingPackage & { id: string };
 
 type ProjectUnitType = {
   id: string;
@@ -545,13 +545,6 @@ function formatDiscountValue(method: DiscountMethod, value: string) {
   return method === "fixed" ? formatCurrency(amount) : `${amount}%`;
 }
 
-function isPackageApplicable(commercialPackage: CommercialPackage, unitTypeId: string) {
-  return (
-    commercialPackage.applies_to_all_unit_types ||
-    commercialPackage.applicable_unit_types.some((unitType) => unitType.id === unitTypeId)
-  );
-}
-
 function packageItemsFromCommercialPackage(
   commercialPackage: CommercialPackage,
 ): EditablePackageItem[] {
@@ -639,7 +632,7 @@ function getUnitPresentationSnapshot(
     sizeSqft: unitType.size_sqft,
     carpark: formatCarpark(unitType),
     layout: unitType.layout,
-    furnishingPackage: unitType.furnishing_package,
+    furnishingPackage: null,
   };
 }
 
@@ -1099,6 +1092,7 @@ function buildRoiProposalHtml({
   floorPlanPresentation,
   purchaseCosts,
   packageItems,
+  salesPackageName,
 }: {
   form: CalculatorForm;
   numericInput: {
@@ -1114,6 +1108,7 @@ function buildRoiProposalHtml({
   floorPlanPresentation: FloorPlanPresentationSnapshot | null;
   purchaseCosts: ResolvedPurchaseCostItem[];
   packageItems: EditablePackageItem[];
+  salesPackageName: string;
 }) {
   const projectName = form.projectName.trim() || "Unit Calculation Proposal";
   const renderUnitPresentation = shouldRenderUnitPresentation(
@@ -1177,6 +1172,7 @@ function buildRoiProposalHtml({
     )
     .join("");
   const purchasePackageRows = `
+    ${salesPackageName ? purchaseLine("Sales Package", salesPackageName) : ""}
     ${purchaseLine("SPA Price", formatCurrency(result.spaPrice))}
     ${discountRows}
     <div class="calculation-divider"></div>
@@ -2279,6 +2275,10 @@ export default function RoiCalculatorPage() {
   const [commercialPackagesError, setCommercialPackagesError] = useState("");
   const [isLoadingCommercialPackages, setIsLoadingCommercialPackages] = useState(false);
   const [selectedCommercialPackageId, setSelectedCommercialPackageId] = useState("");
+  const [furnishingPackages, setFurnishingPackages] = useState<ProjectFurnishingPackage[]>([]);
+  const [furnishingPackagesError, setFurnishingPackagesError] = useState("");
+  const [isLoadingFurnishingPackages, setIsLoadingFurnishingPackages] = useState(false);
+  const [selectedFurnishingPackageId, setSelectedFurnishingPackageId] = useState("");
   const [unitPresentation, setUnitPresentation] = useState<UnitPresentationSnapshot | null>(null);
   const [floorPlans, setFloorPlans] = useState<ProjectFloorPlan[]>([]);
   const [floorPlansError, setFloorPlansError] = useState("");
@@ -2556,6 +2556,29 @@ export default function RoiCalculatorPage() {
     }
   }
 
+  async function loadFurnishingPackages(projectId: string) {
+    setIsLoadingFurnishingPackages(true);
+    setFurnishingPackagesError("");
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/furnishing-packages`);
+
+      if (!response.ok) throw new Error("Unable to load Furnished Packages");
+
+      const data = (await response.json()) as ProjectFurnishingPackage[];
+      setFurnishingPackages(data);
+      return data;
+    } catch (error) {
+      setFurnishingPackages([]);
+      setFurnishingPackagesError(
+        error instanceof Error ? error.message : "Unable to load Furnished Packages",
+      );
+      return [];
+    } finally {
+      setIsLoadingFurnishingPackages(false);
+    }
+  }
+
   function clearPackageConfiguration() {
     setSelectedCommercialPackageId("");
     setPackageItems([]);
@@ -2570,19 +2593,11 @@ export default function RoiCalculatorPage() {
     updateField("packageValidUntil", commercialPackage.valid_until ?? "");
   }
 
-  function resolveCommercialPackageForUnitType(
-    unitTypeId: string,
-    packages = commercialPackages,
-  ) {
-    const applicablePackages = packages.filter((commercialPackage) =>
-      isPackageApplicable(commercialPackage, unitTypeId),
+  function applyFurnishingPackage(furnishingPackage: ProjectFurnishingPackage | null) {
+    setSelectedFurnishingPackageId(furnishingPackage?.id ?? "");
+    setUnitPresentation((current) =>
+      current ? { ...current, furnishingPackage } : current,
     );
-
-    if (applicablePackages.length === 1) {
-      applyCommercialPackage(applicablePackages[0]);
-    } else {
-      clearPackageConfiguration();
-    }
   }
 
   function handleProjectChange(projectId: string) {
@@ -2598,6 +2613,9 @@ export default function RoiCalculatorPage() {
     setSavedFloorPlanPresentation(null);
     setCommercialPackages([]);
     setCommercialPackagesError("");
+    setFurnishingPackages([]);
+    setFurnishingPackagesError("");
+    setSelectedFurnishingPackageId("");
     clearPackageConfiguration();
 
     const selectedProject = projects.find((project) => project.id === projectId);
@@ -2617,6 +2635,7 @@ export default function RoiCalculatorPage() {
       void loadUnitTypes(projectId);
       void loadFloorPlans(projectId);
       void loadCommercialPackages(projectId);
+      void loadFurnishingPackages(projectId);
     }
   }
 
@@ -2624,7 +2643,11 @@ export default function RoiCalculatorPage() {
     const selectedProjectName =
       projects.find((project) => project.id === selectedProjectId)?.project_name ||
       form.projectName;
-    const snapshot = getUnitPresentationSnapshot(selectedProjectName, unitType);
+    const snapshot = {
+      ...getUnitPresentationSnapshot(selectedProjectName, unitType),
+      furnishingPackage:
+        furnishingPackages.find((item) => item.id === selectedFurnishingPackageId) ?? null,
+    };
 
     setForm((current) => ({
       ...current,
@@ -2648,7 +2671,6 @@ export default function RoiCalculatorPage() {
     setManualFloorPlanId("");
     setManualStackId("");
     setSavedFloorPlanPresentation(null);
-    resolveCommercialPackageForUnitType(unitTypeId);
 
     const selectedUnitType = unitTypes.find((unitType) => unitType.id === unitTypeId);
 
@@ -2660,17 +2682,10 @@ export default function RoiCalculatorPage() {
     applyUnitTypeSnapshot(selectedUnitType);
   }
 
-  const applicableCommercialPackages = useMemo(
-    () =>
-      selectedUnitTypeId
-        ? commercialPackages.filter((commercialPackage) =>
-            isPackageApplicable(commercialPackage, selectedUnitTypeId),
-          )
-        : [],
-    [commercialPackages, selectedUnitTypeId],
-  );
-
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const selectedCommercialPackage = commercialPackages.find(
+    (commercialPackage) => commercialPackage.id === selectedCommercialPackageId,
+  );
   const unitNumberFormat = getProjectUnitNumberFormat(selectedProject);
   const detectionState = useMemo(
     () =>
@@ -2833,6 +2848,8 @@ export default function RoiCalculatorPage() {
       projectReference: {
         selectedProjectId,
         selectedUnitTypeId,
+        selectedCommercialPackageId,
+        selectedFurnishingPackageId,
         manualFloorPlanId,
         manualStackId,
       },
@@ -2918,6 +2935,8 @@ export default function RoiCalculatorPage() {
     setPurchaseCosts(payload.purchaseCosts.length ? payload.purchaseCosts : defaultPurchaseCosts);
     setSelectedProjectId(payload.projectReference.selectedProjectId);
     setSelectedUnitTypeId(payload.projectReference.selectedUnitTypeId);
+    setSelectedCommercialPackageId(payload.projectReference.selectedCommercialPackageId);
+    setSelectedFurnishingPackageId(payload.projectReference.selectedFurnishingPackageId);
     setManualFloorPlanId(payload.projectReference.manualFloorPlanId);
     setManualStackId(payload.projectReference.manualStackId);
     setUnitPresentation(restoreUnitPresentationSnapshot(payload.snapshots.unitPresentation));
@@ -2936,11 +2955,26 @@ export default function RoiCalculatorPage() {
 
     if (!projectId) return;
 
-    const [freshUnitTypes] = await Promise.all([
+    const [freshUnitTypes, , freshCommercialPackages, freshFurnishingPackages] = await Promise.all([
       loadUnitTypes(projectId),
       loadFloorPlans(projectId),
+      loadCommercialPackages(projectId),
+      loadFurnishingPackages(projectId),
     ]);
     const freshUnitType = freshUnitTypes.find((unitType) => unitType.id === unitTypeId);
+    const savedCommercialPackageExists = freshCommercialPackages.some(
+      (item) => item.id === payload.projectReference.selectedCommercialPackageId,
+    );
+    const savedFurnishingPackageExists = freshFurnishingPackages.some(
+      (item) => item.id === payload.projectReference.selectedFurnishingPackageId,
+    );
+
+    if (
+      (payload.projectReference.selectedCommercialPackageId && !savedCommercialPackageExists) ||
+      (payload.projectReference.selectedFurnishingPackageId && !savedFurnishingPackageExists)
+    ) {
+      setReopenWarning("One or more saved package references are no longer available. Saved calculation values were preserved.");
+    }
 
     if (freshUnitType && payload.snapshots.unitPresentation) {
       setUnitPresentation(
@@ -3033,6 +3067,7 @@ export default function RoiCalculatorPage() {
         floorPlanPresentation: freshFloorPlanPresentation,
         purchaseCosts: resolvedPurchaseCosts,
         packageItems,
+        salesPackageName: selectedCommercialPackage?.package_name ?? "",
       }),
     );
     proposalWindow.document.close();
@@ -3128,7 +3163,7 @@ export default function RoiCalculatorPage() {
                 title="Project Defaults"
                 description="Optional project data can prefill presentation fields. Manual entry remains available."
               />
-              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Project
@@ -3160,7 +3195,7 @@ export default function RoiCalculatorPage() {
                     value={selectedUnitTypeId}
                     onChange={(event) => handleUnitTypeChange(event.target.value)}
                     disabled={
-                      !selectedProjectId || isLoadingUnitTypes || isLoadingCommercialPackages
+                      !selectedProjectId || isLoadingUnitTypes
                     }
                     className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -3196,7 +3231,7 @@ export default function RoiCalculatorPage() {
                   <select
                     value={selectedCommercialPackageId}
                     onChange={(event) => {
-                      const commercialPackage = applicableCommercialPackages.find(
+                      const commercialPackage = commercialPackages.find(
                         (item) => item.id === event.target.value,
                       );
 
@@ -3206,7 +3241,7 @@ export default function RoiCalculatorPage() {
                     disabled={
                       !selectedUnitTypeId ||
                       isLoadingCommercialPackages ||
-                      applicableCommercialPackages.length === 0
+                      commercialPackages.length === 0
                     }
                     className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -3215,11 +3250,9 @@ export default function RoiCalculatorPage() {
                         ? "Select Unit Type first"
                         : isLoadingCommercialPackages
                           ? "Loading Sales Packages..."
-                          : applicableCommercialPackages.length === 0
-                            ? "No applicable package"
-                            : "Select Sales Package"}
+                          : "No sales package"}
                     </option>
-                    {applicableCommercialPackages.map((commercialPackage) => (
+                    {commercialPackages.map((commercialPackage) => (
                       <option key={commercialPackage.id} value={commercialPackage.id}>
                         {commercialPackage.package_name}
                       </option>
@@ -3229,20 +3262,54 @@ export default function RoiCalculatorPage() {
                     <span className="mt-1 block text-xs text-amber-700">
                       {commercialPackagesError}. Manual package entry is still available.
                     </span>
-                  ) : selectedUnitTypeId && applicableCommercialPackages.length > 1 ? (
-                    <span className="mt-1 block text-xs text-zinc-500">
-                      Choose the package to use for this calculation.
-                    </span>
                   ) : selectedCommercialPackageId ? (
                     <span className="mt-1 block text-xs text-emerald-700">
                       Project package applied. Changes here remain local.
-                      {applicableCommercialPackages.find(
+                      {commercialPackages.find(
                         (item) => item.id === selectedCommercialPackageId,
                       )?.customer_description
-                        ? ` ${applicableCommercialPackages.find(
+                        ? ` ${commercialPackages.find(
                             (item) => item.id === selectedCommercialPackageId,
                           )?.customer_description}`
                         : ""}
+                    </span>
+                  ) : null}
+                </label>
+
+                <label className="block text-sm text-zinc-600">
+                  <span className="mb-1 block font-medium text-zinc-900">
+                    Furnished Package
+                  </span>
+                  <select
+                    value={selectedFurnishingPackageId}
+                    onChange={(event) =>
+                      applyFurnishingPackage(
+                        furnishingPackages.find((item) => item.id === event.target.value) ?? null,
+                      )
+                    }
+                    disabled={!selectedUnitTypeId || isLoadingFurnishingPackages}
+                    className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="">
+                      {!selectedUnitTypeId
+                        ? "Select Unit Type first"
+                        : isLoadingFurnishingPackages
+                        ? "Loading Furnished Packages..."
+                        : "No furnished package"}
+                    </option>
+                    {furnishingPackages.map((furnishingPackage) => (
+                      <option key={furnishingPackage.id} value={furnishingPackage.id}>
+                        {furnishingPackage.package_name}
+                      </option>
+                    ))}
+                  </select>
+                  {furnishingPackagesError ? (
+                    <span className="mt-1 block text-xs text-amber-700">
+                      {furnishingPackagesError}.
+                    </span>
+                  ) : selectedFurnishingPackageId ? (
+                    <span className="mt-1 block text-xs text-emerald-700">
+                      Furnishing details applied to this customer calculation.
                     </span>
                   ) : null}
                 </label>
@@ -4006,6 +4073,16 @@ export default function RoiCalculatorPage() {
                 <p className="mt-1 text-xs text-zinc-500">
                   Calculation Date: {form.calculationDate || "-"}
                 </p>
+                {selectedCommercialPackage ? (
+                  <p className="mt-2 text-xs font-medium text-zinc-700">
+                    Sales Package: {selectedCommercialPackage.package_name}
+                  </p>
+                ) : null}
+                {unitPresentation?.furnishingPackage ? (
+                  <p className="mt-1 text-xs font-medium text-zinc-700">
+                    Furnished Package: {unitPresentation.furnishingPackage.package_name}
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-4">
