@@ -20,6 +20,15 @@ type DashboardUpcomingEvent = {
   audienceLabel: string;
 };
 
+type DashboardUpcomingEvents = {
+  from: string;
+  to: string;
+  timezone: "Asia/Kuala_Lumpur";
+  totalVisible: number;
+  hasMore: boolean;
+  events: DashboardUpcomingEvent[];
+};
+
 type CustomerDashboardBirthday = {
   customerName: string;
   project: string | null;
@@ -70,14 +79,6 @@ type AgentDashboardResponse = {
     turnUpAppt: number;
     unitClosed: number;
   };
-  upcomingEvents: {
-    from: string;
-    to: string;
-    timezone: "Asia/Kuala_Lumpur";
-    totalVisible: number;
-    hasMore: boolean;
-    events: DashboardUpcomingEvent[];
-  };
   teamPresence: {
     totalCheckedIn: number;
     groups: {
@@ -125,7 +126,7 @@ type LeaderDashboardResponse = {
       count: number;
     }[];
   };
-  upcomingEvents: AgentDashboardResponse["upcomingEvents"];
+  upcomingEvents: DashboardUpcomingEvents;
   teamWeek: {
     recordedDsiDays: number;
     appointmentMade: number;
@@ -736,9 +737,11 @@ function AttentionList({
 function UpcomingEventsCard({
   upcomingEvents,
   today,
+  status,
 }: {
-  upcomingEvents: AgentDashboardResponse["upcomingEvents"];
+  upcomingEvents: DashboardUpcomingEvents | null;
   today: string;
+  status: LoadStatus;
 }) {
   return (
     <section>
@@ -756,11 +759,25 @@ function UpcomingEventsCard({
       </div>
 
       <article className={dashboardCardClass}>
-        {upcomingEvents.events.length === 0 ? (
+        {status === "loading" ? (
+          <p className={`${quietPanelClass} px-4 py-3 text-sm text-zinc-500`}>
+            Loading upcoming events...
+          </p>
+        ) : null}
+
+        {status === "error" ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Upcoming Calendar events are unavailable right now.
+          </p>
+        ) : null}
+
+        {status === "ready" && upcomingEvents?.events.length === 0 ? (
           <p className={`${quietPanelClass} px-4 py-3 text-sm text-zinc-500`}>
             No upcoming events in the next 7 days.
           </p>
-        ) : (
+        ) : null}
+
+        {status === "ready" && upcomingEvents?.events.length ? (
           <div className="divide-y divide-zinc-100">
             {upcomingEvents.events.map((event) => {
               const isToday = event.eventDate === today;
@@ -802,9 +819,9 @@ function UpcomingEventsCard({
               );
             })}
           </div>
-        )}
+        ) : null}
 
-        {upcomingEvents.hasMore ? (
+        {status === "ready" && upcomingEvents?.hasMore ? (
           <p className="mt-4 border-t border-zinc-100 pt-3 text-sm text-zinc-500">
             {upcomingEvents.totalVisible - upcomingEvents.events.length} more event
             {upcomingEvents.totalVisible - upcomingEvents.events.length === 1 ? "" : "s"} in this window.
@@ -1064,6 +1081,10 @@ export default function Home() {
     useState<SalesRankingResponse | null>(null);
   const [salesRankingStatus, setSalesRankingStatus] =
     useState<LoadStatus>("loading");
+  const [upcomingEvents, setUpcomingEvents] =
+    useState<DashboardUpcomingEvents | null>(null);
+  const [upcomingEventsStatus, setUpcomingEventsStatus] =
+    useState<LoadStatus>("loading");
   const [activeView, setActiveView] = useState<DashboardView>("my");
   const canViewLeaderDashboard =
     role === "super_admin" || role === "admin" || role === "leader";
@@ -1151,6 +1172,29 @@ export default function Home() {
     }
   }, []);
 
+  const loadUpcomingEvents = useCallback(async () => {
+    setUpcomingEventsStatus("loading");
+
+    try {
+      const response = await fetch("/api/dashboard/calendar", {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as
+        | DashboardUpcomingEvents
+        | { error?: string };
+
+      if (!response.ok) {
+        throw new Error("Unable to load upcoming Calendar events");
+      }
+
+      setUpcomingEvents(payload as DashboardUpcomingEvents);
+      setUpcomingEventsStatus("ready");
+    } catch {
+      setUpcomingEvents(null);
+      setUpcomingEventsStatus("error");
+    }
+  }, []);
+
   const loadLeaderDashboard = useCallback(async () => {
     setLeaderStatus("loading");
     setLeaderErrorMessage("");
@@ -1186,10 +1230,11 @@ export default function Home() {
       void loadDashboard();
       void loadCustomerBirthdays();
       void loadMemberBirthdays();
+      void loadUpcomingEvents();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [loadCustomerBirthdays, loadDashboard, loadMemberBirthdays]);
+  }, [loadCustomerBirthdays, loadDashboard, loadMemberBirthdays, loadUpcomingEvents]);
 
   useEffect(() => {
     if (visibleView !== "team") {
@@ -1460,7 +1505,11 @@ export default function Home() {
           onPeriodChange={setSalesRankingPeriod}
         />
 
-        <UpcomingEventsCard upcomingEvents={dashboard.upcomingEvents} today={dashboard.date} />
+        <UpcomingEventsCard
+          upcomingEvents={upcomingEvents}
+          today={dashboard.date}
+          status={upcomingEventsStatus}
+        />
 
         <BirthdaySection
           customerBirthdays={customerBirthdays}

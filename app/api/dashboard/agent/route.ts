@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getDashboardUpcomingCalendarEvents } from "@/app/api/calendar/calendar-service";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import {
   getMalaysiaThisWeekRange,
@@ -107,7 +106,6 @@ export async function GET() {
       { data: todayDsi, error: todayDsiError },
       { data: weekDsi, error: weekDsiError },
       { data: presenceRows, error: presenceError },
-      upcomingEvents,
     ] = await Promise.all([
       supabase
         .from("attendance_sessions")
@@ -140,7 +138,6 @@ export async function GET() {
         .is("checked_out_at", null)
         .eq("users.is_deleted", false)
         .eq("users.status", "Active"),
-      getDashboardUpcomingCalendarEvents(),
     ]);
 
     if (attendanceError) {
@@ -207,7 +204,6 @@ export async function GET() {
         turnUpAppt: weekRows.reduce((total, row) => total + row.turn_up_appt, 0),
         unitClosed: weekRows.reduce((total, row) => total + row.unit_closed, 0),
       },
-      upcomingEvents,
       teamPresence: {
         totalCheckedIn: safePresenceRows.length,
         groups: groupPresence(safePresenceRows),

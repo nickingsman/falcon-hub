@@ -51,7 +51,7 @@ type CalendarEventRow = {
   updated_by: string | null;
 };
 
-type CalendarAuthContext = {
+export type CalendarAuthContext = {
   authUserId: string;
   profile: UserProfile;
   member: CalendarMemberRow;
@@ -166,7 +166,7 @@ function isCalendarAudienceType(value: unknown): value is CalendarAudienceType {
   return typeof value === "string" && calendarAudienceTypes.includes(value as CalendarAudienceType);
 }
 
-async function requireCalendarAccess(): Promise<
+export async function requireCalendarAccess(): Promise<
   | { authorized: true; context: CalendarAuthContext }
   | { authorized: false; response: NextResponse }
 > {
@@ -747,29 +747,40 @@ export async function deleteCalendarEvent(eventId: string) {
   }
 }
 
+export async function getDashboardUpcomingCalendarEventsForContext(
+  context: CalendarAuthContext,
+  limit = 5,
+) {
+  const from = getMalaysiaTodayDateString();
+  const to = addCalendarDays(from, 7);
+  const supabase = createSupabaseAdminClient();
+  const [members, { data, error }] = await Promise.all([
+    getActiveCalendarMembers(supabase),
+    supabase.from("calendar_events").select(calendarSelectFields)
+      .eq("is_deleted", false).gte("event_date", from).lte("event_date", to)
+      .order("event_date", { ascending: true }).order("start_time", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: true }),
+  ]);
+  if (error) throw error;
+  const visibleEvents = ((data ?? []) as CalendarEventRow[])
+    .filter((event) => canReadCalendarEvent(context, event, members))
+    .sort((a, b) => {
+      if (a.event_date !== b.event_date) return a.event_date.localeCompare(b.event_date);
+      if (a.is_all_day !== b.is_all_day) return a.is_all_day ? -1 : 1;
+      if ((a.start_time ?? "") !== (b.start_time ?? "")) return (a.start_time ?? "").localeCompare(b.start_time ?? "");
+      return a.created_at.localeCompare(b.created_at);
+    });
+  return { from, to, timezone: "Asia/Kuala_Lumpur" as const, totalVisible: visibleEvents.length,
+    hasMore: visibleEvents.length > limit, events: visibleEvents.slice(0, limit).map(toDashboardUpcomingCalendarEvent) };
+}
+
 export async function getDashboardUpcomingCalendarEvents(limit = 5) {
   const from = getMalaysiaTodayDateString();
   const to = addCalendarDays(from, 7);
   try {
     const authorization = await requireCalendarAccess();
     if (!authorization.authorized) throw new Error("Calendar dashboard access requires an active linked user");
-    const supabase = createSupabaseAdminClient();
-    const members = await getActiveCalendarMembers(supabase);
-    const { data, error } = await supabase.from("calendar_events").select(calendarSelectFields)
-      .eq("is_deleted", false).gte("event_date", from).lte("event_date", to)
-      .order("event_date", { ascending: true }).order("start_time", { ascending: true, nullsFirst: true })
-      .order("created_at", { ascending: true });
-    if (error) throw error;
-    const visibleEvents = ((data ?? []) as CalendarEventRow[])
-      .filter((event) => canReadCalendarEvent(authorization.context, event, members))
-      .sort((a, b) => {
-        if (a.event_date !== b.event_date) return a.event_date.localeCompare(b.event_date);
-        if (a.is_all_day !== b.is_all_day) return a.is_all_day ? -1 : 1;
-        if ((a.start_time ?? "") !== (b.start_time ?? "")) return (a.start_time ?? "").localeCompare(b.start_time ?? "");
-        return a.created_at.localeCompare(b.created_at);
-      });
-    return { from, to, timezone: "Asia/Kuala_Lumpur" as const, totalVisible: visibleEvents.length,
-      hasMore: visibleEvents.length > limit, events: visibleEvents.slice(0, limit).map(toDashboardUpcomingCalendarEvent) };
+    return await getDashboardUpcomingCalendarEventsForContext(authorization.context, limit);
   } catch (error) {
     console.error("Dashboard Upcoming Events unavailable:", error);
     return { from, to, timezone: "Asia/Kuala_Lumpur" as const, totalVisible: 0, hasMore: false, events: [] };
