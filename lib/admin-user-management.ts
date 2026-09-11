@@ -4,6 +4,7 @@ export const adminUserManagementMemberFields = `
   id,
   member_code,
   full_name,
+  display_name,
   chinese_name,
   email,
   position,
@@ -26,6 +27,7 @@ export type AdminManagedMember = {
   id: string;
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   chinese_name: string | null;
   email: string | null;
   position: string | null;

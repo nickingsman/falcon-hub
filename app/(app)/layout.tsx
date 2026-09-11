@@ -12,6 +12,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
 import AppSidebar from "./components/AppSidebar";
 import MobileBottomNav from "./components/MobileBottomNav";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 export const dynamic = "force-dynamic";
 
@@ -50,14 +51,11 @@ export default async function AppLayout({
     const supabase = createSupabaseAdminClient();
     const { data: member } = await supabase
       .from("users")
-      .select("full_name, member_code, phone")
+      .select("full_name, display_name, member_code, phone")
       .eq("id", profile.member_id)
       .maybeSingle();
 
-    memberDisplayName =
-      typeof member?.full_name === "string" && member.full_name.trim()
-        ? member.full_name.trim()
-        : null;
+    memberDisplayName = member ? getMemberDisplayName(member) : null;
     memberCode = parseMemberCode(member?.member_code);
     memberPhone =
       typeof member?.phone === "string" && member.phone.trim()

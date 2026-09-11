@@ -16,6 +16,7 @@ type ManagedMember = {
   id: string;
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   chinese_name: string | null;
   email: string | null;
   position: string | null;
@@ -49,6 +50,7 @@ type LeaderOption = {
   id: string;
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
   employment_type: string | null;
 };
@@ -62,6 +64,7 @@ type UserManagementResponse = {
 
 type EditForm = {
   role: UserRole;
+  display_name: string;
   position: string;
   employment_type: string;
   leader_id: string;
@@ -163,6 +166,7 @@ export default function UserManagementPage() {
       account.role,
       account.accountStatus,
       account.member?.full_name,
+      account.member?.display_name,
       formatMemberCode(account.member?.member_code),
       account.member?.position,
       account.member?.employment_type,
@@ -177,6 +181,7 @@ export default function UserManagementPage() {
   const filteredMembersWithoutAccounts = membersWithoutAccounts.filter(({ member }) => {
     const searchable = [
       member.full_name,
+      member.display_name,
       formatMemberCode(member.member_code),
       member.email,
       member.position,
@@ -202,6 +207,7 @@ export default function UserManagementPage() {
     setSelectedAccount(account);
     setFormState({
       role: account.role,
+      display_name: account.member?.display_name || "",
       position: account.member?.position || memberPositionOptions[0],
       employment_type: account.member?.employment_type || employmentTypeOptions[0],
       leader_id: account.member?.leader_id || "",
@@ -253,6 +259,7 @@ export default function UserManagementPage() {
             selectedAccount.actionPermissions.canEditMemberProfile
             ? {
                 position: formState.position,
+                display_name: formState.display_name,
                 employment_type: formState.employment_type,
                 leader_id: formState.leader_id || null,
                 join_date: formState.join_date || null,
@@ -422,6 +429,11 @@ export default function UserManagementPage() {
                           <p className="font-medium text-zinc-950">
                             {getMemberName(account.member)}
                           </p>
+                          {account.member?.display_name ? (
+                            <p className="mt-1 text-xs text-zinc-500">
+                              Full Name: {account.member.full_name || "-"}
+                            </p>
+                          ) : null}
                           <p className="mt-1 text-xs text-zinc-500">
                             {account.member?.chinese_name || "-"}
                           </p>
@@ -504,6 +516,11 @@ export default function UserManagementPage() {
                           <p className="font-medium text-zinc-950">
                             {formatMemberDisplayName(member)}
                           </p>
+                          {member.display_name ? (
+                            <p className="mt-1 text-xs text-zinc-500">
+                              Full Name: {member.full_name || "-"}
+                            </p>
+                          ) : null}
                           <p className="mt-1 text-xs text-zinc-500">
                             {member.chinese_name || "-"}
                           </p>
@@ -599,6 +616,18 @@ export default function UserManagementPage() {
                     </p>
 
                     <div className="mt-4 grid gap-5 md:grid-cols-2">
+                      <label className="block text-sm text-zinc-600">
+                        <span className="mb-2 block font-medium text-zinc-900">
+                          Display Name
+                        </span>
+                        <input
+                          maxLength={80}
+                          value={formState.display_name}
+                          onChange={(event) => updateFormField("display_name", event.target.value)}
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
+                          placeholder="Uses Full Name when blank"
+                        />
+                      </label>
                       <label className="block text-sm text-zinc-600">
                         <span className="mb-2 block font-medium text-zinc-900">
                           Position

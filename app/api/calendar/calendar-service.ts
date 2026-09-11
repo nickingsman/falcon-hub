@@ -9,6 +9,7 @@ import {
 import { getScopedHierarchyMembers, type HierarchyMember } from "@/lib/member-hierarchy";
 import { canManageMembers } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 const calendarCategories = [
   "company_meeting",
@@ -27,6 +28,7 @@ type CalendarAudienceType = (typeof calendarAudienceTypes)[number];
 
 type CalendarMemberRow = HierarchyMember & {
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
 };
 
@@ -185,7 +187,7 @@ async function requireCalendarAccess(): Promise<
   const supabase = createSupabaseAdminClient();
   const { data: member, error: memberError } = await supabase
     .from("users")
-    .select("id, full_name, position, leader_id, status")
+    .select("id, full_name, display_name, position, leader_id, status")
     .eq("id", authContext.profile.member_id)
     .eq("is_deleted", false)
     .eq("status", "Active")
@@ -214,7 +216,7 @@ async function getActiveCalendarMembers(
 ) {
   const { data, error } = await supabase
     .from("users")
-    .select("id, full_name, position, leader_id, status")
+    .select("id, full_name, display_name, position, leader_id, status")
     .eq("is_deleted", false)
     .eq("status", "Active")
     .order("full_name", { ascending: true });
@@ -449,7 +451,7 @@ function toCalendarEventResponse(
     targetTeam: targetTeamMember
       ? {
           memberId: targetTeamMember.id,
-          memberName: targetTeamMember.full_name || "Unnamed member",
+          memberName: getMemberDisplayName(targetTeamMember),
           position: targetTeamMember.position,
         }
       : null,

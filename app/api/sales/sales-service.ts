@@ -3,13 +3,14 @@ import { canManageSales, requireSalesApiAccess } from "@/lib/permissions";
 import { calculateSalesAnalytics, getSalesDateRange, normalizeSalesUnit, parseSalesPercentage, salesStatuses, type SalesCase, type SalesStatus } from "@/lib/sales";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { isValidDateString } from "@/lib/malaysia-date";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const salesCaseSelect = `
   id, project_id, unit_no, booking_date, nett_price, falcon_portion, status,
   spa_signed_date, cancel_date, remark, created_at, updated_at,
   project:projects!sales_cases_project_id_fkey(project_name),
-  contributors:sales_case_contributors(member_id, portion, member:users!sales_case_contributors_member_id_fkey(full_name, position)),
+  contributors:sales_case_contributors(member_id, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name, position)),
   status_history:sales_case_status_history(status, effective_date, created_at, event_type, note),
   unit_history:sales_unit_history(previous_unit_no, new_unit_no, changed_at)
 `;
@@ -24,7 +25,7 @@ type SalesCaseDbRow = {
   id: string; project_id: string; unit_no: string; booking_date: string; nett_price: number | string;
   falcon_portion: number | string; status: SalesStatus; spa_signed_date: string | null; cancel_date: string | null;
   remark: string | null; project: { project_name: string | null } | null;
-  contributors: Array<{ member_id: string; portion: number | string; member: { full_name: string | null; position: string | null } | null }> | null;
+  contributors: Array<{ member_id: string; portion: number | string; member: { full_name: string | null; display_name: string | null; position: string | null } | null }> | null;
   status_history: Array<{ status: SalesStatus; effective_date: string | null; created_at: string; event_type: "lifecycle" | "spa_correction"; note: string | null }> | null;
   unit_history: Array<{ previous_unit_no: string; new_unit_no: string; changed_at: string }> | null;
 };
@@ -85,7 +86,7 @@ function toSalesCase(row: SalesCaseDbRow): SalesCase {
     unitNo: row.unit_no, bookingDate: row.booking_date, nettPrice: Number(row.nett_price),
     falconPortion: Number(row.falcon_portion), status: row.status, spaSignedDate: row.spa_signed_date,
     cancelDate: row.cancel_date, remark: row.remark,
-    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id, memberName: item.member?.full_name ?? "Unknown member", position: item.member?.position ?? null, portion: Number(item.portion) })),
+    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id, memberName: item.member ? getMemberDisplayName(item.member) : "Unknown member", position: item.member?.position ?? null, portion: Number(item.portion) })),
     statusHistory: (row.status_history ?? []).map((item) => ({ status: item.status, effectiveDate: item.effective_date, createdAt: item.created_at, eventType: item.event_type, note: item.note })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     unitHistory: (row.unit_history ?? []).map((item) => ({ previousUnitNo: item.previous_unit_no, newUnitNo: item.new_unit_no, changedAt: item.changed_at })).sort((a, b) => b.changedAt.localeCompare(a.changedAt)),
   };
@@ -122,7 +123,7 @@ export async function listSales(request: Request) {
 
     const [{ data: projects, error: projectsError }, { data: members, error: membersError }] = await Promise.all([
       supabase.from("projects").select("id, project_name").eq("is_deleted", false).order("project_name"),
-      supabase.from("users").select("id, full_name, position").eq("is_deleted", false).eq("status", "Active").order("full_name"),
+      supabase.from("users").select("id, full_name, display_name, position").eq("is_deleted", false).eq("status", "Active").order("full_name"),
     ]);
     if (projectsError) throw projectsError;
     if (membersError) throw membersError;

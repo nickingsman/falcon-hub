@@ -8,6 +8,7 @@ import {
 } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 function getMetadataValue(user: User, key: string) {
   const value = user.user_metadata?.[key];
@@ -61,14 +62,11 @@ export async function GET() {
       const adminSupabase = createSupabaseAdminClient();
       const { data: member } = await adminSupabase
         .from("users")
-        .select("full_name, member_code, phone")
+        .select("full_name, display_name, member_code, phone")
         .eq("id", profile.member_id)
         .maybeSingle();
 
-      memberDisplayName =
-        typeof member?.full_name === "string" && member.full_name.trim()
-          ? member.full_name.trim()
-          : null;
+      memberDisplayName = member ? getMemberDisplayName(member) : null;
       memberCode = parseMemberCode(member?.member_code);
       memberPhone =
         typeof member?.phone === "string" && member.phone.trim()

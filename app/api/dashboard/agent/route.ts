@@ -6,10 +6,12 @@ import {
   getMalaysiaTodayDateString,
 } from "@/lib/malaysia-date";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 type MemberRow = {
   id: string;
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
 };
 
@@ -86,7 +88,7 @@ export async function GET() {
     const thisWeek = getMalaysiaThisWeekRange();
     const { data: member, error: memberError } = await supabase
       .from("users")
-      .select("id, full_name, position")
+      .select("id, full_name, display_name, position")
       .eq("id", authContext.profile.member_id)
       .eq("is_deleted", false)
       .eq("status", "Active")
@@ -166,7 +168,7 @@ export async function GET() {
       date: today,
       timezone: "Asia/Kuala_Lumpur",
       user: {
-        memberName: (member as MemberRow).full_name || "Unnamed member",
+        memberName: getMemberDisplayName(member as MemberRow),
         position: (member as MemberRow).position,
       },
       attendance: attendanceRow

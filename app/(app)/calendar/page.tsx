@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getMalaysiaTodayDateString } from "@/lib/malaysia-date";
 import { useAppPermissions } from "../components/AppPermissionProvider";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 type CalendarCategory =
   | "company_meeting"
@@ -45,7 +46,8 @@ type CalendarEventsResponse = {
 
 type CalendarMember = {
   id: string;
-  full_name: string | null;
+    full_name: string | null;
+    display_name: string | null;
   position: string | null;
   status: string | null;
 };
@@ -577,7 +579,7 @@ function CreateEventModal({
                   </option>
                   {members.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.full_name || "Unnamed member"}
+                      {getMemberDisplayName(member)}
                       {member.position ? ` · ${member.position}` : ""}
                     </option>
                   ))}

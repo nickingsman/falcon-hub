@@ -35,6 +35,17 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const memberProfile = body.memberProfile;
+    const displayName = typeof memberProfile?.display_name === "string"
+      ? memberProfile.display_name.trim() || null
+      : memberProfile?.display_name === null || memberProfile?.display_name === undefined
+        ? null
+        : undefined;
+    if (displayName === undefined || (displayName && displayName.length > 80)) {
+      return NextResponse.json(
+        { error: "Display Name must be 80 characters or fewer" },
+        { status: 400 },
+      );
+    }
     if (
       memberProfile &&
       (typeof memberProfile.position !== "string" || !isMemberPosition(memberProfile.position))
@@ -46,10 +57,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
 
     const supabase = await createSupabaseSsrClient();
-    const { error } = await supabase.rpc("manage_falconhub_user", {
+    const { error } = await supabase.rpc("manage_falconhub_user_with_display_name", {
       p_target_auth_user_id: authUserId,
       p_role: typeof body.role === "string" ? body.role : null,
       p_update_member_profile: Boolean(memberProfile),
+      p_display_name: displayName,
       p_position: memberProfile?.position ?? null,
       p_employment_type: memberProfile?.employment_type ?? null,
       p_leader_id: memberProfile?.leader_id || null,
@@ -79,7 +91,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     return NextResponse.json(
       {
-        error: message,
+        error: status < 500 ? message : "Unable to update user",
       },
       { status }
     );

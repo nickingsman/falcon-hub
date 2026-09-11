@@ -18,6 +18,7 @@ import {
 } from "@/lib/location-matching";
 import { canManageMembers } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 type AttendanceAuthContext = {
   authUserId: string;
@@ -69,10 +70,12 @@ type PresenceSessionRow = {
   users:
     | {
         full_name: string | null;
+        display_name: string | null;
         position: string | null;
       }
     | {
         full_name: string | null;
+        display_name: string | null;
         position: string | null;
       }[]
     | null;
@@ -80,6 +83,7 @@ type PresenceSessionRow = {
 
 type AttendanceHistoryMemberRow = HierarchyMember & {
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
 };
 
@@ -126,6 +130,7 @@ const attendanceHistorySelectFields = `
   location_updated_at,
   users!inner(
     full_name,
+    display_name,
     position
   )
 `;
@@ -333,10 +338,12 @@ function firstJoinedAttendanceMember(
     users:
       | {
           full_name: string | null;
+          display_name: string | null;
           position: string | null;
         }
       | {
           full_name: string | null;
+          display_name: string | null;
           position: string | null;
         }[]
       | null;
@@ -381,7 +388,7 @@ async function getAuthorizedAttendanceMembers(
 ) {
   const { data, error } = await supabase
     .from("users")
-    .select("id, full_name, position, leader_id, status")
+    .select("id, full_name, display_name, position, leader_id, status")
     .eq("is_deleted", false)
     .eq("status", "Active")
     .order("full_name", { ascending: true });
@@ -402,7 +409,7 @@ async function getAuthorizedAttendanceMembers(
 function toAuthorizedMemberResponse(member: AttendanceHistoryMemberRow) {
   return {
     memberId: member.id,
-    memberName: member.full_name || "Unnamed member",
+    memberName: getMemberDisplayName(member),
     position: member.position,
   };
 }
@@ -429,10 +436,12 @@ function toAttendanceHistorySession(
     users:
       | {
           full_name: string | null;
+          display_name: string | null;
           position: string | null;
         }
       | {
           full_name: string | null;
+          display_name: string | null;
           position: string | null;
         }[]
       | null;
@@ -443,7 +452,7 @@ function toAttendanceHistorySession(
   return {
     sessionId: row.id,
     memberId: row.member_id,
-    memberName: member?.full_name || "Unnamed member",
+    memberName: member ? getMemberDisplayName(member) : "Unnamed member",
     position: member?.position ?? null,
     attendanceDate: row.attendance_date,
     status: getSessionStatus(row),
@@ -734,6 +743,7 @@ export async function getTeamPresence() {
         location_updated_at,
         users!inner(
           full_name,
+          display_name,
           position
         )
       `)
@@ -755,7 +765,7 @@ export async function getTeamPresence() {
         return {
           sessionId: row.id,
           memberId: row.member_id,
-          memberName: member?.full_name || "Unnamed member",
+          memberName: member ? getMemberDisplayName(member) : "Unnamed member",
           position: member?.position ?? null,
           locationName: row.current_location_name,
           locationSource: row.current_location_source,
@@ -837,10 +847,12 @@ export async function getAttendanceHistory(request: Request) {
             users:
               | {
                   full_name: string | null;
+                  display_name: string | null;
                   position: string | null;
                 }
               | {
                   full_name: string | null;
+                  display_name: string | null;
                   position: string | null;
                 }[]
               | null;
@@ -900,7 +912,7 @@ export async function getAttendanceSessionAudit(sessionId: string) {
     return NextResponse.json({
       sessionId: row.id,
       memberId: row.member_id,
-      memberName: member?.full_name || "Unnamed member",
+      memberName: member ? getMemberDisplayName(member) : "Unnamed member",
       position: member?.position ?? null,
       attendanceDate: row.attendance_date,
       status: getSessionStatus(row),

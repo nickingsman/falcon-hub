@@ -16,6 +16,7 @@ import { getAuthenticatedUserProfile, type UserProfile } from "@/lib/auth";
 import { getScopedHierarchyMembers, type HierarchyMember } from "@/lib/member-hierarchy";
 import { hasRole } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
 
@@ -70,6 +71,7 @@ type AcademyProgressRow = {
 
 type AcademyTeamMemberRow = HierarchyMember & {
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
 };
 
@@ -308,7 +310,7 @@ async function requireAcademyTeamProgressAccess(): Promise<
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("users")
-    .select("id, full_name, position, leader_id, status")
+    .select("id, full_name, display_name, position, leader_id, status")
     .eq("is_deleted", false)
     .eq("status", "Active")
     .order("full_name", { ascending: true });
@@ -1014,7 +1016,7 @@ export async function getAcademyTeamProgress() {
 
     return {
       memberId: member.id,
-      memberName: member.full_name || "Unnamed member",
+      memberName: getMemberDisplayName(member),
       position: member.position,
       overall,
       courses: courseRows.map((course) => {

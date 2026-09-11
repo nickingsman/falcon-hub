@@ -7,10 +7,12 @@ import {
 } from "@/lib/malaysia-date";
 import { getScopedHierarchyMembers, type HierarchyMember } from "@/lib/member-hierarchy";
 import { canManageMembers } from "@/lib/permissions";
+import { getMemberDisplayName } from "@/lib/member-display";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 type LeaderDashboardMemberRow = HierarchyMember & {
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
 };
 
@@ -43,7 +45,7 @@ function serverError() {
 
 function getMemberDisplay(member: LeaderDashboardMemberRow) {
   return {
-    memberName: member.full_name || "Unnamed member",
+    memberName: getMemberDisplayName(member),
     position: member.position,
   };
 }
@@ -119,7 +121,7 @@ export async function GET() {
     const thisWeek = getMalaysiaThisWeekRange();
     const { data: memberRows, error: memberError } = await supabase
       .from("users")
-      .select("id, full_name, position, leader_id, status")
+      .select("id, full_name, display_name, position, leader_id, status")
       .eq("is_deleted", false)
       .eq("status", "Active")
       .order("full_name", { ascending: true });

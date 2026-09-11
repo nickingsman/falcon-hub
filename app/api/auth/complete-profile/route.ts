@@ -56,6 +56,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const fullName = getRequiredString(body.fullName);
+    const displayName = getOptionalString(body.displayName);
     const chineseName = getOptionalString(body.chineseName);
     const phone = getRequiredString(body.phone);
     const birthday = getRequiredString(body.birthday);
@@ -64,6 +65,13 @@ export async function POST(request: Request) {
     if (!fullName) {
       return NextResponse.json(
         { error: "Full Name is required" },
+        { status: 400 }
+      );
+    }
+
+    if (displayName && displayName.length > 80) {
+      return NextResponse.json(
+        { error: "Display Name must be 80 characters or fewer" },
         { status: 400 }
       );
     }
@@ -90,8 +98,9 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createSupabaseSsrClient();
-    const { data, error } = await supabase.rpc("complete_user_profile", {
+    const { data, error } = await supabase.rpc("complete_user_profile_with_display_name", {
       p_full_name: fullName,
+      p_display_name: displayName,
       p_chinese_name: chineseName,
       p_phone: phone,
       p_birthday: birthday,
@@ -111,7 +120,12 @@ export async function POST(request: Request) {
               : 500;
 
       return NextResponse.json(
-        { error: error.message || "Unable to complete profile" },
+        {
+          error:
+            status < 500
+              ? error.message || "Unable to complete profile"
+              : "Unable to complete profile",
+        },
         { status }
       );
     }
@@ -125,10 +139,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Unable to complete profile",
+        error: "Unable to complete profile",
       },
       { status: 500 }
     );

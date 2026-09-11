@@ -17,6 +17,7 @@ type LeaderOption = {
   id: string;
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
   employment_type: string | null;
 };

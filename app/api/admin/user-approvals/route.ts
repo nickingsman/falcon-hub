@@ -41,7 +41,7 @@ export async function GET() {
 
     const { data: leaderOptions, error: leaderOptionsError } = await supabase
       .from("users")
-      .select("id, member_code, full_name, position, employment_type")
+      .select("id, member_code, full_name, display_name, position, employment_type")
       .eq("is_deleted", false)
       .eq("status", "Active")
       .order("full_name", { ascending: true });

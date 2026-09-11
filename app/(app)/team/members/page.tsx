@@ -14,6 +14,7 @@ type MemberRecord = {
   id: string;
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   chinese_name: string | null;
   email: string | null;
   phone: string | null;
@@ -27,6 +28,7 @@ type MemberRecord = {
 
 type MemberFormState = {
   full_name: string;
+  display_name: string;
   email: string;
   phone: string;
   birthday: string;
@@ -44,6 +46,7 @@ type MemberSummary = {
 
 const initialFormState: MemberFormState = {
   full_name: "",
+  display_name: "",
   email: "",
   phone: "",
   birthday: "",
@@ -121,6 +124,7 @@ export default function MembersPage() {
   const filteredMembers = members.filter((member) => {
     const matchSearch = [
       member.full_name,
+      member.display_name,
       formatMemberCode(member.member_code),
     ]
       .filter(Boolean)
@@ -195,6 +199,7 @@ export default function MembersPage() {
     setEditingMemberId(member.id);
     setFormState({
       full_name: member.full_name || "",
+      display_name: member.display_name || "",
       email: member.email || "",
       phone: member.phone || "",
       birthday: member.birthday || "",
@@ -224,6 +229,7 @@ export default function MembersPage() {
     try {
       const payload = {
         full_name: formState.full_name.trim(),
+        display_name: formState.display_name.trim() || null,
         email: formState.email.trim() || null,
         phone: formState.phone.trim() || null,
         birthday: formState.birthday || null,
@@ -499,11 +505,16 @@ export default function MembersPage() {
                       <tr key={member.id} className="text-sm text-zinc-700">
                         <td className="px-4 py-4">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white">
-                            {getInitials(member.full_name)}
+                            {getInitials(formatMemberDisplayName(member))}
                           </div>
                         </td>
                         <td className="px-4 py-4 font-medium text-zinc-900">
                           {formatMemberDisplayName(member)}
+                          {member.display_name ? (
+                            <p className="mt-1 text-xs font-normal text-zinc-500">
+                              {member.full_name}
+                            </p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-4">{member.position || "-"}</td>
                         <td className="px-4 py-4">{member.employment_type || "-"}</td>
@@ -586,6 +597,16 @@ export default function MembersPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-4 overflow-y-auto p-6">
+              <label className="block text-sm text-zinc-600">
+                <span className="mb-1 block font-medium text-zinc-900">Display Name</span>
+                <input
+                  maxLength={80}
+                  value={formState.display_name}
+                  onChange={(event) => setFormState((current) => ({ ...current, display_name: event.target.value }))}
+                  className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
+                  placeholder="Uses Full Name when blank"
+                />
+              </label>
               <label className="block text-sm text-zinc-600">
                 <span className="mb-1 block font-medium text-zinc-900">Full Name</span>
                 <input

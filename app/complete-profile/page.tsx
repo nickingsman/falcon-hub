@@ -7,6 +7,7 @@ const currentPath = "/complete-profile";
 
 type CompleteProfileForm = {
   fullName: string;
+  displayName: string;
   chineseName: string;
   phone: string;
   birthday: string;
@@ -15,6 +16,7 @@ type CompleteProfileForm = {
 
 const initialFormState: CompleteProfileForm = {
   fullName: "",
+  displayName: "",
   chineseName: "",
   phone: "",
   birthday: "",
@@ -99,6 +101,7 @@ export default function CompleteProfilePage() {
         },
         body: JSON.stringify({
           fullName: formState.fullName,
+          displayName: formState.displayName,
           chineseName: formState.chineseName,
           phone: formState.phone,
           birthday: formState.birthday,
@@ -161,6 +164,22 @@ export default function CompleteProfilePage() {
                 className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
                 placeholder="Full name"
               />
+            </label>
+
+            <label className="block text-sm text-zinc-600">
+              <span className="mb-2 block font-medium text-zinc-900">
+                Display Name
+              </span>
+              <input
+                maxLength={80}
+                value={formState.displayName}
+                onChange={(event) => updateField("displayName", event.target.value)}
+                className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 outline-none transition focus:border-zinc-900"
+                placeholder="Optional"
+              />
+              <span className="mt-2 block text-xs text-zinc-500">
+                The name teammates will see in Falcon Hub.
+              </span>
             </label>
 
             <label className="block text-sm text-zinc-600">

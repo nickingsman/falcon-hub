@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 const malaysiaTimeZone = "Asia/Kuala_Lumpur";
 const upcomingWindowDays = 30;
@@ -9,6 +10,7 @@ const millisecondsPerDay = 24 * 60 * 60 * 1000;
 type BirthdayMemberRow = {
   id: string;
   full_name: string | null;
+  display_name: string | null;
   birthday: string | null;
   position: string | null;
 };
@@ -100,7 +102,7 @@ function toSafeBirthdayMember(
 ): SafeBirthdayMember {
   return {
     id: member.id,
-    fullName: member.full_name || "Unnamed member",
+    fullName: getMemberDisplayName(member),
     month,
     day,
     position: member.position,
@@ -128,7 +130,7 @@ export async function GET() {
     const supabase = createSupabaseAdminClient();
     const { data, error } = await supabase
       .from("users")
-      .select("id, full_name, birthday, position")
+      .select("id, full_name, display_name, birthday, position")
       .eq("is_deleted", false)
       .eq("status", "Active")
       .not("birthday", "is", null)

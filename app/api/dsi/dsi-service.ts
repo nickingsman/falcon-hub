@@ -21,6 +21,7 @@ import {
 } from "@/lib/member-hierarchy";
 import { canManageMembers } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { getMemberDisplayName } from "@/lib/member-display";
 
 type DsiAuthContext = {
   userId: string;
@@ -30,6 +31,7 @@ type DsiAuthContext = {
 type TeamDsiMemberRow = HierarchyMember & {
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   position: string | null;
 };
 
@@ -423,7 +425,7 @@ export async function getTeamDsiHistory(request: Request) {
     const supabase = createSupabaseAdminClient();
     const { data: memberRows, error: memberError } = await supabase
       .from("users")
-      .select("id, member_code, full_name, position, leader_id, status")
+      .select("id, member_code, full_name, display_name, position, leader_id, status")
       .eq("is_deleted", false)
       .eq("status", "Active")
       .order("full_name", { ascending: true });
@@ -463,7 +465,7 @@ export async function getTeamDsiHistory(request: Request) {
       members: visibleMembers.map((member) => ({
         id: member.id,
         memberCode: member.member_code,
-        fullName: member.full_name || "Unnamed member",
+        fullName: getMemberDisplayName(member),
         position: member.position,
         leaderId: member.leader_id,
       })),

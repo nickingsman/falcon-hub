@@ -112,6 +112,7 @@ export async function GET() {
         id: member.id,
         member_code: member.member_code,
         full_name: member.full_name,
+        display_name: member.display_name,
         position: member.position,
         employment_type: member.employment_type,
       }));

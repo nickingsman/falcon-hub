@@ -19,6 +19,7 @@ const memberSelectFields = `
   id,
   member_code,
   full_name,
+  display_name,
   chinese_name,
   email,
   phone,
@@ -32,6 +33,7 @@ const memberSelectFields = `
 
 type MemberPayload = {
   full_name?: unknown;
+  display_name?: unknown;
   email?: unknown;
   phone?: unknown;
   birthday?: unknown;
@@ -46,6 +48,7 @@ type MemberDirectoryRow = {
   id: string;
   member_code: number | null;
   full_name: string | null;
+  display_name: string | null;
   chinese_name: string | null;
   email: string | null;
   phone: string | null;
@@ -73,6 +76,14 @@ function requiredText(value: unknown, label: string) {
   }
 
   return text;
+}
+
+function optionalDisplayName(value: unknown) {
+  const displayName = optionalText(value);
+  if (displayName && displayName.length > 80) {
+    throw new Error("Display Name must be 80 characters or fewer");
+  }
+  return displayName;
 }
 
 function optionalDate(value: unknown, label: string) {
@@ -141,6 +152,7 @@ async function buildMemberPayload(
 
   return {
     full_name: requiredText(payload.full_name, "Full name"),
+    display_name: optionalDisplayName(payload.display_name),
     email: optionalText(payload.email),
     phone: optionalText(payload.phone),
     birthday: optionalDate(payload.birthday, "Birthday"),
