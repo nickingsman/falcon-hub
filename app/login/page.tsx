@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-const welcomeAfterLoginSessionKey = "falcon-hub:welcome-after-login";
-
 function getSafeNextDestination() {
   const requested = new URLSearchParams(window.location.search).get("next");
   if (!requested || !requested.startsWith("/") || requested.startsWith("//")) return "/";
@@ -53,14 +51,22 @@ export default function LoginPage() {
 
       if (currentUser.statusRoute === "/") {
         const destination = getSafeNextDestination();
+        let handoffCreated = false;
 
         try {
-          window.sessionStorage.setItem(welcomeAfterLoginSessionKey, "true");
+          const handoffResponse = await fetch("/api/auth/welcome-handoff", {
+            method: "POST",
+          });
+          handoffCreated = handoffResponse.ok;
         } catch {
-          // Storage restrictions must not turn a successful login into an error.
+          // A handoff failure must not turn a successful login into an error.
         }
 
-        router.replace(`/welcome?next=${encodeURIComponent(destination)}`);
+        router.replace(
+          handoffCreated
+            ? `/welcome?next=${encodeURIComponent(destination)}`
+            : destination,
+        );
         return;
       }
 

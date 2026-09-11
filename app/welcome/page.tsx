@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getAuthenticatedUserProfile, getRouteForProfileStatus } from "@/lib/auth";
+import { welcomeHandoffHeaderName } from "@/lib/welcome-handoff";
 import WelcomeIntroClient from "./WelcomeIntroClient";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,7 @@ export default async function WelcomePage({
   searchParams: Promise<{ next?: string | string[] }>;
 }) {
   const destination = getSafeDestination((await searchParams).next);
+  const shouldPlay = (await headers()).get(welcomeHandoffHeaderName) === "1";
   const authContext = await getAuthenticatedUserProfile().catch(() => null);
 
   if (!authContext) {
@@ -30,5 +33,5 @@ export default async function WelcomePage({
     redirect(getRouteForProfileStatus(authContext.profile?.status ?? null));
   }
 
-  return <WelcomeIntroClient destination={destination} />;
+  return <WelcomeIntroClient destination={destination} shouldPlay={shouldPlay} />;
 }

@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  welcomeHandoffCookieName,
+  welcomeHandoffHeaderName,
+} from "@/lib/welcome-handoff";
 
 const publicRoutes = ["/login", "/register"];
 
@@ -15,7 +19,15 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
-  let response = NextResponse.next({ request });
+  const { pathname } = request.nextUrl;
+  const hasWelcomeHandoff = request.cookies.get(welcomeHandoffCookieName)?.value === "1";
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(welcomeHandoffHeaderName);
+  if (pathname === "/welcome" && hasWelcomeHandoff) {
+    requestHeaders.set(welcomeHandoffHeaderName, "1");
+  }
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -24,7 +36,7 @@ export async function proxy(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: requestHeaders } });
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
@@ -36,14 +48,24 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
   if (!user && !isPublicRoute(pathname)) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", `${pathname}${request.nextUrl.search}`);
 
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    if (hasWelcomeHandoff) {
+      redirectResponse.cookies.set({
+        name: welcomeHandoffCookieName,
+        value: "",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 0,
+        path: "/",
+      });
+    }
+    return redirectResponse;
   }
 
   if (user && isPublicRoute(pathname)) {
@@ -52,6 +74,18 @@ export async function proxy(request: NextRequest) {
     redirectUrl.search = "";
 
     return NextResponse.redirect(redirectUrl);
+  }
+
+  if (pathname === "/welcome" && hasWelcomeHandoff) {
+    response.cookies.set({
+      name: welcomeHandoffCookieName,
+      value: "",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+    });
   }
 
   return response;

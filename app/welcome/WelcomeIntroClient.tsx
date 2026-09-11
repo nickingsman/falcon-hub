@@ -3,11 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-const welcomeAfterLoginSessionKey = "falcon-hub:welcome-after-login";
-
-export default function WelcomeIntroClient({ destination }: { destination: string }) {
+export default function WelcomeIntroClient({
+  destination,
+  shouldPlay,
+}: {
+  destination: string;
+  shouldPlay: boolean;
+}) {
   const router = useRouter();
-  const [canPlay, setCanPlay] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
 
   const continueToDestination = useCallback(() => {
@@ -16,21 +19,11 @@ export default function WelcomeIntroClient({ destination }: { destination: strin
   }, [destination, router]);
 
   useEffect(() => {
-    let shouldPlay = false;
-
-    try {
-      shouldPlay = window.sessionStorage.getItem(welcomeAfterLoginSessionKey) === "true";
-      window.sessionStorage.removeItem(welcomeAfterLoginSessionKey);
-    } catch {
-      // Without the one-time handoff, skip the welcome route safely.
-    }
-
     if (!shouldPlay) {
       router.replace(destination);
       return undefined;
     }
 
-    const startTimer = window.setTimeout(() => setCanPlay(true), 0);
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const totalDuration = prefersReducedMotion ? 800 : 5000;
     const fadeDuration = prefersReducedMotion ? 180 : 450;
@@ -38,13 +31,12 @@ export default function WelcomeIntroClient({ destination }: { destination: strin
     const continueTimer = window.setTimeout(() => router.replace(destination), totalDuration);
 
     return () => {
-      window.clearTimeout(startTimer);
       window.clearTimeout(fadeTimer);
       window.clearTimeout(continueTimer);
     };
-  }, [destination, router]);
+  }, [destination, router, shouldPlay]);
 
-  if (!canPlay) {
+  if (!shouldPlay) {
     return <main className="min-h-dvh bg-zinc-950" aria-label="Preparing Falcon Hub" />;
   }
 
