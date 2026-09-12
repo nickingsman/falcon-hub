@@ -35,11 +35,13 @@ import {
 } from "@/lib/project-comparison-saved-work";
 import { getPurchaseCostEstimates } from "@/lib/purchase-costs";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
 
 type ProjectOption = {
   id: string;
   name: string;
+  developer: string | null;
   location: string | null;
 };
 
@@ -581,10 +583,6 @@ function formatEstimatedCompletion(project: ProjectOptions["project"]) {
   if (!project.estimated_vp_year || !project.estimated_vp_quarter) return "—";
 
   return `${project.estimated_vp_year} Q${project.estimated_vp_quarter}`;
-}
-
-function getSelectedProjectIds(slots: ComparisonSlot[]) {
-  return slots.map((slot) => slot.projectId).filter(Boolean);
 }
 
 function parseComparisonPrice(value: string) {
@@ -2822,6 +2820,7 @@ export default function ProjectComparisonPage() {
           projectMap.set(options.project.id, {
             id: options.project.id,
             name: options.project.name,
+            developer: options.project.developer,
             location: options.project.location,
           });
         }
@@ -3418,16 +3417,6 @@ export default function ProjectComparisonPage() {
     setHasCompared(false);
   }
 
-  function getAvailableProjects(slotId: string) {
-    const selectedProjectIds = getSelectedProjectIds(slots);
-
-    return projects.filter(
-      (project) =>
-        !selectedProjectIds.includes(project.id) ||
-        slots.find((slot) => slot.id === slotId)?.projectId === project.id,
-    );
-  }
-
   function getApplicablePackages(projectOptions: ProjectOptions | undefined, unitTypeId: string) {
     if (!projectOptions || !unitTypeId) return [];
 
@@ -3727,19 +3716,31 @@ export default function ProjectComparisonPage() {
                 <div className="mt-5 space-y-4">
                   <label className="block text-sm">
                     <span className="font-semibold text-zinc-700">Project</span>
-                    <select
+                    <SearchCombobox
                       value={slot.projectId}
                       disabled={isLoadingProjects}
-                      onChange={(event) => handleProjectChange(slot.id, event.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15"
-                    >
-                      <option value="">{isLoadingProjects ? "Loading Projects..." : "Select Project"}</option>
-                      {getAvailableProjects(slot.id).map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.location ? `${project.name} - ${project.location}` : project.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        {
+                          id: "",
+                          label: isLoadingProjects ? "Loading Projects..." : "Select Project",
+                        },
+                        ...projects.map((project) => ({
+                          id: project.id,
+                          label: project.name,
+                          description: [project.developer, project.location].filter(Boolean).join(" · "),
+                          searchText: [project.developer, project.location].filter(Boolean).join(" "),
+                        })),
+                      ]}
+                      disabledIds={new Set(
+                        slots
+                          .filter((otherSlot) => otherSlot.id !== slot.id)
+                          .map((otherSlot) => otherSlot.projectId)
+                          .filter(Boolean),
+                      )}
+                      placeholder="Search project..."
+                      emptyLabel="No projects found"
+                      onChange={(projectId) => handleProjectChange(slot.id, projectId)}
+                    />
                   </label>
 
                   {slot.error ? (

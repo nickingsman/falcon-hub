@@ -36,6 +36,7 @@ import {
   type UnitNumberFormat,
 } from "@/lib/unit-number-format";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, SectionHeader, StatusBadge } from "../../components/ui";
 
 type CalculatorForm = {
@@ -88,6 +89,8 @@ type ResolvedPurchaseCostItem = PurchaseCostItem & {
 type ProjectOption = {
   id: string;
   project_name: string;
+  developer: string | null;
+  location: string | null;
   maintenance_fee_per_sqft: number | null;
   unit_number_format: UnitNumberFormat | null;
 };
@@ -3178,18 +3181,21 @@ export default function RoiCalculatorPage() {
                   <span className="mb-1 block font-medium text-zinc-900">
                     Project
                   </span>
-                  <select
+                  <SearchCombobox
                     value={selectedProjectId}
-                    onChange={(event) => handleProjectChange(event.target.value)}
-                    className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] focus:bg-white"
-                  >
-                    <option value="">Manual entry</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.project_name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { id: "", label: "Manual entry" },
+                      ...projects.map((project) => ({
+                        id: project.id,
+                        label: project.project_name,
+                        description: [project.developer, project.location].filter(Boolean).join(" · "),
+                        searchText: [project.developer, project.location].filter(Boolean).join(" "),
+                      })),
+                    ]}
+                    placeholder="Search project..."
+                    emptyLabel="No projects found"
+                    onChange={handleProjectChange}
+                  />
                   {projectsError ? (
                     <span className="mt-1 block text-xs text-amber-700">
                       {projectsError}. Manual entry is still available.

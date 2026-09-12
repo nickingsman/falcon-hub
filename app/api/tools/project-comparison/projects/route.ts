@@ -13,7 +13,7 @@ export async function GET() {
     const supabase = createSupabaseAdminClient();
     const { data, error } = await supabase
       .from("projects")
-      .select("id, project_name, location")
+      .select("id, project_name, developer, location")
       .eq("is_deleted", false)
       .eq("status", "Active")
       .order("project_name", { ascending: true })
@@ -27,6 +27,7 @@ export async function GET() {
       (data ?? []).map((project) => ({
         id: project.id,
         name: project.project_name,
+        developer: project.developer,
         location: project.location,
       })),
     );

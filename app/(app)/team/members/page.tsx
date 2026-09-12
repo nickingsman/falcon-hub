@@ -121,16 +121,19 @@ export default function MembersPage() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
+  const normalizedSearch = search.trim().toLowerCase();
   const filteredMembers = members.filter((member) => {
     const matchSearch = [
       member.full_name,
       member.display_name,
       formatMemberCode(member.member_code),
+      member.email,
+      member.phone,
     ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase()
-      .includes(search.toLowerCase());
+      .includes(normalizedSearch);
 
     const matchPosition =
       positionFilter === "All" || member.position === positionFilter;
@@ -391,7 +394,7 @@ export default function MembersPage() {
               </span>
               <input
                 className="w-full bg-transparent outline-none"
-                placeholder="Search"
+                placeholder="Display name, full name or member code..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />

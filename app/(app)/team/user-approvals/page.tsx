@@ -2,9 +2,10 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { UserRole } from "@/lib/auth";
-import { formatMemberDisplayName } from "@/lib/member-display";
+import { formatMemberCode, formatMemberDisplayName } from "@/lib/member-display";
 import { employmentTypeOptions, falconPositionRankings } from "@/lib/member-options";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { SearchCombobox } from "../../components/SearchCombobox";
 
 type PendingRegistration = {
   auth_user_id: string;
@@ -420,19 +421,29 @@ export default function UserApprovalsPage() {
                   <span className="mb-2 block font-medium text-zinc-900">
                     Leader
                   </span>
-                  <select
+                  <SearchCombobox
                     value={approvalForm.leader_id}
-                    onChange={(event) => updateApprovalField("leader_id", event.target.value)}
-                    className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                  >
-                    <option value="">No leader</option>
-                    {leaderOptions.map((leader) => (
-                      <option key={leader.id} value={leader.id}>
-                        {formatMemberDisplayName(leader)}
-                        {leader.position ? ` - ${leader.position}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { id: "", label: "No leader" },
+                      ...leaderOptions.map((leader) => ({
+                        id: leader.id,
+                        label: formatMemberDisplayName(leader),
+                        description: [
+                          leader.full_name,
+                          formatMemberCode(leader.member_code),
+                          leader.position,
+                        ]
+                          .filter(Boolean)
+                          .join(" · "),
+                        searchText: [leader.full_name, formatMemberCode(leader.member_code)]
+                          .filter(Boolean)
+                          .join(" "),
+                      })),
+                    ]}
+                    placeholder="Search leader..."
+                    emptyLabel="No leaders found"
+                    onChange={(leaderId) => updateApprovalField("leader_id", leaderId)}
+                  />
                 </label>
 
                 {errorMessage ? (
