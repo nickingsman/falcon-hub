@@ -3184,7 +3184,7 @@ export default function RoiCalculatorPage() {
                   <SearchCombobox
                     value={selectedProjectId}
                     options={[
-                      { id: "", label: "Manual entry" },
+                      { id: "", label: "", description: "Continue without a Project" },
                       ...projects.map((project) => ({
                         id: project.id,
                         label: project.project_name,
