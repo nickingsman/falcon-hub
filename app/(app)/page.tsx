@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAppPermissions } from "./components/AppPermissionProvider";
 
 type AttendanceStatus = "not_checked_in" | "checked_in" | "completed";
@@ -151,6 +151,26 @@ type SalesRankingResponse = {
     closingFigure: number;
     creditedGdv: number;
   }>;
+};
+
+type PersonalTodo = {
+  id: string;
+  title: string;
+  isCompleted: boolean;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type PersonalTodoResponse = {
+  tasks: PersonalTodo[];
+  incompleteCount: number;
+  completedShown: number;
+  hasMoreIncomplete: boolean;
+  limits: {
+    incomplete: number;
+    completed: number;
+  };
 };
 
 const salesRankingPeriodOptions: Array<{
@@ -481,6 +501,150 @@ function SalesTopClosersCard({
               </div>
             ))}
           </div>
+        ) : null}
+      </article>
+    </section>
+  );
+}
+
+function PersonalTodoCard({
+  todos,
+  status,
+  actionError,
+  creating,
+  pendingIds,
+  onAdd,
+  onToggle,
+  onDelete,
+  onRetry,
+}: {
+  todos: PersonalTodoResponse | null;
+  status: LoadStatus;
+  actionError: string;
+  creating: boolean;
+  pendingIds: Set<string>;
+  onAdd: (title: string) => Promise<boolean>;
+  onToggle: (todo: PersonalTodo) => void;
+  onDelete: (todo: PersonalTodo) => void;
+  onRetry: () => void;
+}) {
+  const [title, setTitle] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const created = await onAdd(title);
+    if (created) setTitle("");
+  }
+
+  return (
+    <section>
+      <div className={`${sectionHeaderClass} flex items-end justify-between gap-3`}>
+        <div>
+          <p className="text-sm font-semibold text-zinc-900">To-Do List</p>
+          <p className="text-sm text-zinc-500">Your personal task list</p>
+        </div>
+        {todos ? (
+          <p className="text-xs font-medium text-zinc-500">
+            {todos.incompleteCount} remaining
+          </p>
+        ) : null}
+      </div>
+
+      <article className={dashboardCardClass}>
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-2 sm:flex-row"
+        >
+          <label className="sr-only" htmlFor="personal-todo-title">
+            New task
+          </label>
+          <input
+            id="personal-todo-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="What do you need to get done?"
+            maxLength={200}
+            disabled={creating}
+            className="min-h-11 min-w-0 flex-1 rounded-2xl border border-[#E5E2DA] bg-[#F8F6F0] px-4 text-sm outline-none transition placeholder:text-zinc-400 focus:border-[#B8924A] focus:bg-white focus:ring-2 focus:ring-[#B8924A]/15 disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={creating || !title.trim()}
+            className="min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {creating ? "Adding..." : "Add"}
+          </button>
+        </form>
+
+        {actionError ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {actionError}
+          </p>
+        ) : null}
+
+        {status === "loading" && !todos ? (
+          <p className="py-6 text-center text-sm text-zinc-500">Loading your tasks...</p>
+        ) : null}
+
+        {status === "error" && !todos ? (
+          <div className="py-5 text-center">
+            <p className="text-sm text-zinc-600">Your To-Do List is unavailable right now.</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 text-sm font-semibold text-[#8F6E35] hover:text-zinc-950"
+            >
+              Try again
+            </button>
+          </div>
+        ) : null}
+
+        {status !== "loading" && todos && todos.tasks.length === 0 ? (
+          <p className="py-6 text-center text-sm text-zinc-500">Nothing on your list yet.</p>
+        ) : null}
+
+        {todos?.tasks.length ? (
+          <div className="mt-4 divide-y divide-zinc-100 border-t border-zinc-100">
+            {todos.tasks.map((todo) => {
+              const pending = pendingIds.has(todo.id);
+              return (
+                <div key={todo.id} className="flex min-w-0 items-start gap-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={todo.isCompleted}
+                    disabled={pending}
+                    aria-label={`${todo.isCompleted ? "Reopen" : "Complete"} ${todo.title}`}
+                    onChange={() => onToggle(todo)}
+                    className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-[#B8924A] disabled:cursor-wait disabled:opacity-50"
+                  />
+                  <span
+                    className={`min-w-0 flex-1 break-words text-sm leading-5 ${
+                      todo.isCompleted
+                        ? "text-zinc-400 line-through decoration-zinc-300"
+                        : "text-zinc-800"
+                    }`}
+                  >
+                    {todo.title}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => onDelete(todo)}
+                    aria-label={`Delete ${todo.title}`}
+                    className="min-h-8 shrink-0 rounded-full px-2 text-xs font-medium text-zinc-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {todos?.hasMoreIncomplete ? (
+          <p className="border-t border-zinc-100 pt-3 text-xs text-zinc-500">
+            Showing the 20 newest incomplete tasks. Complete or delete tasks to reveal more.
+          </p>
         ) : null}
       </article>
     </section>
@@ -1085,6 +1249,13 @@ export default function Home() {
     useState<DashboardUpcomingEvents | null>(null);
   const [upcomingEventsStatus, setUpcomingEventsStatus] =
     useState<LoadStatus>("loading");
+  const [personalTodos, setPersonalTodos] = useState<PersonalTodoResponse | null>(null);
+  const [personalTodoStatus, setPersonalTodoStatus] = useState<LoadStatus>("loading");
+  const [personalTodoActionError, setPersonalTodoActionError] = useState("");
+  const [personalTodoCreating, setPersonalTodoCreating] = useState(false);
+  const [pendingPersonalTodoIds, setPendingPersonalTodoIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [activeView, setActiveView] = useState<DashboardView>("my");
   const canViewLeaderDashboard =
     role === "super_admin" || role === "admin" || role === "leader";
@@ -1195,6 +1366,123 @@ export default function Home() {
     }
   }, []);
 
+  const loadPersonalTodos = useCallback(async () => {
+    setPersonalTodoStatus("loading");
+
+    try {
+      const response = await fetch("/api/dashboard/todos", { cache: "no-store" });
+      const payload = (await response.json()) as PersonalTodoResponse | { error?: string };
+
+      if (!response.ok) throw new Error("Unable to load your To-Do List");
+
+      setPersonalTodos(payload as PersonalTodoResponse);
+      setPersonalTodoStatus("ready");
+    } catch {
+      setPersonalTodoStatus("error");
+    }
+  }, []);
+
+  const addPersonalTodo = useCallback(
+    async (title: string) => {
+      const trimmedTitle = title.trim();
+      if (!trimmedTitle || trimmedTitle.length > 200 || personalTodoCreating) return false;
+
+      setPersonalTodoCreating(true);
+      setPersonalTodoActionError("");
+
+      try {
+        const response = await fetch("/api/dashboard/todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmedTitle }),
+        });
+        const payload = (await response.json()) as PersonalTodo | { error?: string };
+
+        if (!response.ok) {
+          throw new Error("error" in payload && payload.error ? payload.error : "Unable to add task");
+        }
+
+        await loadPersonalTodos();
+        return true;
+      } catch (error) {
+        setPersonalTodoActionError(
+          error instanceof Error ? error.message : "Unable to add task",
+        );
+        return false;
+      } finally {
+        setPersonalTodoCreating(false);
+      }
+    },
+    [loadPersonalTodos, personalTodoCreating],
+  );
+
+  const togglePersonalTodo = useCallback(
+    async (todo: PersonalTodo) => {
+      if (pendingPersonalTodoIds.has(todo.id)) return;
+
+      setPendingPersonalTodoIds((current) => new Set(current).add(todo.id));
+      setPersonalTodoActionError("");
+
+      try {
+        const response = await fetch(`/api/dashboard/todos/${todo.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isCompleted: !todo.isCompleted }),
+        });
+        const payload = (await response.json()) as PersonalTodo | { error?: string };
+
+        if (!response.ok) {
+          throw new Error(
+            "error" in payload && payload.error ? payload.error : "Unable to update task",
+          );
+        }
+
+        await loadPersonalTodos();
+      } catch (error) {
+        setPersonalTodoActionError(
+          error instanceof Error ? error.message : "Unable to update task",
+        );
+      } finally {
+        setPendingPersonalTodoIds((current) => {
+          const next = new Set(current);
+          next.delete(todo.id);
+          return next;
+        });
+      }
+    },
+    [loadPersonalTodos, pendingPersonalTodoIds],
+  );
+
+  const deletePersonalTodo = useCallback(
+    async (todo: PersonalTodo) => {
+      if (pendingPersonalTodoIds.has(todo.id)) return;
+      if (!window.confirm(`Delete "${todo.title}"?`)) return;
+
+      setPendingPersonalTodoIds((current) => new Set(current).add(todo.id));
+      setPersonalTodoActionError("");
+
+      try {
+        const response = await fetch(`/api/dashboard/todos/${todo.id}`, { method: "DELETE" });
+        const payload = (await response.json()) as { id?: string; error?: string };
+
+        if (!response.ok) throw new Error(payload.error || "Unable to delete task");
+
+        await loadPersonalTodos();
+      } catch (error) {
+        setPersonalTodoActionError(
+          error instanceof Error ? error.message : "Unable to delete task",
+        );
+      } finally {
+        setPendingPersonalTodoIds((current) => {
+          const next = new Set(current);
+          next.delete(todo.id);
+          return next;
+        });
+      }
+    },
+    [loadPersonalTodos, pendingPersonalTodoIds],
+  );
+
   const loadLeaderDashboard = useCallback(async () => {
     setLeaderStatus("loading");
     setLeaderErrorMessage("");
@@ -1231,10 +1519,17 @@ export default function Home() {
       void loadCustomerBirthdays();
       void loadMemberBirthdays();
       void loadUpcomingEvents();
+      void loadPersonalTodos();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [loadCustomerBirthdays, loadDashboard, loadMemberBirthdays, loadUpcomingEvents]);
+  }, [
+    loadCustomerBirthdays,
+    loadDashboard,
+    loadMemberBirthdays,
+    loadPersonalTodos,
+    loadUpcomingEvents,
+  ]);
 
   useEffect(() => {
     if (visibleView !== "team") {
@@ -1497,6 +1792,18 @@ export default function Home() {
             </article>
           </div>
         </section>
+
+        <PersonalTodoCard
+          todos={personalTodos}
+          status={personalTodoStatus}
+          actionError={personalTodoActionError}
+          creating={personalTodoCreating}
+          pendingIds={pendingPersonalTodoIds}
+          onAdd={addPersonalTodo}
+          onToggle={(todo) => void togglePersonalTodo(todo)}
+          onDelete={(todo) => void deletePersonalTodo(todo)}
+          onRetry={() => void loadPersonalTodos()}
+        />
 
         <SalesTopClosersCard
           ranking={salesRanking}
