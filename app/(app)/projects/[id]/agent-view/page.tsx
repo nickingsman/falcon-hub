@@ -497,18 +497,14 @@ export default function ProjectAgentViewPage() {
             error={keySellingPoints.error}
             isEmpty={keySellingPoints.items.length === 0}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <ul className="space-y-2">
               {keySellingPoints.items.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-                  <h3 className="text-base font-semibold text-zinc-900">{item.title}</h3>
-                  <div className="mt-4 space-y-4">
-                    {renderTextBlock("Short Explanation", item.short_explanation)}
-                    {renderTextBlock("How To Sell", item.how_to_sell)}
-                    {renderTextBlock("Supporting Data", item.supporting_data)}
-                  </div>
-                </article>
+                <li key={item.id} className="flex gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-900">
+                  <span className="text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
+                  <span>{item.title}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </SectionShell>
 
           <SectionShell
@@ -518,17 +514,14 @@ export default function ProjectAgentViewPage() {
             error={ownStayReasons.error}
             isEmpty={ownStayReasons.items.length === 0}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <ul className="space-y-2">
               {ownStayReasons.items.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-                  <h3 className="text-base font-semibold text-zinc-900">{item.title}</h3>
-                  <div className="mt-4 space-y-4">
-                    {renderTextBlock("Explanation", item.explanation)}
-                    {renderTextBlock("How To Sell", item.how_to_sell)}
-                  </div>
-                </article>
+                <li key={item.id} className="flex gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-900">
+                  <span className="text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
+                  <span>{item.title}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </SectionShell>
 
           <SectionShell
@@ -538,18 +531,14 @@ export default function ProjectAgentViewPage() {
             error={investmentReasons.error}
             isEmpty={investmentReasons.items.length === 0}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <ul className="space-y-2">
               {investmentReasons.items.map((item) => (
-                <article key={item.id} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5">
-                  <h3 className="text-base font-semibold text-zinc-900">{item.title}</h3>
-                  <div className="mt-4 space-y-4">
-                    {renderTextBlock("Investment Logic", item.investment_logic)}
-                    {renderTextBlock("How To Sell", item.how_to_sell)}
-                    {renderTextBlock("Supporting Data", item.supporting_data)}
-                  </div>
-                </article>
+                <li key={item.id} className="flex gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-900">
+                  <span className="text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
+                  <span>{item.title}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </SectionShell>
 
           <SectionShell

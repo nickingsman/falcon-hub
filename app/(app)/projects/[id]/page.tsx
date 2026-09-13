@@ -377,6 +377,9 @@ type SectionConfig = {
   title: string;
   description: string;
   endpoint: string;
+  addTitle?: string;
+  editTitle?: string;
+  placeholder?: string;
   fields: Array<{
     key: KnowledgeFieldKey;
     label: string;
@@ -568,8 +571,11 @@ const purchaseCostTreatmentLabels: Record<string, string> = {
 const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
   keySelling: {
     title: "Key Selling Points",
-    description: "Project highlights, sales angles, and proof points for agents.",
+    description: "The main reasons this project stands out.",
     endpoint: "key-selling-points",
+    addTitle: "Add Key Selling Point",
+    editTitle: "Edit Key Selling Point",
+    placeholder: "Enter selling point...",
     fields: [
       { key: "short_explanation", label: "Short Explanation" },
       { key: "how_to_sell", label: "How To Sell" },
@@ -577,18 +583,24 @@ const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
     ],
   },
   ownStay: {
-    title: "Own Stay Reasons",
-    description: "Reasons agents can use for buyers planning to live in the project.",
+    title: "Why Buy — Own Stay",
+    description: "Clear reasons for buyers planning to live in the project.",
     endpoint: "own-stay-reasons",
+    addTitle: "Add Own Stay Point",
+    editTitle: "Edit Own Stay Point",
+    placeholder: "Enter point...",
     fields: [
       { key: "explanation", label: "Explanation" },
       { key: "how_to_sell", label: "How To Sell" },
     ],
   },
   investment: {
-    title: "Investment Reasons",
-    description: "Investment logic, sales framing, and supporting data.",
+    title: "Why Buy — Investment",
+    description: "Clear reasons for buyers considering the project as an investment.",
     endpoint: "investment-reasons",
+    addTitle: "Add Investment Point",
+    editTitle: "Edit Investment Point",
+    placeholder: "Enter point...",
     fields: [
       { key: "investment_logic", label: "Investment Logic" },
       { key: "how_to_sell", label: "How To Sell" },
@@ -608,6 +620,10 @@ const sectionConfigs: Record<KnowledgeSectionKey, SectionConfig> = {
     ],
   },
 };
+
+function isSimpleKnowledgeSection(section: KnowledgeSectionKey) {
+  return section !== "concern";
+}
 
 function getProjectId(value: string | string[] | undefined) {
   if (Array.isArray(value)) {
@@ -1774,9 +1790,21 @@ export default function ProjectDetailPage() {
   function openAddKnowledgeItem(section: KnowledgeSectionKey) {
     if (!canManageProjects) return;
 
+    const sectionItems = section === "keySelling"
+      ? keySellingPoints
+      : section === "ownStay"
+        ? ownStayReasons
+        : investmentReasons;
+    const nextSortOrder = isSimpleKnowledgeSection(section)
+      ? sectionItems.reduce(
+          (highest, item) => Math.max(highest, item.sort_order ?? -1),
+          -1,
+        ) + 1
+      : 0;
+
     setActiveSection(section);
     setEditingKnowledgeItemId(null);
-    setKnowledgeForm(emptyKnowledgeForm);
+    setKnowledgeForm({ ...emptyKnowledgeForm, sort_order: String(nextSortOrder) });
     setKnowledgeErrorMessage("");
   }
 
@@ -1805,7 +1833,9 @@ export default function ProjectDetailPage() {
     if (!activeSection || !projectId) return;
 
     if (!knowledgeForm.title.trim()) {
-      setKnowledgeErrorMessage("Title is required.");
+      setKnowledgeErrorMessage(
+        isSimpleKnowledgeSection(activeSection) ? "Point is required." : "Title is required.",
+      );
       return;
     }
 
@@ -3989,6 +4019,7 @@ export default function ProjectDetailPage() {
 
   function renderKnowledgeSection(section: KnowledgeSectionKey, items: KnowledgeItem[]) {
     const config = sectionConfigs[section];
+    const isSimpleSection = isSimpleKnowledgeSection(section);
 
     return (
       <section className="space-y-4">
@@ -4026,24 +4057,34 @@ export default function ProjectDetailPage() {
               No items added yet.
             </p>
           ) : (
-            <div className="grid gap-4">
+            <div className={isSimpleSection ? "space-y-2" : "grid gap-4"}>
               {items.map((item) => (
                 <article
                   key={item.id}
-                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
+                  className={
+                    isSimpleSection
+                      ? "flex items-start gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 shadow-sm"
+                      : "rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
+                  }
                 >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
-                        Order {item.sort_order ?? 0}
-                      </p>
-                      <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                  {isSimpleSection ? (
+                    <span className="mt-1 text-sm text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        {!isSimpleSection ? (
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+                            Order {item.sort_order ?? 0}
+                          </p>
+                        ) : null}
+                        <h3 className={`${isSimpleSection ? "text-sm leading-6" : "mt-1 text-lg leading-tight"} break-words font-semibold text-[var(--falcon-charcoal)]`}>
                         {item.title}
-                      </h3>
-                    </div>
+                        </h3>
+                      </div>
 
-                    {canManageProjects ? (
-                      <div className="flex shrink-0 items-center gap-2">
+                      {canManageProjects ? (
+                        <div className="flex shrink-0 items-center gap-2">
                         <button
                           type="button"
                           onClick={() => openEditKnowledgeItem(section, item)}
@@ -4059,12 +4100,13 @@ export default function ProjectDetailPage() {
                         >
                           Delete
                         </button>
-                      </div>
-                    ) : null}
-                  </div>
+                        </div>
+                      ) : null}
+                    </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    {config.fields.map((field) => {
+                    {!isSimpleSection ? (
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        {config.fields.map((field) => {
                       const value = item[field.key];
 
                       if (!value) {
@@ -4084,7 +4126,9 @@ export default function ProjectDetailPage() {
                           </p>
                         </div>
                       );
-                    })}
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 </article>
               ))}
@@ -5829,16 +5873,18 @@ export default function ProjectDetailPage() {
 
       {canManageProjects && activeConfig && activeSection ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+          <div className={`max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white shadow-2xl ${isSimpleKnowledgeSection(activeSection) ? "max-w-lg" : "max-w-2xl"}`}>
             <div className="flex items-center justify-between border-b border-zinc-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-semibold text-zinc-900">
-                  {editingKnowledgeItemId ? "Edit Item" : "Add Item"}
+                  {editingKnowledgeItemId
+                    ? activeConfig.editTitle ?? "Edit Item"
+                    : activeConfig.addTitle ?? "Add Item"}
                 </h2>
 
-                <p className="mt-1 text-sm text-zinc-500">
-                  {activeConfig.title}
-                </p>
+                {!isSimpleKnowledgeSection(activeSection) ? (
+                  <p className="mt-1 text-sm text-zinc-500">{activeConfig.title}</p>
+                ) : null}
               </div>
 
               <button
@@ -5854,31 +5900,42 @@ export default function ProjectDetailPage() {
               <div className="space-y-5 px-6 py-6">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-zinc-700">
-                    Title *
+                    {isSimpleKnowledgeSection(activeSection) ? "Point" : "Title *"}
                   </label>
 
-                  <input
-                    value={knowledgeForm.title}
-                    onChange={(event) => updateKnowledgeField("title", event.target.value)}
-                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
-                    placeholder="Short headline"
-                  />
+                  {isSimpleKnowledgeSection(activeSection) ? (
+                    <textarea
+                      rows={3}
+                      value={knowledgeForm.title}
+                      onChange={(event) => updateKnowledgeField("title", event.target.value)}
+                      className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      placeholder={activeConfig.placeholder}
+                    />
+                  ) : (
+                    <input
+                      value={knowledgeForm.title}
+                      onChange={(event) => updateKnowledgeField("title", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                      placeholder="Short headline"
+                    />
+                  )}
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-700">
-                    Sort Order
-                  </label>
+                {!isSimpleKnowledgeSection(activeSection) ? (
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">
+                      Sort Order
+                    </label>
+                    <input
+                      type="number"
+                      value={knowledgeForm.sort_order}
+                      onChange={(event) => updateKnowledgeField("sort_order", event.target.value)}
+                      className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
+                    />
+                  </div>
+                ) : null}
 
-                  <input
-                    type="number"
-                    value={knowledgeForm.sort_order}
-                    onChange={(event) => updateKnowledgeField("sort_order", event.target.value)}
-                    className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
-                  />
-                </div>
-
-                {activeConfig.fields.map((field) => (
+                {!isSimpleKnowledgeSection(activeSection) ? activeConfig.fields.map((field) => (
                   <div key={field.key}>
                     <label className="mb-2 block text-sm font-medium text-zinc-700">
                       {field.label}
@@ -5891,7 +5948,7 @@ export default function ProjectDetailPage() {
                       className="w-full resize-none rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
                     />
                   </div>
-                ))}
+                )) : null}
 
                 {knowledgeErrorMessage ? (
                   <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -5915,7 +5972,13 @@ export default function ProjectDetailPage() {
                   disabled={knowledgeSaving}
                   className="rounded-xl bg-zinc-900 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {knowledgeSaving ? "Saving..." : "Save Item"}
+                  {knowledgeSaving
+                    ? "Saving..."
+                    : isSimpleKnowledgeSection(activeSection)
+                      ? editingKnowledgeItemId
+                        ? "Save"
+                        : "Add"
+                      : "Save Item"}
                 </button>
               </div>
             </form>
