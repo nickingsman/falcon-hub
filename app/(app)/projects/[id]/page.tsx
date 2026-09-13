@@ -4049,37 +4049,63 @@ export default function ProjectDetailPage() {
 
         <div className="space-y-4">
           {knowledgeLoading ? (
-            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)] shadow-sm">
+            <p className="rounded-xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
               Loading items...
             </p>
+          ) : isSimpleSection ? (
+            <div className="divide-y divide-[var(--falcon-soft-border)] overflow-hidden rounded-2xl border border-[var(--falcon-soft-border)] bg-white">
+              {items.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-[var(--falcon-muted-text)]">
+                  No items added yet.
+                </p>
+              ) : items.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex min-w-0 flex-col gap-2 px-4 py-2.5 sm:min-h-12 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <p className="min-w-0 break-words text-sm font-medium leading-6 text-[var(--falcon-charcoal)]">
+                    {item.title}
+                  </p>
+                  {canManageProjects ? (
+                    <div className="flex shrink-0 items-center gap-1 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => openEditKnowledgeItem(section, item)}
+                        className="rounded-full px-3 py-1.5 text-xs font-semibold text-zinc-600 transition hover:bg-zinc-100 hover:text-black"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteKnowledgeItem(section, item)}
+                        className="rounded-full px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           ) : items.length === 0 ? (
             <p className="rounded-xl border border-dashed border-[var(--falcon-soft-border)] bg-white/70 px-4 py-5 text-sm text-[var(--falcon-muted-text)]">
               No items added yet.
             </p>
           ) : (
-            <div className={isSimpleSection ? "space-y-2" : "grid gap-4"}>
+            <div className="grid gap-4">
               {items.map((item) => (
                 <article
                   key={item.id}
-                  className={
-                    isSimpleSection
-                      ? "flex items-start gap-3 rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 shadow-sm"
-                      : "rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
-                  }
+                  className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"
                 >
-                  {isSimpleSection ? (
-                    <span className="mt-1 text-sm text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
-                  ) : null}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        {!isSimpleSection ? (
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
-                            Order {item.sort_order ?? 0}
-                          </p>
-                        ) : null}
-                        <h3 className={`${isSimpleSection ? "text-sm leading-6" : "mt-1 text-lg leading-tight"} break-words font-semibold text-[var(--falcon-charcoal)]`}>
-                        {item.title}
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">
+                          Order {item.sort_order ?? 0}
+                        </p>
+                        <h3 className="mt-1 break-words text-lg font-semibold leading-tight text-[var(--falcon-charcoal)]">
+                          {item.title}
                         </h3>
                       </div>
 
@@ -4104,31 +4130,29 @@ export default function ProjectDetailPage() {
                       ) : null}
                     </div>
 
-                    {!isSimpleSection ? (
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        {config.fields.map((field) => {
-                      const value = item[field.key];
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {config.fields.map((field) => {
+                        const value = item[field.key];
 
-                      if (!value) {
-                        return null;
-                      }
+                        if (!value) {
+                          return null;
+                        }
 
-                      return (
-                        <div
-                          key={field.key}
-                          className="rounded-[16px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-3"
-                        >
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
-                            {field.label}
-                          </p>
-                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
-                            {value}
-                          </p>
-                        </div>
-                      );
-                        })}
-                      </div>
-                    ) : null}
+                        return (
+                          <div
+                            key={field.key}
+                            className="rounded-[16px] border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 py-3"
+                          >
+                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--falcon-muted-text)]">
+                              {field.label}
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-zinc-700">
+                              {value}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </article>
               ))}

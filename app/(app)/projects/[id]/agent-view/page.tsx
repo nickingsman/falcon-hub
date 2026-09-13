@@ -497,9 +497,9 @@ export default function ProjectAgentViewPage() {
             error={keySellingPoints.error}
             isEmpty={keySellingPoints.items.length === 0}
           >
-            <ul className="space-y-2">
+            <ul className="divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
               {keySellingPoints.items.map((item) => (
-                <li key={item.id} className="flex gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-900">
+                <li key={item.id} className="flex min-h-12 gap-3 px-4 py-2.5 text-sm font-medium leading-6 text-zinc-900">
                   <span className="text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
                   <span>{item.title}</span>
                 </li>
@@ -514,9 +514,9 @@ export default function ProjectAgentViewPage() {
             error={ownStayReasons.error}
             isEmpty={ownStayReasons.items.length === 0}
           >
-            <ul className="space-y-2">
+            <ul className="divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
               {ownStayReasons.items.map((item) => (
-                <li key={item.id} className="flex gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-900">
+                <li key={item.id} className="flex min-h-12 gap-3 px-4 py-2.5 text-sm font-medium leading-6 text-zinc-900">
                   <span className="text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
                   <span>{item.title}</span>
                 </li>
@@ -531,9 +531,9 @@ export default function ProjectAgentViewPage() {
             error={investmentReasons.error}
             isEmpty={investmentReasons.items.length === 0}
           >
-            <ul className="space-y-2">
+            <ul className="divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
               {investmentReasons.items.map((item) => (
-                <li key={item.id} className="flex gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-medium leading-6 text-zinc-900">
+                <li key={item.id} className="flex min-h-12 gap-3 px-4 py-2.5 text-sm font-medium leading-6 text-zinc-900">
                   <span className="text-[var(--falcon-gold-dark)]" aria-hidden="true">•</span>
                   <span>{item.title}</span>
                 </li>
