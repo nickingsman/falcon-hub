@@ -35,19 +35,44 @@ function getCustomerPdfWatermarkParts(branding: CustomerPdfBranding) {
 export function getCustomerPdfBrandingStyles() {
   return `
     .customer-pdf-watermark {
-      color: rgba(82, 82, 91, 0.055);
+      align-items: center;
+      color: rgba(82, 82, 91, 0.055) !important;
+      display: flex;
       font-size: 34px;
       font-weight: 700;
-      left: 50%;
+      inset: 0;
+      justify-content: center;
       letter-spacing: 0;
       line-height: 1;
       pointer-events: none;
       position: fixed;
       text-align: center;
-      top: 50%;
-      transform: translate(-50%, -50%) rotate(-18deg);
+      text-decoration: none !important;
+      -webkit-text-fill-color: currentColor !important;
+      user-select: none;
       white-space: nowrap;
       z-index: 1;
+    }
+    .customer-pdf-watermark-content {
+      color: inherit !important;
+      display: block;
+      font: inherit;
+      text-decoration: none !important;
+      transform: rotate(-18deg);
+      transform-origin: center;
+      -webkit-text-fill-color: currentColor !important;
+    }
+    .customer-pdf-watermark * {
+      color: inherit !important;
+      text-decoration: none !important;
+      -webkit-text-fill-color: currentColor !important;
+    }
+    .customer-pdf-watermark a,
+    .customer-pdf-watermark a[href^="tel:"] {
+      color: inherit !important;
+      font: inherit !important;
+      text-decoration: none !important;
+      -webkit-text-fill-color: currentColor !important;
     }
     .customer-pdf-watermark-name,
     .customer-pdf-watermark-phone {
@@ -78,6 +103,13 @@ export function getCustomerPdfBrandingStyles() {
       text-align: right;
       text-transform: uppercase;
     }
+    .customer-pdf-branding a,
+    .customer-pdf-branding a[href^="tel:"] {
+      color: inherit !important;
+      font: inherit !important;
+      text-decoration: none !important;
+      -webkit-text-fill-color: currentColor !important;
+    }
     @media print {
       .customer-pdf-branding {
         position: fixed;
@@ -97,8 +129,10 @@ export function renderCustomerPdfWatermark(branding: CustomerPdfBranding) {
 
   return `
     <div class="customer-pdf-watermark" aria-hidden="true">
-      <span class="customer-pdf-watermark-name">${escapeHtml(agentName)}</span>
-      ${agentPhone ? `<span class="customer-pdf-watermark-phone">${escapeHtml(agentPhone)}</span>` : ""}
+      <span class="customer-pdf-watermark-content">
+        <span class="customer-pdf-watermark-name">${escapeHtml(agentName)}</span>
+        ${agentPhone ? `<span class="customer-pdf-watermark-phone">${escapeHtml(agentPhone)}</span>` : ""}
+      </span>
     </div>
   `;
 }

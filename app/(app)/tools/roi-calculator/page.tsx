@@ -1410,6 +1410,7 @@ function buildRoiProposalHtml({
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="format-detection" content="telephone=no" />
     <title>${escapeHtml(projectName)} - Unit Calculation Proposal</title>
     <style>
       @page { size: A4; margin: 10mm 10mm 16mm; }
