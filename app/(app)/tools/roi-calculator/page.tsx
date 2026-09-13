@@ -1369,7 +1369,7 @@ function buildRoiProposalHtml({
     : "";
   const proposalPage2 = renderUnitPresentation
     ? `
-    <main class="page page-break">
+    <main class="page page-break project-presentation-page">
       <section class="header">
         <div>
           <div class="eyebrow">Project / Unit Presentation</div>
@@ -2054,8 +2054,91 @@ function buildRoiProposalHtml({
         font-size: 7.8px;
       }
       @media print {
-        body { background: #ffffff; }
-        .page { width: auto; min-height: auto; margin: 0; padding: 0; }
+        html,
+        body {
+          width: 210mm;
+          min-width: 210mm;
+          background: #ffffff;
+        }
+        .page {
+          width: 190mm;
+          min-height: 0;
+          margin: 0;
+          padding: 0;
+        }
+        .page-break {
+          break-before: page;
+          page-break-before: always;
+        }
+        .proposal-page-one .sections {
+          gap: 5px;
+          margin-top: 5px;
+        }
+        .proposal-page-one .section {
+          padding: 6px;
+        }
+        .proposal-page-one .row {
+          padding: 3px 0;
+        }
+        .proposal-page-one .summary {
+          break-inside: avoid;
+          page-break-inside: avoid;
+          margin-top: 5px;
+          padding: 6px;
+        }
+        .proposal-page-one .disclaimer {
+          margin-top: 3px;
+        }
+        .project-presentation-page .header,
+        .project-presentation-page .unit-info-section,
+        .project-presentation-page .layout-section {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .project-presentation-page .visual-grid {
+          break-inside: auto;
+          page-break-inside: auto;
+        }
+        .project-presentation-page .layout-frame,
+        .project-presentation-page .visual-grid.single .layout-frame {
+          display: block;
+          height: auto;
+          min-height: 0;
+          max-height: 158mm;
+          overflow: visible;
+          text-align: center;
+        }
+        .project-presentation-page .layout-frame img {
+          width: auto;
+          max-width: 100%;
+          height: auto;
+          max-height: 156mm;
+          margin: 0 auto;
+          object-fit: contain;
+        }
+        .project-presentation-page .floor-plan-frame,
+        .project-presentation-page .visual-grid.single .floor-plan-frame,
+        .project-presentation-page .three-visuals .floor-plan-frame {
+          height: auto;
+          min-height: 0;
+          max-height: 158mm;
+        }
+        .project-presentation-page .floor-plan-image-wrap,
+        .project-presentation-page .visual-grid.single .floor-plan-image-wrap,
+        .project-presentation-page .three-visuals .floor-plan-image-wrap {
+          height: auto;
+          min-height: 0;
+          max-height: 156mm;
+        }
+        .project-presentation-page .floor-plan-image-wrap img,
+        .project-presentation-page .visual-grid.single .floor-plan-image-wrap img,
+        .project-presentation-page .three-visuals .floor-plan-image-wrap img {
+          width: auto;
+          max-width: 100%;
+          height: auto;
+          max-height: 156mm;
+          object-fit: contain;
+        }
       }
     </style>
   </head>
