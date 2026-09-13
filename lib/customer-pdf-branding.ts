@@ -29,6 +29,19 @@ function getCustomerPdfWatermarkAgentName(branding: CustomerPdfBranding) {
   return normalizeText(branding.agentName) ?? "User";
 }
 
+function renderPdfSafePhone(phone: string) {
+  return [...phone]
+    .map((character, index, characters) => {
+      const nextCharacter = characters[index + 1];
+      const separator = /\d/.test(character) && /\d/.test(nextCharacter ?? "")
+        ? "&#8288;"
+        : "";
+
+      return `${escapeHtml(character)}${separator}`;
+    })
+    .join("");
+}
+
 export function getCustomerPdfBrandingStyles() {
   return `
     .customer-pdf-watermark {
@@ -122,9 +135,15 @@ export function renderCustomerPdfWatermark(branding: CustomerPdfBranding) {
 }
 
 export function renderCustomerPdfBranding(branding: CustomerPdfBranding) {
+  const agentName = normalizeText(branding.agentName) ?? "User";
+  const agentPhone = normalizeText(branding.agentPhone);
+  const attribution = agentPhone
+    ? `Prepared by ${escapeHtml(agentName)} · ${renderPdfSafePhone(agentPhone)}`
+    : `Prepared by ${escapeHtml(agentName)}`;
+
   return `
     <footer class="customer-pdf-branding">
-      <span class="customer-pdf-branding-agent">${escapeHtml(formatCustomerPdfAgentAttribution(branding))}</span>
+      <span class="customer-pdf-branding-agent">${attribution}</span>
       <span class="customer-pdf-branding-terms">${escapeHtml(termsText)}</span>
     </footer>
   `;

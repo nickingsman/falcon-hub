@@ -335,17 +335,11 @@ function evaluateBudgetFilter(
   }
 
   const priceLabel = formatCurrencyRange(unitType.price_from, unitType.price_to);
+  const highestFinalNetPrice = isNonNegativeNumber(unitType.price_to)
+    ? Math.max(unitType.price_from, unitType.price_to)
+    : unitType.price_from;
 
-  if (!isNonNegativeNumber(unitType.price_to)) {
-    return {
-      active: true,
-      status: "within_budget",
-      passes: true,
-      evidence: `${priceLabel} · within ${formatCurrency(maxBudget)} budget`,
-    };
-  }
-
-  if (unitType.price_to <= maxBudget) {
+  if (highestFinalNetPrice <= maxBudget) {
     return {
       active: true,
       status: "within_budget",
@@ -358,8 +352,8 @@ function evaluateBudgetFilter(
     return {
       active: true,
       status: "partially_within_budget",
-      passes: true,
-      evidence: `${priceLabel} · partially within ${formatCurrency(maxBudget)} budget`,
+      passes: false,
+      evidence: `${priceLabel} · range exceeds ${formatCurrency(maxBudget)} budget`,
     };
   }
 

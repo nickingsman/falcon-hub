@@ -47,7 +47,11 @@ type ConnectivityRow = {
 function normalizeNullableNumber(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
 
-  const parsed = Number(value);
+  const normalized =
+    typeof value === "string"
+      ? value.trim().replace(/^RM\s*/i, "").replaceAll(",", "")
+      : value;
+  const parsed = Number(normalized);
 
   return Number.isFinite(parsed) ? parsed : null;
 }
