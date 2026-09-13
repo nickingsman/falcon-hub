@@ -229,7 +229,27 @@ function normalizeTenure(value: string | null) {
 }
 
 function normalizeAreaSelections(areas: string[] | undefined) {
-  return new Set((areas ?? []).map((area) => area.trim()).filter(Boolean));
+  return new Set((areas ?? []).map(normalizeAreaValue).filter(Boolean));
+}
+
+function normalizeAreaValue(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("en-MY")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function isProjectInPreferredAreas(
+  project: SmartFinderProjectFact,
+  preferredAreas: string[] | undefined,
+) {
+  const areas = normalizeAreaSelections(preferredAreas);
+
+  if (areas.size === 0 || !project.location) return false;
+
+  return areas.has(normalizeAreaValue(project.location));
 }
 
 function areFinancingAssumptionsValid(assumptions: SmartFinderFinancingAssumptions) {
@@ -442,7 +462,7 @@ function evaluateAreaPreference(
 
   return {
     key: "area",
-    status: areas.has(project.location.trim()) ? "matched" : "not_matched",
+    status: areas.has(normalizeAreaValue(project.location)) ? "matched" : "not_matched",
     label: "Preferred Area",
     evidence: project.location,
   };
@@ -621,7 +641,13 @@ function compareUnitMatches(
   left: SmartFinderUnitTypeMatch,
   rightProject: SmartFinderProjectFact,
   right: SmartFinderUnitTypeMatch,
+  preferredAreas: string[] | undefined,
 ) {
+  const areaMatchDelta =
+    Number(isProjectInPreferredAreas(rightProject, preferredAreas)) -
+    Number(isProjectInPreferredAreas(leftProject, preferredAreas));
+  if (areaMatchDelta !== 0) return areaMatchDelta;
+
   const matchedDelta = right.preferenceSummary.matched - left.preferenceSummary.matched;
   if (matchedDelta !== 0) return matchedDelta;
 
@@ -701,7 +727,13 @@ export function findSmartProjectMatches({
   }
 
   flatMatches.sort((left, right) =>
-    compareUnitMatches(left.project, left.match, right.project, right.match),
+    compareUnitMatches(
+      left.project,
+      left.match,
+      right.project,
+      right.match,
+      requirements.preferredAreas,
+    ),
   );
 
   const groupedProjects = new Map<string, SmartFinderProjectResult>();

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   findSmartProjectMatches,
+  isProjectInPreferredAreas,
   type SmartFinderBedroomFilterResult,
   type SmartFinderBudgetFilterResult,
   type SmartFinderDataSet,
@@ -298,6 +299,14 @@ function getSelectedItemKey(projectId: string, unitTypeId: string) {
   return `${projectId}:${unitTypeId}`;
 }
 
+function getLowestMatchingFinalNetPrice(projectResult: SmartFinderResult["projects"][number]) {
+  const prices = projectResult.matchingUnitTypes
+    .map((match) => match.unitType.price_from)
+    .filter((price): price is number => typeof price === "number" && Number.isFinite(price));
+
+  return prices.length ? Math.min(...prices) : null;
+}
+
 export default function SmartProjectFinderPage() {
   const router = useRouter();
   const [form, setForm] = useState<FinderForm>(initialForm);
@@ -309,6 +318,9 @@ export default function SmartProjectFinderPage() {
   const [optionsError, setOptionsError] = useState("");
   const [formError, setFormError] = useState("");
   const [result, setResult] = useState<SmartFinderResult | null>(null);
+  const [resultPreferredAreas, setResultPreferredAreas] = useState<string[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [showAlternativeAreas, setShowAlternativeAreas] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [showFinancingAssumptions, setShowFinancingAssumptions] = useState(false);
   const [selectedComparisons, setSelectedComparisons] = useState<SelectedComparisonItem[]>([]);
@@ -358,6 +370,57 @@ export default function SmartProjectFinderPage() {
   }, []);
 
   const resultCount = useMemo(() => countResults(result), [result]);
+  const { primaryProjects, alternativeProjects } = useMemo(() => {
+    const projects = result?.projects ?? [];
+
+    if (resultPreferredAreas.length === 0) {
+      return { primaryProjects: projects, alternativeProjects: [] };
+    }
+
+    return {
+      primaryProjects: projects.filter((item) =>
+        isProjectInPreferredAreas(item.project, resultPreferredAreas),
+      ),
+      alternativeProjects: projects.filter(
+        (item) => !isProjectInPreferredAreas(item.project, resultPreferredAreas),
+      ),
+    };
+  }, [result, resultPreferredAreas]);
+  const selectedProject = useMemo(
+    () =>
+      result?.projects.find((item) => item.project.id === selectedProjectId) ?? null,
+    [result, selectedProjectId],
+  );
+  const displayedProjects = useMemo(() => {
+    if (selectedProject) {
+      return [{ projectResult: selectedProject, isAlternative: false }];
+    }
+
+    const projects = primaryProjects.map((projectResult) => ({
+      projectResult,
+      isAlternative: false,
+    }));
+    const shouldShowAlternatives =
+      resultPreferredAreas.length > 0 &&
+      (primaryProjects.length === 0 || showAlternativeAreas);
+
+    if (shouldShowAlternatives) {
+      projects.push(
+        ...alternativeProjects.map((projectResult) => ({
+          projectResult,
+          isAlternative: true,
+        })),
+      );
+    }
+
+    return projects;
+  }, [
+    alternativeProjects,
+    primaryProjects,
+    resultPreferredAreas.length,
+    selectedProject,
+    showAlternativeAreas,
+  ]);
   const currentResultSelectionKeys = useMemo(() => {
     const keys = new Set<string>();
 
@@ -570,6 +633,9 @@ export default function SmartProjectFinderPage() {
     }
 
     setFormError("");
+    setResultPreferredAreas([...form.preferredAreas]);
+    setSelectedProjectId(null);
+    setShowAlternativeAreas(false);
     setResult(
       findSmartProjectMatches({
         requirements: {
@@ -597,6 +663,9 @@ export default function SmartProjectFinderPage() {
     setForm(initialForm);
     setFormError("");
     setResult(null);
+    setResultPreferredAreas([]);
+    setSelectedProjectId(null);
+    setShowAlternativeAreas(false);
     setHasSearched(false);
     setShowFinancingAssumptions(false);
     setSelectedComparisons([]);
@@ -985,23 +1054,97 @@ export default function SmartProjectFinderPage() {
             <div className="flex flex-col gap-2 rounded-[28px] border border-zinc-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-semibold text-zinc-900">
-                  {resultCount.projects} Projects · {resultCount.unitTypes} Matching Unit Types
+                  {selectedProject
+                    ? selectedProject.project.name
+                    : resultPreferredAreas.length === 1
+                      ? `${primaryProjects.length} matching projects in ${resultPreferredAreas[0]}`
+                      : resultPreferredAreas.length > 1
+                        ? `${primaryProjects.length} matching projects across ${resultPreferredAreas.length} preferred areas`
+                        : `${resultCount.projects} matching projects`}
                 </p>
+                {!selectedProject && resultPreferredAreas.length > 0 && primaryProjects.length === 0 ? (
+                  <p className="mt-1 text-sm text-zinc-500">
+                    No exact matches in {resultPreferredAreas.join(", ")}. Showing alternatives
+                    outside the preferred area.
+                  </p>
+                ) : null}
               </div>
+              {selectedProject ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedProjectId(null)}
+                  className="self-start rounded-full border border-zinc-200 px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+                >
+                  ← Back to Projects
+                </button>
+              ) : null}
             </div>
 
-            {result?.projects.map((projectResult) => {
+            {displayedProjects.map(({ projectResult, isAlternative }, index) => {
               const projectMeta = [
                 projectResult.project.location,
                 projectResult.project.tenure,
                 formatEstimatedCompletion(projectResult.project),
               ].filter(Boolean);
+              const lowestPrice = getLowestMatchingFinalNetPrice(projectResult);
+              const isFirstAlternative =
+                isAlternative && (index === 0 || !displayedProjects[index - 1]?.isAlternative);
 
               return (
+                <div key={projectResult.project.id} className="space-y-3">
+                  {isFirstAlternative ? (
+                    <div className="flex items-center justify-between gap-3 pt-2">
+                      <div>
+                        <h2 className="text-base font-semibold text-zinc-900">
+                          Alternative Matches Outside Preferred Area
+                        </h2>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          These projects pass the Must Have requirements.
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
                 <article
-                  key={projectResult.project.id}
                   className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
                 >
+                  {!selectedProject ? (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProjectId(projectResult.project.id)}
+                      className="block w-full text-left"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          {isAlternative ? (
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                              Outside preferred area
+                            </p>
+                          ) : null}
+                          <h2 className="text-xl font-bold tracking-tight text-zinc-950 sm:text-2xl">
+                            {projectResult.project.name}
+                          </h2>
+                          {projectMeta.length ? (
+                            <p className="mt-1 text-sm text-zinc-500">{projectMeta.join(" · ")}</p>
+                          ) : null}
+                          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                            <p className="font-semibold text-zinc-900">
+                              {lowestPrice === null
+                                ? "Final Net Price unavailable"
+                                : `From ${formatMoney(lowestPrice)}`}
+                            </p>
+                            <p className="text-zinc-500">
+                              {projectResult.matchingUnitTypes.length} matching unit{" "}
+                              {projectResult.matchingUnitTypes.length === 1 ? "type" : "types"}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="shrink-0 self-end text-sm font-semibold text-[#9A6B1F] sm:self-auto">
+                          View Details →
+                        </span>
+                      </div>
+                    </button>
+                  ) : (
+                    <>
                   <div className="flex flex-col gap-2 border-b border-zinc-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h2 className="text-xl font-semibold text-zinc-900">
@@ -1197,9 +1340,23 @@ export default function SmartProjectFinderPage() {
                       );
                     })}
                   </div>
+                    </>
+                  )}
                 </article>
+                </div>
               );
             })}
+            {!selectedProject && primaryProjects.length > 0 && alternativeProjects.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowAlternativeAreas((current) => !current)}
+                className="w-full rounded-2xl border border-dashed border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+              >
+                {showAlternativeAreas
+                  ? "Hide alternative areas"
+                  : `Show ${alternativeProjects.length} alternative ${alternativeProjects.length === 1 ? "project" : "projects"} outside preferred area`}
+              </button>
+            ) : null}
           </section>
         )}
 
