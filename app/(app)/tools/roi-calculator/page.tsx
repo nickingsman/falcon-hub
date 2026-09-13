@@ -1100,6 +1100,68 @@ function printWhenImagesAreReady(proposalWindow: Window) {
   window.setTimeout(printOnce, 5000);
 }
 
+function writeProposalPreparationState(
+  proposalWindow: Window,
+  state: "loading" | "error",
+) {
+  const isError = state === "error";
+  const title = isError
+    ? "Unable to prepare Unit Calculation"
+    : "Preparing your Unit Calculation...";
+  const message = isError
+    ? "Please close this window and try exporting again."
+    : "Your PDF preview will appear here shortly.";
+
+  proposalWindow.document.open();
+  proposalWindow.document.write(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: #f7f4ec;
+        color: #202020;
+        font-family: Arial, sans-serif;
+      }
+      main {
+        width: min(420px, 100%);
+        border: 1px solid #e7dfce;
+        border-radius: 20px;
+        background: #ffffff;
+        padding: 28px;
+        text-align: center;
+        box-shadow: 0 12px 35px rgba(32, 32, 32, 0.08);
+      }
+      .mark {
+        width: 42px;
+        height: 3px;
+        margin: 0 auto 20px;
+        border-radius: 999px;
+        background: #b8924a;
+      }
+      h1 { margin: 0; font-size: 20px; line-height: 1.35; }
+      p { margin: 10px 0 0; color: #68645c; font-size: 14px; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true"></div>
+      <h1>${title}</h1>
+      <p>${message}</p>
+    </main>
+  </body>
+</html>`);
+  proposalWindow.document.close();
+}
+
 function buildRoiProposalHtml({
   form,
   numericInput,
@@ -3055,10 +3117,6 @@ export default function RoiCalculatorPage() {
   async function handleExportPdf() {
     if (hasBlockingValidation) return;
 
-    const [freshUnitPresentation, freshFloorPlanPresentation] = await Promise.all([
-      getFreshUnitPresentationForExport(),
-      getFreshFloorPlanPresentationForExport(),
-    ]);
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -3066,27 +3124,45 @@ export default function RoiCalculatorPage() {
       return;
     }
 
-    proposalWindow.document.open();
-    proposalWindow.document.write(
-      buildRoiProposalHtml({
-        form,
-        numericInput,
-        result,
-        branding: {
-          agentName: displayName,
-          agentPhone: phone,
-        },
-        unitPresentation: freshUnitPresentation,
-        floorPlanPresentation: freshFloorPlanPresentation,
-        purchaseCosts: resolvedPurchaseCosts,
-        packageItems,
-        salesPackageName: selectedCommercialPackage?.package_name ?? "",
-      }),
-    );
-    proposalWindow.document.close();
-    proposalWindow.focus();
+    writeProposalPreparationState(proposalWindow, "loading");
 
-    printWhenImagesAreReady(proposalWindow);
+    try {
+      const [freshUnitPresentation, freshFloorPlanPresentation] = await Promise.all([
+        getFreshUnitPresentationForExport(),
+        getFreshFloorPlanPresentationForExport(),
+      ]);
+
+      if (proposalWindow.closed) return;
+
+      proposalWindow.document.open();
+      proposalWindow.document.write(
+        buildRoiProposalHtml({
+          form,
+          numericInput,
+          result,
+          branding: {
+            agentName: displayName,
+            agentPhone: phone,
+          },
+          unitPresentation: freshUnitPresentation,
+          floorPlanPresentation: freshFloorPlanPresentation,
+          purchaseCosts: resolvedPurchaseCosts,
+          packageItems,
+          salesPackageName: selectedCommercialPackage?.package_name ?? "",
+        }),
+      );
+      proposalWindow.document.close();
+      proposalWindow.focus();
+
+      printWhenImagesAreReady(proposalWindow);
+    } catch (error) {
+      console.error("Export Unit Calculation PDF error:", error);
+
+      if (!proposalWindow.closed) {
+        writeProposalPreparationState(proposalWindow, "error");
+        proposalWindow.focus();
+      }
+    }
   }
 
   return (
