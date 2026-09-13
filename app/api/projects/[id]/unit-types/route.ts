@@ -7,6 +7,7 @@ import {
   suggestDisplayConfiguration,
   type ProjectMediaRow,
   toProjectMediaResponse,
+  toProjectMediaResponseMap,
 } from "@/lib/project-content";
 import { requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
 import {
@@ -15,6 +16,7 @@ import {
   type UnitTypeComparisonFields,
 } from "@/lib/project-comparison";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { logServerTiming } from "@/lib/server-timing";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -42,6 +44,27 @@ type UnitTypeRow = {
   estimated_rental_to: number | null;
   has_balcony: boolean | null;
   is_dual_key: boolean | null;
+  sort_order: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FurnishingPackageRow = {
+  id: string;
+  project_id: string;
+  package_name: string;
+  description: string | null;
+  sort_order: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FurnishingItemRow = {
+  id: string;
+  package_id: string;
+  item_name: string;
+  quantity: number | null;
+  description: string | null;
   sort_order: number | null;
   created_at: string;
   updated_at: string;
@@ -165,6 +188,104 @@ async function toUnitTypeResponse(
   };
 }
 
+async function toUnitTypeResponses(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  unitTypes: UnitTypeRow[],
+  includeInternalMedia: boolean,
+) {
+  const mediaIds = Array.from(
+    new Set(unitTypes.map((unitType) => unitType.layout_media_id).filter((id): id is string => Boolean(id))),
+  );
+  const packageIds = Array.from(
+    new Set(unitTypes.map((unitType) => unitType.furnishing_package_id).filter((id): id is string => Boolean(id))),
+  );
+
+  const mediaPromise = mediaIds.length > 0
+    ? (() => {
+        const query = supabase
+          .from("project_media")
+          .select(`
+            id,
+            project_id,
+            title,
+            media_type,
+            storage_bucket,
+            storage_path,
+            mime_type,
+            file_size_bytes,
+            description,
+            visibility,
+            sort_order,
+            created_at,
+            updated_at
+          `)
+          .in("id", mediaIds)
+          .eq("media_type", "unit_layout")
+          .eq("is_deleted", false);
+
+        if (!includeInternalMedia) query.eq("visibility", "customer");
+        return query;
+      })()
+    : Promise.resolve({ data: [], error: null });
+  const packagesPromise = packageIds.length > 0
+    ? supabase
+        .from("project_furnishing_packages")
+        .select("id, project_id, package_name, description, sort_order, created_at, updated_at")
+        .in("id", packageIds)
+        .eq("is_deleted", false)
+    : Promise.resolve({ data: [], error: null });
+  const itemsPromise = packageIds.length > 0
+    ? supabase
+        .from("project_furnishing_items")
+        .select("id, package_id, item_name, quantity, description, sort_order, created_at, updated_at")
+        .in("package_id", packageIds)
+        .eq("is_deleted", false)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true })
+    : Promise.resolve({ data: [], error: null });
+  const [mediaResult, packagesResult, itemsResult] = await Promise.all([
+    mediaPromise,
+    packagesPromise,
+    itemsPromise,
+  ]);
+
+  if (mediaResult.error) throw mediaResult.error;
+  if (packagesResult.error) throw packagesResult.error;
+  if (itemsResult.error) throw itemsResult.error;
+
+  const mediaById = await toProjectMediaResponseMap(
+    supabase,
+    (mediaResult.data ?? []) as ProjectMediaRow[],
+  );
+  const itemsByPackageId = new Map<string, FurnishingItemRow[]>();
+  for (const item of (itemsResult.data ?? []) as FurnishingItemRow[]) {
+    const rows = itemsByPackageId.get(item.package_id) ?? [];
+    rows.push(item);
+    itemsByPackageId.set(item.package_id, rows);
+  }
+  const packagesById = new Map(
+    ((packagesResult.data ?? []) as FurnishingPackageRow[]).map((furnishingPackage) => [
+      furnishingPackage.id,
+      {
+        ...furnishingPackage,
+        items: itemsByPackageId.get(furnishingPackage.id) ?? [],
+      },
+    ]),
+  );
+
+  return unitTypes.map((unitType) => {
+    const layout = unitType.layout_media_id ? mediaById.get(unitType.layout_media_id) ?? null : null;
+    return {
+      ...unitType,
+      layout_media_id: includeInternalMedia || layout ? unitType.layout_media_id : null,
+      layout,
+      furnishing_package: unitType.furnishing_package_id
+        ? packagesById.get(unitType.furnishing_package_id) ?? null
+        : null,
+    };
+  });
+}
+
 async function validateLayoutMedia(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   projectId: string,
@@ -275,6 +396,7 @@ function validateUnitTypePayload(
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
+  const startedAt = performance.now();
   const authorization = await requireProjectApiReadAccess();
 
   if (!authorization.authorized) {
@@ -324,10 +446,10 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     const includeInternalMedia =
       audience === "customer" ? false : canViewInternalProjectMedia(authorization.profile);
-    const response = await Promise.all(
-      ((data ?? []) as UnitTypeRow[]).map((unitType) =>
-        toUnitTypeResponse(supabase, unitType, includeInternalMedia),
-      ),
+    const response = await toUnitTypeResponses(
+      supabase,
+      (data ?? []) as UnitTypeRow[],
+      includeInternalMedia,
     );
 
     return NextResponse.json(response);
@@ -338,6 +460,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       { error: error instanceof Error ? error.message : "Unable to load unit types" },
       { status: 500 },
     );
+  } finally {
+    logServerTiming("project-unit-types", startedAt);
   }
 }
 

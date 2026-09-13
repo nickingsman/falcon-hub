@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext } from "react";
 import type { UserRole } from "@/lib/auth";
 
 type AppPermissions = {
@@ -36,49 +36,8 @@ export function AppPermissionProvider({
   children: React.ReactNode;
   permissions: AppPermissions;
 }>) {
-  const [currentPermissions, setCurrentPermissions] = useState<AppPermissions>({
-    ...permissions,
-    canManageProjects: false,
-    canManageUserApprovals: false,
-    canManageUsers: false,
-  });
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function refreshCurrentUser() {
-      try {
-        const response = await fetch("/api/auth/me", {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to verify current user");
-        }
-
-        const nextPermissions = await response.json();
-
-        if (isMounted) {
-          setCurrentPermissions(nextPermissions);
-        }
-      } catch (error) {
-        console.error("Current user refresh error:", error);
-
-        if (isMounted) {
-          setCurrentPermissions(readOnlyPermissions);
-        }
-      }
-    }
-
-    void refreshCurrentUser();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   return (
-    <AppPermissionContext.Provider value={currentPermissions}>
+    <AppPermissionContext.Provider value={permissions}>
       {children}
     </AppPermissionContext.Provider>
   );

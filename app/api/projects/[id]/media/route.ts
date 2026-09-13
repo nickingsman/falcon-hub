@@ -14,9 +14,11 @@ import {
   type ProjectMediaType,
   type ProjectMediaVisibility,
   toProjectMediaResponse,
+  toProjectMediaResponseMap,
 } from "@/lib/project-content";
 import { requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { logServerTiming } from "@/lib/server-timing";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -52,6 +54,7 @@ function parseMediaType(value: FormDataEntryValue | null): ProjectMediaType | nu
 }
 
 export async function GET(_request: Request, { params }: RouteContext) {
+  const startedAt = performance.now();
   const authorization = await requireProjectApiReadAccess();
 
   if (!authorization.authorized) {
@@ -98,9 +101,9 @@ export async function GET(_request: Request, { params }: RouteContext) {
       throw error;
     }
 
-    const response = await Promise.all(
-      ((data ?? []) as ProjectMediaRow[]).map((media) => toProjectMediaResponse(supabase, media)),
-    );
+    const mediaRows = (data ?? []) as ProjectMediaRow[];
+    const responseById = await toProjectMediaResponseMap(supabase, mediaRows);
+    const response = mediaRows.map((media) => responseById.get(media.id) ?? null);
 
     return NextResponse.json(response);
   } catch (error) {
@@ -110,6 +113,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
       { error: error instanceof Error ? error.message : "Unable to load project media" },
       { status: 500 },
     );
+  } finally {
+    logServerTiming("project-media", startedAt);
   }
 }
 

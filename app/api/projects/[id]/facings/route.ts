@@ -8,10 +8,12 @@ import {
 import {
   normalizeProjectFacingViewType,
   toFacingResponse,
+  toFacingResponses,
   type ProjectFacingRow,
 } from "@/lib/project-facings";
 import { requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { logServerTiming } from "@/lib/server-timing";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -62,6 +64,7 @@ async function validateFacingMedia(
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
+  const startedAt = performance.now();
   const authorization = await requireProjectApiReadAccess();
 
   if (!authorization.authorized) {
@@ -97,10 +100,10 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     const includeInternalMedia =
       audience === "customer" ? false : canViewInternalProjectMedia(authorization.profile);
-    const response = await Promise.all(
-      ((data ?? []) as ProjectFacingRow[]).map((facing) =>
-        toFacingResponse(supabase, facing, includeInternalMedia),
-      ),
+    const response = await toFacingResponses(
+      supabase,
+      (data ?? []) as ProjectFacingRow[],
+      includeInternalMedia,
     );
 
     return NextResponse.json(response);
@@ -111,6 +114,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       { error: error instanceof Error ? error.message : "Unable to load facings" },
       { status: 500 },
     );
+  } finally {
+    logServerTiming("project-facings", startedAt);
   }
 }
 

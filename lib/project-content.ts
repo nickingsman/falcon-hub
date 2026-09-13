@@ -133,6 +133,53 @@ export async function toProjectMediaResponse(
   };
 }
 
+export async function toProjectMediaResponseMap(
+  supabase: SupabaseClient,
+  mediaRows: ProjectMediaRow[],
+) {
+  const responseById = new Map<string, Awaited<ReturnType<typeof toProjectMediaResponse>>>();
+  const rowsByBucket = new Map<string, ProjectMediaRow[]>();
+
+  for (const media of mediaRows) {
+    const bucketRows = rowsByBucket.get(media.storage_bucket) ?? [];
+    bucketRows.push(media);
+    rowsByBucket.set(media.storage_bucket, bucketRows);
+  }
+
+  await Promise.all(
+    Array.from(rowsByBucket.entries()).map(async ([bucket, rows]) => {
+      const { data } = await supabase.storage
+        .from(bucket)
+        .createSignedUrls(
+          rows.map((media) => media.storage_path),
+          projectMediaSignedUrlSeconds,
+        );
+      const signedUrlByPath = new Map(
+        (data ?? []).map((item) => [item.path, item.signedUrl ?? null]),
+      );
+
+      for (const media of rows) {
+        responseById.set(media.id, {
+          id: media.id,
+          project_id: media.project_id,
+          title: media.title,
+          media_type: media.media_type,
+          mime_type: media.mime_type,
+          file_size_bytes: media.file_size_bytes,
+          description: media.description,
+          visibility: media.visibility,
+          sort_order: media.sort_order,
+          created_at: media.created_at,
+          updated_at: media.updated_at,
+          signed_url: signedUrlByPath.get(media.storage_path) ?? null,
+        });
+      }
+    }),
+  );
+
+  return responseById;
+}
+
 export async function projectExists(supabase: SupabaseClient, projectId: string) {
   const { data, error } = await supabase
     .from("projects")

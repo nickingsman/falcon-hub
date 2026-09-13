@@ -8,10 +8,12 @@ import {
 import {
   normalizeTowerCode,
   toFloorPlanResponse,
+  toFloorPlanResponses,
   type FloorPlanRow,
 } from "@/lib/project-floor-plans";
 import { requireProjectApiReadAccess, requireProjectApiWriteAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { logServerTiming } from "@/lib/server-timing";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -107,6 +109,7 @@ async function hasOverlappingFloorRange(
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
+  const startedAt = performance.now();
   const authorization = await requireProjectApiReadAccess();
 
   if (!authorization.authorized) {
@@ -142,10 +145,10 @@ export async function GET(request: Request, { params }: RouteContext) {
 
     const includeInternalMedia =
       audience === "customer" ? false : canViewInternalProjectMedia(authorization.profile);
-    const response = await Promise.all(
-      ((data ?? []) as FloorPlanRow[]).map((floorPlan) =>
-        toFloorPlanResponse(supabase, floorPlan, includeInternalMedia),
-      ),
+    const response = await toFloorPlanResponses(
+      supabase,
+      (data ?? []) as FloorPlanRow[],
+      includeInternalMedia,
     );
 
     return NextResponse.json(response);
@@ -156,6 +159,8 @@ export async function GET(request: Request, { params }: RouteContext) {
       { error: error instanceof Error ? error.message : "Unable to load floor plans" },
       { status: 500 },
     );
+  } finally {
+    logServerTiming("project-floor-plans", startedAt);
   }
 }
 

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProjectMediaRow } from "@/lib/project-content";
-import { toProjectMediaResponse } from "@/lib/project-content";
+import { toProjectMediaResponse, toProjectMediaResponseMap } from "@/lib/project-content";
 
 export const projectFacingViewTypes = [
   "actual",
@@ -127,11 +127,85 @@ export async function getFacingSummaries(
     throw error;
   }
 
-  const responses = await Promise.all(
-    ((data ?? []) as ProjectFacingRow[]).map((facing) =>
-      toFacingResponse(supabase, facing, includeInternalMedia),
-    ),
+  const responses = await toFacingResponses(
+    supabase,
+    (data ?? []) as ProjectFacingRow[],
+    includeInternalMedia,
   );
 
   return new Map(responses.map((facing) => [facing.id, facing]));
+}
+
+export async function toFacingResponses(
+  supabase: SupabaseClient,
+  facings: ProjectFacingRow[],
+  includeInternalMedia: boolean,
+) {
+  const mediaIds = Array.from(
+    new Set(
+      facings
+        .map((facing) => facing.media_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  let mediaRows: ProjectMediaRow[] = [];
+
+  if (mediaIds.length > 0) {
+    const query = supabase
+      .from("project_media")
+      .select(`
+        id,
+        project_id,
+        title,
+        media_type,
+        storage_bucket,
+        storage_path,
+        mime_type,
+        file_size_bytes,
+        description,
+        visibility,
+        sort_order,
+        created_at,
+        updated_at
+      `)
+      .in("id", mediaIds)
+      .eq("media_type", "facing_view")
+      .eq("is_deleted", false);
+
+    if (!includeInternalMedia) {
+      query.eq("visibility", "customer");
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    mediaRows = (data ?? []) as ProjectMediaRow[];
+  }
+
+  const mediaById = await toProjectMediaResponseMap(supabase, mediaRows);
+
+  return assembleFacingResponses(facings, mediaById, includeInternalMedia);
+}
+
+export function assembleFacingResponses(
+  facings: ProjectFacingRow[],
+  mediaById: Map<string, Awaited<ReturnType<typeof toProjectMediaResponse>>>,
+  includeInternalMedia: boolean,
+) {
+  return facings.map((facing) => {
+    const media = facing.media_id ? mediaById.get(facing.media_id) ?? null : null;
+
+    return {
+      id: facing.id,
+      project_id: facing.project_id,
+      name: facing.name,
+      description: facing.description,
+      media_id: includeInternalMedia || media ? facing.media_id : null,
+      view_type: facing.view_type,
+      disclaimer: facing.disclaimer,
+      sort_order: facing.sort_order,
+      created_at: facing.created_at,
+      updated_at: facing.updated_at,
+      media,
+    };
+  });
 }

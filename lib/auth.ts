@@ -1,5 +1,7 @@
 import type { User } from "@supabase/supabase-js";
+import { cache } from "react";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
+import { logServerTiming } from "@/lib/server-timing";
 
 export type UserRole = "super_admin" | "admin" | "leader" | "agent";
 export type UserProfileStatus =
@@ -42,32 +44,38 @@ export async function getAuthenticatedUser() {
   return data.user;
 }
 
-export async function getAuthenticatedUserProfile() {
-  const supabase = await createSupabaseSsrClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+export const getAuthenticatedUserProfile = cache(async () => {
+  const startedAt = performance.now();
 
-  if (userError || !userData.user) {
-    return null;
-  }
+  try {
+    const supabase = await createSupabaseSsrClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
 
-  const { data: profile, error: profileError } = await supabase
-    .from("user_profiles")
-    .select("auth_user_id, member_id, role, status, created_at, updated_at")
-    .eq("auth_user_id", userData.user.id)
-    .single();
+    if (userError || !userData.user) {
+      return null;
+    }
 
-  if (profileError) {
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
+      .select("auth_user_id, member_id, role, status, created_at, updated_at")
+      .eq("auth_user_id", userData.user.id)
+      .single();
+
+    if (profileError) {
+      return {
+        user: userData.user,
+        profile: null,
+      };
+    }
+
     return {
       user: userData.user,
-      profile: null,
+      profile: profile as UserProfile,
     };
+  } finally {
+    logServerTiming("auth-profile", startedAt);
   }
-
-  return {
-    user: userData.user,
-    profile: profile as UserProfile,
-  };
-}
+});
 
 export function isActiveProfile(profile: UserProfile | null) {
   return profile?.status === "active";

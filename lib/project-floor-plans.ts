@@ -1,7 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getFacingSummaries } from "@/lib/project-facings";
+import {
+  assembleFacingResponses,
+  getFacingSummaries,
+  type ProjectFacingRow,
+} from "@/lib/project-facings";
 import type { ProjectMediaRow } from "@/lib/project-content";
-import { toProjectMediaResponse } from "@/lib/project-content";
+import { toProjectMediaResponse, toProjectMediaResponseMap } from "@/lib/project-content";
 import {
   normalizeStackCodeForMatching,
   normalizeTowerCode,
@@ -253,4 +257,142 @@ export async function toFloorPlanResponse(
       facing: stack.facing_id ? facings.get(stack.facing_id) ?? null : null,
     })),
   };
+}
+
+export async function toFloorPlanResponses(
+  supabase: SupabaseClient,
+  floorPlans: FloorPlanRow[],
+  includeInternalMedia: boolean,
+) {
+  if (floorPlans.length === 0) return [];
+
+  const floorPlanIds = floorPlans.map((floorPlan) => floorPlan.id);
+  const { data: stackData, error: stackError } = await supabase
+      .from("project_floor_plan_stacks")
+      .select(`
+        id,
+        floor_plan_id,
+        stack_code,
+        unit_type_id,
+        facing_id,
+        x_percent,
+        y_percent,
+        width_percent,
+        height_percent,
+        shape_type,
+        polygon_points,
+        sort_order,
+        created_at,
+        updated_at
+      `)
+      .in("floor_plan_id", floorPlanIds)
+      .eq("is_deleted", false)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+  if (stackError) throw stackError;
+
+  const stacks = (stackData ?? []) as FloorPlanStackRow[];
+  const unitTypeIds = Array.from(
+    new Set(stacks.map((stack) => stack.unit_type_id).filter((id): id is string => Boolean(id))),
+  );
+  const facingIds = Array.from(
+    new Set(stacks.map((stack) => stack.facing_id).filter((id): id is string => Boolean(id))),
+  );
+  const [unitTypes, facingResult] = await Promise.all([
+    getUnitTypeSummaries(supabase, unitTypeIds),
+    facingIds.length > 0
+      ? supabase
+          .from("project_facings")
+          .select(`
+            id,
+            project_id,
+            name,
+            description,
+            media_id,
+            view_type,
+            disclaimer,
+            sort_order,
+            created_at,
+            updated_at
+          `)
+          .in("id", facingIds)
+          .eq("is_deleted", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (facingResult.error) throw facingResult.error;
+
+  const facingRows = (facingResult.data ?? []) as ProjectFacingRow[];
+  const mediaIds = Array.from(
+    new Set([
+      ...floorPlans.map((floorPlan) => floorPlan.media_id),
+      ...facingRows.map((facing) => facing.media_id).filter((id): id is string => Boolean(id)),
+    ]),
+  );
+  const mediaQuery = supabase
+    .from("project_media")
+    .select(`
+      id,
+      project_id,
+      title,
+      media_type,
+      storage_bucket,
+      storage_path,
+      mime_type,
+      file_size_bytes,
+      description,
+      visibility,
+      sort_order,
+      created_at,
+      updated_at
+    `)
+    .in("id", mediaIds)
+    .in("media_type", ["floor_plan", "facing_view"])
+    .eq("is_deleted", false);
+  if (!includeInternalMedia) mediaQuery.eq("visibility", "customer");
+
+  const { data: mediaData, error: mediaError } = await mediaQuery;
+  if (mediaError) throw mediaError;
+
+  const mediaById = await toProjectMediaResponseMap(
+    supabase,
+    (mediaData ?? []) as ProjectMediaRow[],
+  );
+  const facings = new Map(
+    assembleFacingResponses(facingRows, mediaById, includeInternalMedia).map((facing) => [
+      facing.id,
+      facing,
+    ]),
+  );
+  const stacksByFloorPlanId = new Map<string, FloorPlanStackRow[]>();
+
+  for (const stack of stacks) {
+    const rows = stacksByFloorPlanId.get(stack.floor_plan_id) ?? [];
+    rows.push(stack);
+    stacksByFloorPlanId.set(stack.floor_plan_id, rows);
+  }
+
+  return floorPlans.map((floorPlan) => {
+    const media = mediaById.get(floorPlan.media_id) ?? null;
+    const floorPlanStacks = stacksByFloorPlanId.get(floorPlan.id) ?? [];
+
+    return {
+      id: floorPlan.id,
+      project_id: floorPlan.project_id,
+      name: floorPlan.name,
+      tower_code: floorPlan.tower_code,
+      media_id: includeInternalMedia || media ? floorPlan.media_id : null,
+      floor_from: floorPlan.floor_from,
+      floor_to: floorPlan.floor_to,
+      sort_order: floorPlan.sort_order,
+      created_at: floorPlan.created_at,
+      updated_at: floorPlan.updated_at,
+      media,
+      stacks: floorPlanStacks.map((stack) => ({
+        ...stack,
+        unit_type: stack.unit_type_id ? unitTypes.get(stack.unit_type_id) ?? null : null,
+        facing: stack.facing_id ? facings.get(stack.facing_id) ?? null : null,
+      })),
+    };
+  });
 }
