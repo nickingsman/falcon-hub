@@ -25,11 +25,8 @@ export function formatCustomerPdfAgentAttribution(branding: CustomerPdfBranding)
   return agentPhone ? `Prepared by ${agentName} · ${agentPhone}` : `Prepared by ${agentName}`;
 }
 
-function getCustomerPdfWatermarkParts(branding: CustomerPdfBranding) {
-  const agentName = normalizeText(branding.agentName) ?? "User";
-  const agentPhone = normalizeText(branding.agentPhone);
-
-  return { agentName, agentPhone };
+function getCustomerPdfWatermarkAgentName(branding: CustomerPdfBranding) {
+  return normalizeText(branding.agentName) ?? "User";
 }
 
 export function getCustomerPdfBrandingStyles() {
@@ -67,20 +64,8 @@ export function getCustomerPdfBrandingStyles() {
       text-decoration: none !important;
       -webkit-text-fill-color: currentColor !important;
     }
-    .customer-pdf-watermark a,
-    .customer-pdf-watermark a[href^="tel:"] {
-      color: inherit !important;
-      font: inherit !important;
-      text-decoration: none !important;
-      -webkit-text-fill-color: currentColor !important;
-    }
-    .customer-pdf-watermark-name,
-    .customer-pdf-watermark-phone {
+    .customer-pdf-watermark-name {
       display: block;
-    }
-    .customer-pdf-watermark-phone {
-      font-size: 0.72em;
-      margin-top: 5px;
     }
     .customer-pdf-branding {
       border-top: 1px solid #e4e4e7;
@@ -125,13 +110,12 @@ export function getCustomerPdfBrandingStyles() {
 }
 
 export function renderCustomerPdfWatermark(branding: CustomerPdfBranding) {
-  const { agentName, agentPhone } = getCustomerPdfWatermarkParts(branding);
+  const agentName = getCustomerPdfWatermarkAgentName(branding);
 
   return `
     <div class="customer-pdf-watermark" aria-hidden="true">
       <span class="customer-pdf-watermark-content">
         <span class="customer-pdf-watermark-name">${escapeHtml(agentName)}</span>
-        ${agentPhone ? `<span class="customer-pdf-watermark-phone">${escapeHtml(agentPhone)}</span>` : ""}
       </span>
     </div>
   `;
