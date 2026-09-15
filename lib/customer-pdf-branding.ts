@@ -3,6 +3,11 @@ export type CustomerPdfBranding = {
   agentPhone?: string | null;
 };
 
+type CustomerPdfWatermarkOptions = {
+  includePhone?: boolean;
+  enhancedVisibility?: boolean;
+};
+
 const termsText = "Terms & Conditions Apply.";
 
 function escapeHtml(value: string) {
@@ -63,6 +68,9 @@ export function getCustomerPdfBrandingStyles() {
       white-space: nowrap;
       z-index: 1;
     }
+    .customer-pdf-watermark-enhanced {
+      color: rgba(82, 82, 91, 0.07) !important;
+    }
     .customer-pdf-watermark-content {
       color: inherit !important;
       display: block;
@@ -77,8 +85,13 @@ export function getCustomerPdfBrandingStyles() {
       text-decoration: none !important;
       -webkit-text-fill-color: currentColor !important;
     }
-    .customer-pdf-watermark-name {
+    .customer-pdf-watermark-name,
+    .customer-pdf-watermark-phone {
       display: block;
+    }
+    .customer-pdf-watermark-phone {
+      font-size: 0.72em;
+      margin-top: 5px;
     }
     .customer-pdf-branding {
       border-top: 1px solid #e4e4e7;
@@ -122,13 +135,21 @@ export function getCustomerPdfBrandingStyles() {
   `;
 }
 
-export function renderCustomerPdfWatermark(branding: CustomerPdfBranding) {
+export function renderCustomerPdfWatermark(
+  branding: CustomerPdfBranding,
+  options: CustomerPdfWatermarkOptions = {},
+) {
   const agentName = getCustomerPdfWatermarkAgentName(branding);
+  const agentPhone = normalizeText(branding.agentPhone);
+  const className = options.enhancedVisibility
+    ? "customer-pdf-watermark customer-pdf-watermark-enhanced"
+    : "customer-pdf-watermark";
 
   return `
-    <div class="customer-pdf-watermark" aria-hidden="true">
+    <div class="${className}" aria-hidden="true">
       <span class="customer-pdf-watermark-content">
         <span class="customer-pdf-watermark-name">${escapeHtml(agentName)}</span>
+        ${options.includePhone && agentPhone ? `<span class="customer-pdf-watermark-phone">${renderPdfSafePhone(agentPhone)}</span>` : ""}
       </span>
     </div>
   `;

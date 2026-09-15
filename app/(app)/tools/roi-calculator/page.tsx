@@ -2146,7 +2146,10 @@ function buildRoiProposalHtml({
     </style>
   </head>
   <body>
-    ${renderCustomerPdfWatermark(branding)}
+    ${renderCustomerPdfWatermark(branding, {
+      includePhone: true,
+      enhancedVisibility: true,
+    })}
     <main class="page proposal-page-one">
       <section class="header">
         <div>
