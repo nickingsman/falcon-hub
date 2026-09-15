@@ -15,10 +15,13 @@ import {
   type ScheduleHStageId,
 } from "@/lib/progressive-interest";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
+import { SearchCombobox } from "../../components/SearchCombobox";
 
 type ProjectOption = {
   id: string;
   project_name: string | null;
+  developer?: string | null;
+  location?: string | null;
 };
 
 type TimelineStageId = Extract<
@@ -1045,18 +1048,29 @@ export default function BuyerPaymentSchedulePage() {
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">Project</span>
-                  <select
+                  <SearchCombobox
                     value={selectedProjectId}
-                    onChange={(event) => setSelectedProjectId(event.target.value)}
-                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-zinc-400"
-                  >
-                    <option value="">Optional Project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.project_name || "Untitled Project"}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      {
+                        id: "",
+                        label: "",
+                        description: "Continue without a Project",
+                      },
+                      ...projects.flatMap((project) =>
+                        project.project_name
+                          ? [{
+                              id: project.id,
+                              label: project.project_name,
+                              description: [project.location, project.developer].filter(Boolean).join(" · "),
+                              searchText: [project.developer, project.location].filter(Boolean).join(" "),
+                            }]
+                          : [],
+                      ),
+                    ]}
+                    placeholder="Search project..."
+                    emptyLabel="No projects found."
+                    onChange={setSelectedProjectId}
+                  />
                   {projectsError ? (
                     <span className="mt-1 block text-xs text-amber-700">
                       {projectsError}. Manual entry still works.
