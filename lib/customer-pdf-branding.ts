@@ -70,6 +70,12 @@ export function getCustomerPdfBrandingStyles() {
     }
     .customer-pdf-watermark-enhanced {
       color: rgba(82, 82, 91, 0.07) !important;
+      display: block;
+      inset: auto 0;
+      top: 39%;
+    }
+    .customer-pdf-watermark-enhanced .customer-pdf-watermark-content {
+      display: inline-block;
     }
     .customer-pdf-watermark-content {
       color: inherit !important;
@@ -90,8 +96,12 @@ export function getCustomerPdfBrandingStyles() {
       display: block;
     }
     .customer-pdf-watermark-phone {
+      color: inherit !important;
+      font: inherit;
       font-size: 0.72em;
+      line-height: 1;
       margin-top: 5px;
+      -webkit-text-fill-color: currentColor !important;
     }
     .customer-pdf-branding {
       border-top: 1px solid #e4e4e7;
@@ -147,10 +157,10 @@ export function renderCustomerPdfWatermark(
 
   return `
     <div class="${className}" aria-hidden="true">
-      <span class="customer-pdf-watermark-content">
-        <span class="customer-pdf-watermark-name">${escapeHtml(agentName)}</span>
-        ${options.includePhone && agentPhone ? `<span class="customer-pdf-watermark-phone">${renderPdfSafePhone(agentPhone)}</span>` : ""}
-      </span>
+      <div class="customer-pdf-watermark-content">
+        <div class="customer-pdf-watermark-name">${escapeHtml(agentName)}</div>
+        ${options.includePhone && agentPhone ? `<div class="customer-pdf-watermark-phone">${renderPdfSafePhone(agentPhone)}</div>` : ""}
+      </div>
     </div>
   `;
 }
