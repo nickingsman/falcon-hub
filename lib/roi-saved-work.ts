@@ -7,6 +7,8 @@ import type { PurchaseCostEstimateKey } from "@/lib/purchase-costs";
 
 export const roiSavedWorkSchemaVersion = 1;
 
+export type RoiPurchasePurpose = "own_stay" | "investment";
+
 const packageItemTypes = ["discount", "cash_benefit", "non_cash_benefit"] as const;
 const discountMethods = ["percentage_spa", "percentage_previous_balance", "fixed"] as const;
 const cashBenefitTreatments = ["immediate_offset", "refund_later"] as const;
@@ -113,6 +115,7 @@ export type RoiSavedFloorPlanPresentationSnapshotV1 = {
 export type RoiSavedWorkPayloadV1 = {
   tool: "roi";
   schemaVersion: 1;
+  purchasePurpose: RoiPurchasePurpose;
   form: RoiSavedWorkFormV1;
   packageItems: RoiSavedPackageItemV1[];
   purchaseCosts: RoiSavedPurchaseCostV1[];
@@ -300,6 +303,10 @@ export function validateRoiSavedWorkPayload(value: unknown):
     payload: {
       tool: "roi",
       schemaVersion: roiSavedWorkSchemaVersion,
+      purchasePurpose:
+        value.purchasePurpose === "own_stay" || value.purchasePurpose === "investment"
+          ? value.purchasePurpose
+          : "investment",
       form,
       packageItems,
       purchaseCosts,

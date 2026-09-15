@@ -23,6 +23,7 @@ import {
 import {
   roiSavedWorkSchemaVersion,
   validateRoiSavedWorkPayload,
+  type RoiPurchasePurpose,
   type RoiSavedFloorPlanPresentationSnapshotV1,
   type RoiSavedLayoutSnapshotV1,
   type RoiSavedUnitPresentationSnapshotV1,
@@ -1164,6 +1165,7 @@ function writeProposalPreparationState(
 
 function buildRoiProposalHtml({
   form,
+  purchasePurpose,
   numericInput,
   result,
   branding,
@@ -1174,6 +1176,7 @@ function buildRoiProposalHtml({
   salesPackageName,
 }: {
   form: CalculatorForm;
+  purchasePurpose: RoiPurchasePurpose;
   numericInput: {
     loanMarginPercent: number;
     annualInterestRatePercent: number;
@@ -2212,34 +2215,49 @@ function buildRoiProposalHtml({
               : ""
           }
         </div>
-        <div class="section">
-          <h2>Rental / Operating Figures</h2>
-          ${proposalRow("Expected Monthly Rental", formatCurrencyDetailed(numericInput.expectedMonthlyRental))}
-          ${proposalRow("Estimated Monthly Loan Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment))}
-          ${proposalRow("Monthly Maintenance", formatCurrencyDetailed(result.monthlyMaintenance))}
-          ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow), false, monthlyCashFlowBreakdown)}
-          ${proposalRow("Estimated Annual Cash Flow", formatCurrencyDetailed(result.annualCashFlow), false, [annualCashFlowExplanation])}
-          ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent), false, ["Based on estimated annual net rental after maintenance."])}
-        </div>
+        ${
+          purchasePurpose === "investment"
+            ? `<div class="section">
+                <h2>Rental / Operating Figures</h2>
+                ${proposalRow("Expected Monthly Rental", formatCurrencyDetailed(numericInput.expectedMonthlyRental))}
+                ${proposalRow("Estimated Monthly Loan Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment))}
+                ${proposalRow("Monthly Maintenance", formatCurrencyDetailed(result.monthlyMaintenance))}
+                ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow), false, monthlyCashFlowBreakdown)}
+                ${proposalRow("Estimated Annual Cash Flow", formatCurrencyDetailed(result.annualCashFlow), false, [annualCashFlowExplanation])}
+                ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent), false, ["Based on estimated annual net rental after maintenance."])}
+              </div>`
+            : ""
+        }
       </section>
 
       <section class="summary">
-        <h2>Final Investment Summary</h2>
+        <h2>${purchasePurpose === "investment" ? "Final Investment Summary" : "Final Purchase Summary"}</h2>
         <div class="summary-grid">
           <div class="summary-card">
             <span>Final Price After Benefits</span>
             <strong>${escapeHtml(formatCurrency(result.finalPriceAfterBenefits))}</strong>
           </div>
-          <div class="summary-card">
-            <span>Net Rental Yield</span>
-            <strong>${escapeHtml(formatPercent(result.netRentalYieldPercent))}</strong>
-          </div>
-          <div class="summary-card">
-            <span>${escapeHtml(monthlyCashFlowLabel)}</span>
-            <strong class="${monthlyCashFlow < 0 ? "cash-flow-negative" : "cash-flow-positive"}">
-              ${escapeHtml(formatCurrencyDetailed(result.monthlyCashFlow))}
-            </strong>
-          </div>
+          ${
+            purchasePurpose === "investment"
+              ? `<div class="summary-card">
+                  <span>Net Rental Yield</span>
+                  <strong>${escapeHtml(formatPercent(result.netRentalYieldPercent))}</strong>
+                </div>
+                <div class="summary-card">
+                  <span>${escapeHtml(monthlyCashFlowLabel)}</span>
+                  <strong class="${monthlyCashFlow < 0 ? "cash-flow-negative" : "cash-flow-positive"}">
+                    ${escapeHtml(formatCurrencyDetailed(result.monthlyCashFlow))}
+                  </strong>
+                </div>`
+              : `<div class="summary-card">
+                  <span>Estimated Total Cash Required</span>
+                  <strong>${escapeHtml(formatCurrencyDetailed(result.estimatedTotalCashRequired))}</strong>
+                </div>
+                <div class="summary-card">
+                  <span>Estimated Monthly Instalment</span>
+                  <strong>${escapeHtml(formatCurrencyDetailed(result.estimatedMonthlyInstalment))}</strong>
+                </div>`
+          }
         </div>
       </section>
 
@@ -2404,6 +2422,7 @@ function SaveWorkModal({
 
 export default function RoiCalculatorPage() {
   const { displayName, phone } = useAppPermissions();
+  const [purchasePurpose, setPurchasePurpose] = useState<RoiPurchasePurpose>("own_stay");
   const [form, setForm] = useState<CalculatorForm>({
     projectName: "",
     unitNumber: "",
@@ -2554,8 +2573,9 @@ export default function RoiCalculatorPage() {
     }
 
     if (
-      !Number.isFinite(numericInput.expectedMonthlyRental) ||
-      numericInput.expectedMonthlyRental < 0
+      purchasePurpose === "investment" &&
+      (!Number.isFinite(numericInput.expectedMonthlyRental) ||
+        numericInput.expectedMonthlyRental < 0)
     ) {
       messages.push("Expected Monthly Rental cannot be negative.");
     }
@@ -2612,7 +2632,7 @@ export default function RoiCalculatorPage() {
     }
 
     return messages;
-  }, [numericInput, packageItems, resolvedPurchaseCosts]);
+  }, [numericInput, packageItems, purchasePurpose, resolvedPurchaseCosts]);
   const result = useMemo(
     () =>
       calculateRoi({
@@ -3001,6 +3021,7 @@ export default function RoiCalculatorPage() {
     return {
       tool: "roi",
       schemaVersion: roiSavedWorkSchemaVersion,
+      purchasePurpose,
       form,
       packageItems,
       purchaseCosts,
@@ -3089,6 +3110,7 @@ export default function RoiCalculatorPage() {
   }
 
   function hydrateSavedRoiPayload(payload: RoiSavedWorkPayloadV1) {
+    setPurchasePurpose(payload.purchasePurpose);
     setForm(payload.form);
     setPackageItems(payload.packageItems);
     setPurchaseCosts(payload.purchaseCosts.length ? payload.purchaseCosts : defaultPurchaseCosts);
@@ -3222,6 +3244,7 @@ export default function RoiCalculatorPage() {
       proposalWindow.document.write(
         buildRoiProposalHtml({
           form,
+          purchasePurpose,
           numericInput,
           result,
           branding: {
@@ -3489,6 +3512,32 @@ export default function RoiCalculatorPage() {
                     </span>
                   ) : null}
                 </label>
+              </div>
+            </section>
+
+            <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--falcon-muted-text)]">
+                Purchase Purpose
+              </p>
+              <div className="mt-3 inline-flex w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-1 sm:w-auto">
+                {([
+                  ["own_stay", "Own Stay"],
+                  ["investment", "Investment"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={purchasePurpose === value}
+                    onClick={() => setPurchasePurpose(value)}
+                    className={`min-h-10 flex-1 rounded-xl px-5 text-sm font-semibold transition sm:flex-none ${
+                      purchasePurpose === value
+                        ? "bg-zinc-950 text-white shadow-sm"
+                        : "text-zinc-600 hover:bg-white hover:text-zinc-950"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </section>
 
@@ -4105,8 +4154,12 @@ export default function RoiCalculatorPage() {
 
             <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
               <SectionHeader
-                title="Financing & Rental"
-                description="Assumptions for instalment, cash flow and yield."
+                title={purchasePurpose === "investment" ? "Financing & Rental" : "Financing & Costs"}
+                description={
+                  purchasePurpose === "investment"
+                    ? "Assumptions for instalment, cash flow and yield."
+                    : "Assumptions for financing, instalment and ownership costs."
+                }
               />
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <label className="block text-sm text-zinc-600">
@@ -4153,20 +4206,22 @@ export default function RoiCalculatorPage() {
                     </span>
                   </div>
                 </label>
-                <label className="block text-sm text-zinc-600">
-                  <span className="mb-1 block font-medium text-zinc-900">
-                    Expected Monthly Rental
-                  </span>
-                    <input
-                      inputMode="decimal"
-                      value={form.expectedMonthlyRental}
-                      onChange={(event) =>
-                        updateField("expectedMonthlyRental", event.target.value)
-                      }
-                      className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.expectedMonthlyRental.trim(), hasEnteredValue(form.expectedMonthlyRental) && (!Number.isFinite(numericInput.expectedMonthlyRental) || numericInput.expectedMonthlyRental < 0))}`}
-                      placeholder="2500"
-                    />
+                {purchasePurpose === "investment" ? (
+                  <label className="block text-sm text-zinc-600">
+                    <span className="mb-1 block font-medium text-zinc-900">
+                      Expected Monthly Rental
+                    </span>
+                      <input
+                        inputMode="decimal"
+                        value={form.expectedMonthlyRental}
+                        onChange={(event) =>
+                          updateField("expectedMonthlyRental", event.target.value)
+                        }
+                        className={`w-full rounded-2xl border px-3 py-2.5 outline-none transition focus:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.expectedMonthlyRental.trim(), hasEnteredValue(form.expectedMonthlyRental) && (!Number.isFinite(numericInput.expectedMonthlyRental) || numericInput.expectedMonthlyRental < 0))}`}
+                        placeholder="2500"
+                      />
                   </label>
+                ) : null}
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Maintenance Rate
@@ -4210,25 +4265,48 @@ export default function RoiCalculatorPage() {
           </div>
 
           <div className="space-y-5 xl:sticky xl:top-6 xl:self-start">
-            <section
-              className={`rounded-[26px] border p-5 shadow-sm sm:p-6 ${
-                cashFlowIsPositive
-                  ? "border-emerald-200 bg-[#f1fbf8]"
-                  : "border-rose-200 bg-[#fff7f7]"
-              }`}
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--falcon-muted-text)]">
-                Estimated Monthly Cash Flow
-              </p>
-              <p className={`mt-3 text-3xl font-semibold tracking-tight sm:text-4xl ${
-                cashFlowIsPositive ? "text-[#087F6B]" : "text-[#8B3A3A]"
-              }`}>
-                {formatCurrencyDetailed(result.monthlyCashFlow)}
-              </p>
-              <p className="mt-2 text-sm text-zinc-600">
-                Rental minus maintenance and estimated instalment.
-              </p>
-            </section>
+            {purchasePurpose === "investment" ? (
+              <section
+                className={`rounded-[26px] border p-5 shadow-sm sm:p-6 ${
+                  cashFlowIsPositive
+                    ? "border-emerald-200 bg-[#f1fbf8]"
+                    : "border-rose-200 bg-[#fff7f7]"
+                }`}
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--falcon-muted-text)]">
+                  Estimated Monthly Cash Flow
+                </p>
+                <p className={`mt-3 text-3xl font-semibold tracking-tight sm:text-4xl ${
+                  cashFlowIsPositive ? "text-[#087F6B]" : "text-[#8B3A3A]"
+                }`}>
+                  {formatCurrencyDetailed(result.monthlyCashFlow)}
+                </p>
+                <p className="mt-2 text-sm text-zinc-600">
+                  Rental minus maintenance and estimated instalment.
+                </p>
+              </section>
+            ) : (
+              <section className="rounded-[26px] border border-emerald-200 bg-[#f1fbf8] p-5 shadow-sm sm:p-6">
+                <SectionHeader title="Final Purchase Summary" />
+                <div className="mt-3">
+                  <ResultRow
+                    label="Final Price After Benefits"
+                    value={formatCurrencyDetailed(result.finalPriceAfterBenefits)}
+                    valueClassName="font-bold text-[#087F6B]"
+                  />
+                  <ResultRow
+                    label="Estimated Total Cash Required"
+                    value={formatCurrencyDetailed(result.estimatedTotalCashRequired)}
+                    valueClassName="font-bold text-zinc-900"
+                  />
+                  <ResultRow
+                    label="Estimated Monthly Instalment"
+                    value={formatCurrencyDetailed(result.estimatedMonthlyInstalment)}
+                    valueClassName="font-bold text-zinc-900"
+                  />
+                </div>
+              </section>
+            )}
 
             <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
               <SectionHeader title="Customer Summary" />
@@ -4388,6 +4466,7 @@ export default function RoiCalculatorPage() {
               </div>
             </section>
 
+            {purchasePurpose === "investment" ? (
             <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
               <SectionHeader title="Returns" />
               <div className="mt-4">
@@ -4427,6 +4506,7 @@ export default function RoiCalculatorPage() {
                 </ResultRow>
               </div>
             </section>
+            ) : null}
           </div>
         </div>
       </main>
