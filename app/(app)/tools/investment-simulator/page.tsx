@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
 import {
+  calculateInvestmentFinancing,
   calculateInvestmentSimulation,
   investmentScenarioAssumptions,
   type InvestmentScenario,
@@ -266,6 +267,33 @@ export default function InvestmentSimulatorPage() {
     if (Object.values(values).some((value) => value === null)) return null;
     return values as InvestmentSimulatorInput;
   }, [derivedInitialCapital, form]);
+  const financing = useMemo(() => {
+    const purchasePrice = parseInput(form.purchasePrice);
+    const loanMarginPercent = parseInput(form.loanMarginPercent);
+    const annualInterestRatePercent = parseInput(form.annualInterestRatePercent);
+    const loanTenureYears = parseInput(form.loanTenureYears);
+
+    if (
+      purchasePrice === null ||
+      loanMarginPercent === null ||
+      annualInterestRatePercent === null ||
+      loanTenureYears === null
+    ) {
+      return null;
+    }
+
+    return calculateInvestmentFinancing({
+      purchasePrice,
+      loanMarginPercent,
+      annualInterestRatePercent,
+      loanTenureYears,
+    });
+  }, [
+    form.annualInterestRatePercent,
+    form.loanMarginPercent,
+    form.loanTenureYears,
+    form.purchasePrice,
+  ]);
   const result = useMemo(() => parsedInput ? calculateInvestmentSimulation(parsedInput) : null, [parsedInput]);
   const selected = result?.selectedYear ?? null;
   const yearOne = result?.years[0] ?? null;
@@ -401,7 +429,7 @@ export default function InvestmentSimulatorPage() {
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Financing</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Housing Loan</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-3"><InputField label="Loan Margin" suffix="%" value={form.loanMarginPercent} onChange={(value) => updateField("loanMarginPercent", value)} /><InputField label="Interest Rate" suffix="% p.a." value={form.annualInterestRatePercent} onChange={(value) => updateField("annualInterestRatePercent", value)} /><InputField label="Loan Tenure" suffix="Years" value={form.loanTenureYears} onChange={(value) => updateField("loanTenureYears", value)} /></div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2"><Metric label="Loan Amount" value={result ? formatMoney(result.loanAmount) : "—"} /><Metric label="Monthly Instalment" value={result ? formatMoney(result.monthlyInstalment) : "—"} /></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2"><Metric label="Loan Amount" value={financing ? formatMoney(financing.loanAmount) : "—"} /><Metric label="Monthly Instalment" value={financing ? formatMoney(financing.monthlyInstalment) : "—"} /></div>
           </section>
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Rental</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Operating Assumptions</h2>

@@ -57,6 +57,20 @@ export type InvestmentSimulatorResult = {
   selectedYear: InvestmentYearResult;
 };
 
+export type InvestmentFinancingInput = Pick<
+  InvestmentSimulatorInput,
+  | "purchasePrice"
+  | "loanMarginPercent"
+  | "annualInterestRatePercent"
+  | "loanTenureYears"
+>;
+
+export type InvestmentFinancingResult = {
+  loanAmount: number;
+  monthlyInstalment: number;
+  loan: LoanAmortizationResult | null;
+};
+
 function isFiniteWithin(value: number, minimum: number, maximum: number) {
   return Number.isFinite(value) && value >= minimum && value <= maximum;
 }
@@ -87,10 +101,18 @@ export function applyInvestmentScenario(
   return { ...input, ...investmentScenarioAssumptions[scenario] };
 }
 
-export function calculateInvestmentSimulation(
-  input: InvestmentSimulatorInput,
-): InvestmentSimulatorResult | null {
-  if (!isValidInvestmentInput(input)) return null;
+export function calculateInvestmentFinancing(
+  input: InvestmentFinancingInput,
+): InvestmentFinancingResult | null {
+  if (
+    !isFiniteWithin(input.purchasePrice, 1, 100_000_000) ||
+    !isFiniteWithin(input.loanMarginPercent, 0, 100) ||
+    !isFiniteWithin(input.annualInterestRatePercent, 0, 20) ||
+    !isFiniteWithin(input.loanTenureYears, 1 / 12, 40) ||
+    !Number.isInteger(input.loanTenureYears * 12)
+  ) {
+    return null;
+  }
 
   const loanAmount = input.purchasePrice * (input.loanMarginPercent / 100);
   const loan =
@@ -103,6 +125,22 @@ export function calculateInvestmentSimulation(
       : null;
 
   if (loanAmount > 0 && !loan) return null;
+
+  return {
+    loanAmount,
+    monthlyInstalment: loan?.monthlyInstalment ?? 0,
+    loan,
+  };
+}
+
+export function calculateInvestmentSimulation(
+  input: InvestmentSimulatorInput,
+): InvestmentSimulatorResult | null {
+  if (!isValidInvestmentInput(input)) return null;
+
+  const financing = calculateInvestmentFinancing(input);
+  if (!financing) return null;
+  const { loanAmount, loan, monthlyInstalment } = financing;
 
   const years: InvestmentYearResult[] = [];
   let cumulativeOperatingCashFlow = 0;
@@ -178,7 +216,7 @@ export function calculateInvestmentSimulation(
   return {
     input,
     loanAmount,
-    monthlyInstalment: loan?.monthlyInstalment ?? 0,
+    monthlyInstalment,
     loan,
     years,
     selectedYear,

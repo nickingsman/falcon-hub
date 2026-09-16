@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   applyInvestmentScenario,
+  calculateInvestmentFinancing,
   calculateInvestmentSimulation,
   getInvestmentYear,
   type InvestmentSimulatorInput,
@@ -128,4 +129,41 @@ test("Case H: presets change only capital and rental growth assumptions", () => 
   assert.equal(applyInvestmentScenario(baseInvestment, "conservative").capitalAppreciationPercent, 2);
   assert.equal(applyInvestmentScenario(baseInvestment, "base").rentalAppreciationPercent, 2);
   assert.equal(applyInvestmentScenario(baseInvestment, "optimistic").capitalAppreciationPercent, 4);
+});
+
+test("financing remains available independently of entry capital and rental assumptions", () => {
+  const financing = calculateInvestmentFinancing({
+    purchasePrice: 500_000,
+    loanMarginPercent: 90,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+  });
+
+  assert.ok(financing);
+  assert.equal(financing.loanAmount, 450_000);
+  assert.equal(financing.monthlyInstalment.toFixed(2), "1912.33");
+
+  const zeroCapitalAndRental = calculateInvestmentSimulation({
+    ...baseInvestment,
+    purchasePrice: 500_000,
+    initialCashRequired: 0,
+    loanMarginPercent: 90,
+    startingMonthlyRental: 0,
+  });
+  assert.ok(zeroCapitalAndRental);
+  assert.equal(zeroCapitalAndRental.loanAmount, financing.loanAmount);
+  assert.equal(zeroCapitalAndRental.monthlyInstalment, financing.monthlyInstalment);
+});
+
+test("financing uses SPA Price and loan margin rather than downpayment assumptions", () => {
+  const financing = calculateInvestmentFinancing({
+    purchasePrice: 600_000,
+    loanMarginPercent: 80,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+  });
+
+  assert.ok(financing);
+  assert.equal(financing.loanAmount, 480_000);
+  assert.equal(financing.monthlyInstalment.toFixed(2), "2039.82");
 });
