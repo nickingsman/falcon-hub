@@ -5,10 +5,21 @@ import {
   welcomeHandoffHeaderName,
 } from "@/lib/welcome-handoff";
 
-const publicRoutes = ["/login", "/register"];
+const publicRoutes = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/auth/callback",
+];
+const guestOnlyRoutes = ["/login", "/register", "/forgot-password"];
 
 function isPublicRoute(pathname: string) {
   return publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+}
+
+function isGuestOnlyRoute(pathname: string) {
+  return guestOnlyRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 }
 
 export async function proxy(request: NextRequest) {
@@ -68,7 +79,7 @@ export async function proxy(request: NextRequest) {
     return redirectResponse;
   }
 
-  if (user && isPublicRoute(pathname)) {
+  if (user && isGuestOnlyRoute(pathname)) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
     redirectUrl.search = "";

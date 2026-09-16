@@ -104,7 +104,15 @@ export default function LoginPage() {
           </label>
 
           <label className="block text-sm text-zinc-600">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Password</span>
+            <span className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-700">Password</span>
+              <Link
+                href="/forgot-password"
+                className="text-xs font-semibold text-[var(--falcon-gold-dark)] underline-offset-4 hover:underline focus:outline-none focus:ring-2 focus:ring-[var(--falcon-gold)]/40"
+              >
+                Forgot Password?
+              </Link>
+            </span>
             <input
               type="password"
               required
