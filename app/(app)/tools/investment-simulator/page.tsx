@@ -495,8 +495,32 @@ export default function InvestmentSimulatorPage() {
 
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Result</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Outcome</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Net Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Cumulative Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} /><Metric label="Net Sale Proceeds" value={formatMoney(selected.netSaleProceedsBeforeTax)} /><Metric label="Estimated Investment Profit" value={formatSignedMoney(selected.estimatedInvestmentProfit)} featured tone={selected.estimatedInvestmentProfit >= 0 ? "positive" : "negative"} /><Metric label="Estimated ROI" value={displayRoi(selected)} tone={(selected.estimatedRoiPercent ?? 0) >= 0 ? "positive" : "negative"} /></div>
-            <p className="mt-4 text-xs text-zinc-500">Simple ROI based on total cash invested. It is not an annualized return.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Total Cash Invested" value={formatMoney(selected.totalCashInvested)} /><Metric label="Net Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} /><Metric label="Net Sale Proceeds" value={formatMoney(selected.netSaleProceedsBeforeTax)} /><Metric label="Estimated Investment Profit" value={formatSignedMoney(selected.estimatedInvestmentProfit)} featured tone={selected.estimatedInvestmentProfit >= 0 ? "positive" : "negative"} /><Metric label="Estimated ROI" value={displayRoi(selected)} tone={(selected.estimatedRoiPercent ?? 0) >= 0 ? "positive" : "negative"} /></div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 sm:px-5">
+                <p className="pt-4 text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Cash Invested</p>
+                <div className="mt-1 flex items-center justify-between gap-4 border-b border-[var(--falcon-soft-border)] py-3"><span className="text-sm text-zinc-600">Net Initial Capital</span><strong className="text-right tabular-nums text-zinc-950">{formatMoney(result?.input.initialCashRequired ?? 0)}</strong></div>
+                <div className="flex items-center justify-between gap-4 border-b border-[var(--falcon-soft-border)] py-3"><span className="text-sm text-zinc-600">+ Additional Capital for Operating Deficits</span><strong className="text-right tabular-nums text-zinc-950">{formatMoney(selected.cumulativeNegativeOperatingCashFlow)}</strong></div>
+                <div className="flex items-center justify-between gap-4 py-4"><span className="text-sm font-semibold text-zinc-800">= Total Cash Invested</span><strong className="text-right text-lg tabular-nums text-zinc-950">{formatMoney(selected.totalCashInvested)}</strong></div>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 py-4 sm:px-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Net Operating Cash Flow</p>
+                <p className={`mt-2 text-2xl font-semibold tabular-nums ${selected.cumulativeOperatingCashFlow >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatSignedMoney(selected.cumulativeOperatingCashFlow)}</p>
+                <p className="mt-2 text-sm leading-6 text-zinc-600">Total rental income less loan repayments, maintenance and other operating expenses over the holding period.</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-[#d8c48e] bg-[#fbf8ef] px-4 sm:px-5">
+              <p className="pt-4 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">How Your Investment Profit Is Calculated</p>
+              <div className="mt-1 flex items-center justify-between gap-4 border-b border-[#e6dcc1] py-3"><span className="text-sm text-zinc-600">Net Sale Proceeds</span><strong className="text-right tabular-nums text-zinc-950">{formatMoney(selected.netSaleProceedsBeforeTax)}</strong></div>
+              <div className="flex items-center justify-between gap-4 border-b border-[#e6dcc1] py-3"><span className="text-sm text-zinc-600">+ Positive Operating Surplus</span><strong className="text-right tabular-nums text-emerald-700">{formatMoney(selected.cumulativePositiveOperatingCashFlow)}</strong></div>
+              <div className="flex items-center justify-between gap-4 border-b border-[#e6dcc1] py-3"><span className="text-sm text-zinc-600">− Total Cash Invested</span><strong className="text-right tabular-nums text-zinc-950">{formatMoney(selected.totalCashInvested)}</strong></div>
+              <div className="flex items-center justify-between gap-4 py-4"><span className="text-sm font-semibold text-zinc-900">= Estimated Investment Profit</span><strong className={`text-right text-xl font-semibold tabular-nums ${selected.estimatedInvestmentProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatSignedMoney(selected.estimatedInvestmentProfit)}</strong></div>
+            </div>
+
+            <p className="mt-4 text-xs leading-5 text-zinc-500">Simple ROI = Investment Profit ÷ Total Cash Invested. Not an annualized return.</p>
             {!hasInitialCapitalForRoi ? <p className="mt-2 text-xs font-medium text-amber-700">Estimated ROI is unavailable because there is no positive net initial capital denominator.</p> : null}
             {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Low net initial capital can produce a very high simple ROI. Check that all upfront costs and cashback assumptions are complete.</p> : null}
           </section>
