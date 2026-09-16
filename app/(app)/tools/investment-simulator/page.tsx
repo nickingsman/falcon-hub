@@ -149,17 +149,21 @@ function Metric({
   value,
   featured = false,
   tone = "neutral",
+  className = "",
+  valueClassName,
 }: {
   label: string;
   value: string;
   featured?: boolean;
   tone?: "neutral" | "positive" | "negative";
+  className?: string;
+  valueClassName?: string;
 }) {
   const toneClass = tone === "positive" ? "text-emerald-800" : tone === "negative" ? "text-red-700" : "text-[var(--falcon-charcoal)]";
   return (
-    <div className={`rounded-2xl border p-4 ${featured ? "border-[#d8c48e] bg-[#fbf8ef]" : "border-[var(--falcon-soft-border)] bg-white"}`}>
+    <div className={`min-w-0 rounded-2xl border p-4 ${featured ? "border-[#d8c48e] bg-[#fbf8ef]" : "border-[var(--falcon-soft-border)] bg-white"} ${className}`}>
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{label}</p>
-      <p className={`mt-1 font-semibold ${featured ? "text-3xl" : "text-xl"} ${toneClass}`}>{value}</p>
+      <p className={`mt-1 font-semibold ${valueClassName ?? (featured ? "text-3xl" : "text-xl")} ${toneClass}`}>{value}</p>
     </div>
   );
 }
@@ -495,7 +499,13 @@ export default function InvestmentSimulatorPage() {
 
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Result</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Outcome</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Total Cash Invested" value={formatMoney(selected.totalCashInvested)} /><Metric label="Net Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} /><Metric label="Net Sale Proceeds" value={formatMoney(selected.netSaleProceedsBeforeTax)} /><Metric label="Estimated Investment Profit" value={formatSignedMoney(selected.estimatedInvestmentProfit)} featured tone={selected.estimatedInvestmentProfit >= 0 ? "positive" : "negative"} /><Metric label="Estimated ROI" value={displayRoi(selected)} tone={(selected.estimatedRoiPercent ?? 0) >= 0 ? "positive" : "negative"} /></div>
+            <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-12">
+              <Metric className="xl:col-span-2" valueClassName="whitespace-nowrap text-[clamp(1.05rem,1.7vw,1.25rem)] leading-tight tracking-[-0.02em]" label="Total Cash Invested" value={formatMoney(selected.totalCashInvested)} />
+              <Metric className="xl:col-span-2" valueClassName="whitespace-nowrap text-[clamp(1.05rem,1.7vw,1.25rem)] leading-tight tracking-[-0.02em]" label="Net Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} />
+              <Metric className="xl:col-span-2" valueClassName="whitespace-nowrap text-[clamp(1.05rem,1.7vw,1.25rem)] leading-tight tracking-[-0.02em]" label="Net Sale Proceeds" value={formatMoney(selected.netSaleProceedsBeforeTax)} />
+              <Metric className="sm:col-span-2 xl:col-span-4" valueClassName="whitespace-nowrap text-[clamp(1.35rem,2.4vw,1.875rem)] leading-tight tracking-[-0.025em]" label="Estimated Investment Profit" value={formatSignedMoney(selected.estimatedInvestmentProfit)} featured tone={selected.estimatedInvestmentProfit >= 0 ? "positive" : "negative"} />
+              <Metric className="xl:col-span-2" valueClassName="whitespace-nowrap text-[clamp(1.05rem,1.7vw,1.25rem)] leading-tight tracking-[-0.02em]" label="Estimated ROI" value={displayRoi(selected)} tone={(selected.estimatedRoiPercent ?? 0) >= 0 ? "positive" : "negative"} />
+            </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <div className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-4 sm:px-5">
