@@ -19,6 +19,8 @@ type LoanForm = {
   extraMonthlyPayment: string;
 };
 
+type ScheduleView = "yearly" | "monthly";
+
 const defaultForm: LoanForm = {
   loanAmount: "",
   annualInterestRatePercent: "3.70",
@@ -237,6 +239,8 @@ function ComparisonColumn({
 
 export default function LoanAmortizationPage() {
   const [form, setForm] = useState<LoanForm>(defaultForm);
+  const [scheduleView, setScheduleView] = useState<ScheduleView>("yearly");
+  const [selectedYear, setSelectedYear] = useState(1);
 
   const calculation = useMemo(() => {
     const loanAmount = parseNumericInput(form.loanAmount);
@@ -270,9 +274,15 @@ export default function LoanAmortizationPage() {
 
   function updateField(field: keyof LoanForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    setSelectedYear(1);
   }
 
   const hasLoanAmount = form.loanAmount.trim().length > 0;
+  const selectedYearSummary = calculation.yearly[selectedYear - 1] ?? calculation.yearly[0];
+  const selectedMonthlyRows = calculation.selected?.schedule.slice(
+    (selectedYear - 1) * 12,
+    selectedYear * 12,
+  ) ?? [];
 
   return (
     <main className="min-h-screen bg-[var(--falcon-warm-background)] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
@@ -352,24 +362,83 @@ export default function LoanAmortizationPage() {
 
             <section className="overflow-hidden rounded-[28px] border border-[var(--falcon-soft-border)] bg-white shadow-sm">
               <div className="p-5 sm:p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Amortization Schedule</p>
-                <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Year-by-Year Summary</h2>
-                {calculation.savings ? <p className="mt-1 text-sm text-zinc-500">Reflects the selected extra monthly payment.</p> : null}
-              </div>
-              <div className="overflow-x-auto border-t border-[var(--falcon-soft-border)]">
-                <table className="w-full min-w-[840px] text-left text-sm">
-                  <thead className="bg-[var(--falcon-warm-background)] text-xs uppercase tracking-[0.1em] text-zinc-500">
-                    <tr><th className="px-5 py-3">Year</th><th className="px-5 py-3 text-right">Opening Balance</th><th className="px-5 py-3 text-right">Principal Paid</th><th className="px-5 py-3 text-right">Interest Paid</th><th className="px-5 py-3 text-right">Total Payment</th><th className="px-5 py-3 text-right">Closing Balance</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--falcon-soft-border)]">
-                    {calculation.yearly.map((year) => (
-                      <tr key={year.year} className="text-zinc-700">
-                        <td className="px-5 py-3 font-semibold text-zinc-950">Year {year.year}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.openingBalance)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.principalPaid)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.interestPaid)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.totalPayment)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(year.closingBalance)}</td>
-                      </tr>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Amortization Schedule</p>
+                    <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">{scheduleView === "yearly" ? "Year-by-Year Summary" : "Month-to-Month Detail"}</h2>
+                    {calculation.savings ? <p className="mt-1 text-sm text-zinc-500">Reflects the selected extra monthly payment.</p> : null}
+                  </div>
+                  <div className="inline-flex w-fit rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-1" aria-label="Amortization schedule view">
+                    {(["yearly", "monthly"] as const).map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        onClick={() => setScheduleView(view)}
+                        aria-pressed={scheduleView === view}
+                        className={`min-h-9 rounded-full px-4 text-xs font-semibold transition ${scheduleView === view ? "bg-[var(--falcon-charcoal)] text-white shadow-sm" : "text-zinc-600 hover:bg-white"}`}
+                      >
+                        {view === "yearly" ? "Yearly" : "Monthly"}
+                      </button>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
+
+                {scheduleView === "monthly" && selectedYearSummary ? (
+                  <div className="mt-5 space-y-4">
+                    <label className="block w-full max-w-48 text-sm font-semibold text-zinc-700">
+                      Year
+                      <select
+                        value={selectedYear}
+                        onChange={(event) => setSelectedYear(Number(event.target.value))}
+                        className="mt-2 min-h-11 w-full rounded-xl border border-[var(--falcon-soft-border)] bg-white px-3 text-sm font-medium text-zinc-950 outline-none focus:border-[var(--falcon-gold-dark)] focus:ring-2 focus:ring-[#b8924a]/15"
+                      >
+                        {calculation.yearly.map((year) => <option key={year.year} value={year.year}>Year {year.year}</option>)}
+                      </select>
+                    </label>
+                    <div className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">Year {selectedYearSummary.year}</p>
+                      <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div><dt className="text-xs text-zinc-500">Opening Balance</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-zinc-950">{formatMoney(selectedYearSummary.openingBalance)}</dd></div>
+                        <div><dt className="text-xs text-zinc-500">Principal Paid</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-zinc-950">{formatMoney(selectedYearSummary.principalPaid)}</dd></div>
+                        <div><dt className="text-xs text-zinc-500">Interest Paid</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-zinc-950">{formatMoney(selectedYearSummary.interestPaid)}</dd></div>
+                        <div><dt className="text-xs text-zinc-500">Closing Balance</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-zinc-950">{formatMoney(selectedYearSummary.closingBalance)}</dd></div>
+                      </dl>
+                    </div>
+                  </div>
+                ) : null}
               </div>
+
+              {scheduleView === "yearly" ? (
+                <div className="overflow-x-auto border-t border-[var(--falcon-soft-border)]">
+                  <table className="w-full min-w-[840px] text-left text-sm">
+                    <thead className="bg-[var(--falcon-warm-background)] text-xs uppercase tracking-[0.1em] text-zinc-500">
+                      <tr><th className="px-5 py-3">Year</th><th className="px-5 py-3 text-right">Opening Balance</th><th className="px-5 py-3 text-right">Principal Paid</th><th className="px-5 py-3 text-right">Interest Paid</th><th className="px-5 py-3 text-right">Total Payment</th><th className="px-5 py-3 text-right">Closing Balance</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--falcon-soft-border)]">
+                      {calculation.yearly.map((year) => (
+                        <tr key={year.year} className="text-zinc-700">
+                          <td className="px-5 py-3 font-semibold text-zinc-950">Year {year.year}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.openingBalance)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.principalPaid)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.interestPaid)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(year.totalPayment)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(year.closingBalance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border-t border-[var(--falcon-soft-border)]">
+                  <table className="w-full min-w-[1080px] text-left text-sm">
+                    <thead className="bg-[var(--falcon-warm-background)] text-xs uppercase tracking-[0.1em] text-zinc-500">
+                      <tr><th className="sticky left-0 bg-[var(--falcon-warm-background)] px-5 py-3">Month</th><th className="px-5 py-3 text-right">Opening Balance</th><th className="px-5 py-3 text-right">Payment</th><th className="px-5 py-3 text-right">Principal</th><th className="px-5 py-3 text-right">Interest</th><th className="px-5 py-3 text-right">Extra Payment</th><th className="px-5 py-3 text-right">Closing Balance</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--falcon-soft-border)]">
+                      {selectedMonthlyRows.map((row) => (
+                        <tr key={row.month} className="text-zinc-700">
+                          <td className="sticky left-0 bg-white px-5 py-3 font-semibold text-zinc-950">Month {row.month}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.openingBalance)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.payment)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.extraPayment)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.closingBalance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           </>
         )}
