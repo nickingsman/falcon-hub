@@ -155,3 +155,122 @@ test("Zero-interest monthly rows remain finite with RM0 interest", () => {
   assert.ok(result.schedule.every((row) => Number.isFinite(row.closingBalance)));
   assert.equal(result.schedule.at(-1)?.closingBalance, 0);
 });
+
+test("Flexi Case A: RM500,000 standard loan remains unchanged", () => {
+  const result = requireResult(
+    generateAmortizationSchedule({
+      loanAmount: 500_000,
+      annualInterestRatePercent: 3.7,
+      tenureYears: 35,
+    }),
+  );
+  const canonicalInstalment = calculateMonthlyInstalment(500_000, 3.7, 35);
+
+  assert.equal(result.monthlyInstalment, canonicalInstalment);
+  assert.equal(result.payoffMonth, 420);
+  assert.ok(result.schedule.every((row) => row.interestBearingBalance === row.openingBalance));
+});
+
+test("Flexi Case B: offset reduces interest-bearing balance without reducing opening principal", () => {
+  const result = requireResult(
+    generateAmortizationSchedule({
+      loanAmount: 500_000,
+      annualInterestRatePercent: 3.7,
+      tenureYears: 35,
+      flexiOffsetBalance: 200_000,
+    }),
+  );
+  const firstMonth = result.schedule[0];
+
+  assert.ok(firstMonth);
+  assert.equal(firstMonth.openingBalance, 500_000);
+  assert.equal(firstMonth.interestBearingBalance, 300_000);
+  assert.equal(result.loanAmount, 500_000);
+});
+
+test("Flexi Case C: zero offset exactly reproduces the standard result", () => {
+  const standard = requireResult(generateAmortizationSchedule(baseLoan));
+  const zeroOffset = requireResult(
+    generateAmortizationSchedule({ ...baseLoan, flexiOffsetBalance: 0 }),
+  );
+
+  assert.deepEqual(zeroOffset, standard);
+});
+
+test("Flexi Cases D and E: interest-bearing balance is floored at zero", () => {
+  const aboveLoan = requireResult(
+    generateAmortizationSchedule({
+      loanAmount: 500_000,
+      annualInterestRatePercent: 3.7,
+      tenureYears: 35,
+      flexiOffsetBalance: 600_000,
+    }),
+  );
+  assert.equal(aboveLoan.schedule[0]?.interestBearingBalance, 0);
+  assert.ok(aboveLoan.schedule.every((row) => row.interestBearingBalance === 0));
+  assert.equal(aboveLoan.totalInterest, 0);
+
+  const partialOffset = requireResult(
+    generateAmortizationSchedule({
+      loanAmount: 500_000,
+      annualInterestRatePercent: 3.7,
+      tenureYears: 35,
+      flexiOffsetBalance: 200_000,
+    }),
+  );
+  const firstFullyOffsetMonth = partialOffset.schedule.find(
+    (row) => row.openingBalance <= 200_000,
+  );
+  assert.ok(firstFullyOffsetMonth);
+  assert.equal(firstFullyOffsetMonth.interestBearingBalance, 0);
+  assert.equal(firstFullyOffsetMonth.interest, 0);
+  assert.ok(partialOffset.schedule.every((row) => row.interestBearingBalance >= 0));
+});
+
+test("Flexi Case F: extra payment reduces principal while offset only changes interest", () => {
+  const standard = requireResult(
+    generateAmortizationSchedule({ ...baseLoan, extraMonthlyPayment: 500 }),
+  );
+  const flexi = requireResult(
+    generateAmortizationSchedule({
+      ...baseLoan,
+      extraMonthlyPayment: 500,
+      flexiOffsetBalance: 200_000,
+    }),
+  );
+  const standardFirst = standard.schedule[0];
+  const flexiFirst = flexi.schedule[0];
+
+  assert.ok(standardFirst && flexiFirst);
+  assert.equal(flexiFirst.openingBalance, standardFirst.openingBalance);
+  assert.equal(flexiFirst.extraPayment, 500);
+  assert.equal(standardFirst.extraPayment, 500);
+  assert.ok(flexiFirst.interest < standardFirst.interest);
+  assert.ok(flexiFirst.principal > standardFirst.principal);
+  assert.equal(flexi.schedule.at(-1)?.closingBalance, 0);
+});
+
+test("Flexi Case G: comparison savings reconcile to schedule totals and lengths", () => {
+  const standard = requireResult(
+    generateAmortizationSchedule({ ...baseLoan, extraMonthlyPayment: 300 }),
+  );
+  const flexi = requireResult(
+    generateAmortizationSchedule({
+      ...baseLoan,
+      extraMonthlyPayment: 300,
+      flexiOffsetBalance: 200_000,
+    }),
+  );
+  const savings = getLoanSavings(standard, flexi);
+
+  assert.equal(
+    savings.interestSaved,
+    Math.max(0, standard.totalInterest - flexi.totalInterest),
+  );
+  assert.equal(
+    savings.monthsSaved,
+    Math.max(0, standard.schedule.length - flexi.schedule.length),
+  );
+  assert.ok(savings.interestSaved > 0);
+  assert.ok(savings.monthsSaved > 0);
+});

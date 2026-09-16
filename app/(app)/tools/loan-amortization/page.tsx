@@ -17,15 +17,18 @@ type LoanForm = {
   annualInterestRatePercent: string;
   tenureYears: string;
   extraMonthlyPayment: string;
+  flexiOffsetBalance: string;
 };
 
 type ScheduleView = "yearly" | "monthly";
+type LoanType = "standard" | "flexi";
 
 const defaultForm: LoanForm = {
   loanAmount: "",
   annualInterestRatePercent: "3.70",
   tenureYears: "35",
   extraMonthlyPayment: "0",
+  flexiOffsetBalance: "0",
 };
 
 const quickExtras = [100, 300, 500, 1000];
@@ -229,7 +232,7 @@ function ComparisonColumn({
     <div className="rounded-2xl border border-[var(--falcon-soft-border)] bg-white p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--falcon-gold-dark)]">{title}</p>
       <dl className="mt-3 space-y-2 text-sm">
-        <div className="flex justify-between gap-4"><dt className="text-zinc-500">Monthly Payment</dt><dd className="font-semibold text-zinc-950">{formatMoney(result.actualMonthlyPayment)}</dd></div>
+        <div className="flex justify-between gap-4"><dt className="text-zinc-500">Scheduled Monthly Instalment</dt><dd className="text-right font-semibold text-zinc-950">{formatMoney(result.monthlyInstalment)}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-zinc-500">Loan Duration</dt><dd className="text-right font-semibold text-zinc-950">{formatDuration(result.payoffMonth)}</dd></div>
         <div className="flex justify-between gap-4"><dt className="text-zinc-500">Total Interest</dt><dd className="font-semibold text-zinc-950">{formatMoney(result.totalInterest)}</dd></div>
       </dl>
@@ -239,6 +242,7 @@ function ComparisonColumn({
 
 export default function LoanAmortizationPage() {
   const [form, setForm] = useState<LoanForm>(defaultForm);
+  const [loanType, setLoanType] = useState<LoanType>("standard");
   const [scheduleView, setScheduleView] = useState<ScheduleView>("yearly");
   const [selectedYear, setSelectedYear] = useState(1);
 
@@ -247,33 +251,47 @@ export default function LoanAmortizationPage() {
     const annualInterestRatePercent = parseNumericInput(form.annualInterestRatePercent);
     const tenureYears = parseNumericInput(form.tenureYears);
     const extraMonthlyPayment = parseNumericInput(form.extraMonthlyPayment) ?? 0;
+    const flexiOffsetBalance = loanType === "flexi" ? parseNumericInput(form.flexiOffsetBalance) : 0;
     const errors: Partial<Record<keyof LoanForm, string>> = {};
 
     if (loanAmount === null || loanAmount <= 0 || loanAmount > 100_000_000) errors.loanAmount = "Enter a loan amount between RM1 and RM100,000,000.";
     if (annualInterestRatePercent === null || annualInterestRatePercent < 0 || annualInterestRatePercent > 20) errors.annualInterestRatePercent = "Use an annual interest rate from 0% to 20%.";
     if (tenureYears === null || tenureYears <= 0 || tenureYears > 40 || !Number.isInteger(tenureYears * 12)) errors.tenureYears = "Use a tenure from 1 month to 40 years.";
     if (extraMonthlyPayment < 0 || extraMonthlyPayment > 10_000_000) errors.extraMonthlyPayment = "Use an extra payment from RM0 to RM10,000,000.";
+    if (loanType === "flexi" && (flexiOffsetBalance === null || flexiOffsetBalance < 0 || flexiOffsetBalance > 100_000_000)) errors.flexiOffsetBalance = "Use a flexi offset from RM0 to RM100,000,000.";
 
-    if (Object.keys(errors).length > 0 || loanAmount === null || annualInterestRatePercent === null || tenureYears === null) {
-      return { errors, normal: null, selected: null, yearly: [], savings: null };
+    if (Object.keys(errors).length > 0 || loanAmount === null || annualInterestRatePercent === null || tenureYears === null || flexiOffsetBalance === null) {
+      return { errors, normal: null, standardSelected: null, selected: null, yearly: [], savings: null, flexiSavings: null, flexiOffsetBalance: 0 };
     }
 
     const normal = generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears });
-    const selected = generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears, extraMonthlyPayment });
+    const standardSelected = generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears, extraMonthlyPayment });
+    const selected = loanType === "flexi"
+      ? generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears, extraMonthlyPayment, flexiOffsetBalance })
+      : standardSelected;
 
-    if (!normal || !selected) return { errors, normal: null, selected: null, yearly: [], savings: null };
+    if (!normal || !standardSelected || !selected) return { errors, normal: null, standardSelected: null, selected: null, yearly: [], savings: null, flexiSavings: null, flexiOffsetBalance: 0 };
 
     return {
       errors,
       normal,
+      standardSelected,
       selected,
       yearly: summarizeAmortizationByYear(selected.schedule),
-      savings: extraMonthlyPayment > 0 ? getLoanSavings(normal, selected) : null,
+      savings: loanType === "standard" && extraMonthlyPayment > 0 ? getLoanSavings(normal, selected) : null,
+      flexiSavings: loanType === "flexi" ? getLoanSavings(standardSelected, selected) : null,
+      flexiOffsetBalance,
     };
-  }, [form]);
+  }, [form, loanType]);
 
   function updateField(field: keyof LoanForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+    setSelectedYear(1);
+  }
+
+  function reset() {
+    setForm(defaultForm);
+    setLoanType("standard");
     setSelectedYear(1);
   }
 
@@ -291,7 +309,7 @@ export default function LoanAmortizationPage() {
           eyebrow="Customer Tools"
           title="Loan Amortization"
           description="Explain how principal, interest and outstanding loan balance change over time—and how extra repayment can shorten the loan."
-          actions={<Button type="button" variant="secondary" onClick={() => setForm(defaultForm)}>Reset</Button>}
+          actions={<Button type="button" variant="secondary" onClick={reset}>Reset</Button>}
           meta={<StatusBadge variant="accent">Estimate only</StatusBadge>}
         />
 
@@ -300,12 +318,34 @@ export default function LoanAmortizationPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Loan Details</p>
             <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Housing Loan Assumptions</h2>
           </div>
+          <div className="mb-5">
+            <p className="text-sm font-semibold text-zinc-700">Loan Type</p>
+            <div className="mt-2 inline-flex rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-1" aria-label="Loan type">
+              {(["standard", "flexi"] as const).map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => { setLoanType(type); setSelectedYear(1); }}
+                  aria-pressed={loanType === type}
+                  className={`min-h-9 rounded-full px-4 text-xs font-semibold transition ${loanType === type ? "bg-[var(--falcon-charcoal)] text-white shadow-sm" : "text-zinc-600 hover:bg-white"}`}
+                >
+                  {type === "standard" ? "Standard Loan" : "Flexi Loan"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Field label="Loan Amount" prefix="RM" value={form.loanAmount} onChange={(value) => updateField("loanAmount", value)} error={hasLoanAmount ? calculation.errors.loanAmount : undefined} />
             <Field label="Interest Rate" suffix="% p.a." value={form.annualInterestRatePercent} onChange={(value) => updateField("annualInterestRatePercent", value)} error={calculation.errors.annualInterestRatePercent} />
             <Field label="Loan Tenure" suffix="Years" value={form.tenureYears} onChange={(value) => updateField("tenureYears", value)} error={calculation.errors.tenureYears} />
             <Field label="Extra Monthly Payment" prefix="RM" value={form.extraMonthlyPayment} onChange={(value) => updateField("extraMonthlyPayment", value)} error={calculation.errors.extraMonthlyPayment} />
           </div>
+          {loanType === "flexi" ? (
+            <div className="mt-4 max-w-md">
+              <Field label="Flexi Offset Balance" prefix="RM" value={form.flexiOffsetBalance} onChange={(value) => updateField("flexiOffsetBalance", value)} error={calculation.errors.flexiOffsetBalance} />
+              <p className="mt-2 text-xs leading-5 text-[var(--falcon-muted-text)]">Cash maintained in the flexi facility to offset the balance used for interest calculation.</p>
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <span className="mr-1 text-xs font-medium text-zinc-500">Quick extra payment</span>
             {quickExtras.map((amount) => (
@@ -325,14 +365,44 @@ export default function LoanAmortizationPage() {
         ) : (
           <>
             <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Normal Loan Summary</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">{loanType === "flexi" ? "Flexi Loan Summary" : "Normal Loan Summary"}</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Metric label="Monthly Instalment" value={formatMoney(calculation.normal.monthlyInstalment)} featured />
-                <Metric label="Total Interest" value={formatMoney(calculation.normal.totalInterest)} />
-                <Metric label="Total Repayment" value={formatMoney(calculation.normal.totalRepayment)} />
-                <Metric label="Loan Tenure" value={formatDuration(calculation.normal.contractualMonths)} />
+                <Metric label={loanType === "flexi" ? "Scheduled Monthly Instalment" : "Monthly Instalment"} value={formatMoney(loanType === "flexi" ? calculation.selected.monthlyInstalment : calculation.normal.monthlyInstalment)} featured />
+                <Metric label="Total Interest" value={formatMoney(loanType === "flexi" ? calculation.selected.totalInterest : calculation.normal.totalInterest)} />
+                <Metric label="Total Repayment" value={formatMoney(loanType === "flexi" ? calculation.selected.totalRepayment : calculation.normal.totalRepayment)} />
+                <Metric label={loanType === "flexi" ? "Estimated Payoff Period" : "Loan Tenure"} value={formatDuration(loanType === "flexi" ? calculation.selected.payoffMonth : calculation.normal.contractualMonths)} />
               </div>
             </section>
+
+            {loanType === "flexi" && calculation.standardSelected && calculation.flexiSavings ? (
+              <>
+                <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Flexi Offset</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <Metric label="Loan Outstanding" value={formatMoney(calculation.selected.loanAmount)} />
+                    <Metric label="Flexi Offset Balance" value={`− ${formatMoney(calculation.flexiOffsetBalance)}`} />
+                    <Metric label="Initial Interest-Bearing Balance" value={formatMoney(calculation.selected.schedule[0]?.interestBearingBalance ?? 0)} featured />
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-[#e4d8b8] bg-[#fbf8ef] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">Illustrative Flexi Simulation</p>
+                    <p className="mt-2 text-xs leading-5 text-[var(--falcon-muted-text)]">Assumes 100% of the entered flexi balance offsets the outstanding loan balance for interest calculation and remains constant throughout the simulation. Actual interest/profit calculation, offset limits, fees, redraw rules, repayment treatment and account structure vary by bank and financing product. Refer to the bank&apos;s current product terms for actual calculations.</p>
+                  </div>
+                </section>
+
+                <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Standard vs Flexi</p>
+                  <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Same Loan and Repayment Assumptions</h2>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    <ComparisonColumn title="Standard Loan" result={calculation.standardSelected} />
+                    <ComparisonColumn title="Flexi Simulation" result={calculation.selected} />
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Metric label="Estimated Interest Saved" value={formatMoney(calculation.flexiSavings.interestSaved)} positive />
+                    <Metric label="Estimated Time Saved" value={formatDuration(calculation.flexiSavings.monthsSaved)} positive />
+                  </div>
+                </section>
+              </>
+            ) : null}
 
             {calculation.savings ? (
               <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
@@ -366,7 +436,7 @@ export default function LoanAmortizationPage() {
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Amortization Schedule</p>
                     <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">{scheduleView === "yearly" ? "Year-by-Year Summary" : "Month-to-Month Detail"}</h2>
-                    {calculation.savings ? <p className="mt-1 text-sm text-zinc-500">Reflects the selected extra monthly payment.</p> : null}
+                    {loanType === "flexi" ? <p className="mt-1 text-sm text-zinc-500">Actual outstanding principal with the selected fixed flexi offset and extra monthly payment.</p> : calculation.savings ? <p className="mt-1 text-sm text-zinc-500">Reflects the selected extra monthly payment.</p> : null}
                   </div>
                   <div className="inline-flex w-fit rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-1" aria-label="Amortization schedule view">
                     {(["yearly", "monthly"] as const).map((view) => (
@@ -425,14 +495,14 @@ export default function LoanAmortizationPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border-t border-[var(--falcon-soft-border)]">
-                  <table className="w-full min-w-[1080px] text-left text-sm">
+                  <table className={`w-full text-left text-sm ${loanType === "flexi" ? "min-w-[1240px]" : "min-w-[1080px]"}`}>
                     <thead className="bg-[var(--falcon-warm-background)] text-xs uppercase tracking-[0.1em] text-zinc-500">
-                      <tr><th className="sticky left-0 bg-[var(--falcon-warm-background)] px-5 py-3">Month</th><th className="px-5 py-3 text-right">Opening Balance</th><th className="px-5 py-3 text-right">Payment</th><th className="px-5 py-3 text-right">Principal</th><th className="px-5 py-3 text-right">Interest</th><th className="px-5 py-3 text-right">Extra Payment</th><th className="px-5 py-3 text-right">Closing Balance</th></tr>
+                      <tr><th className="sticky left-0 bg-[var(--falcon-warm-background)] px-5 py-3">Month</th><th className="px-5 py-3 text-right">Opening Balance</th>{loanType === "flexi" ? <th className="px-5 py-3 text-right">Interest-Bearing Balance</th> : null}<th className="px-5 py-3 text-right">Payment</th><th className="px-5 py-3 text-right">Principal</th><th className="px-5 py-3 text-right">Interest</th><th className="px-5 py-3 text-right">Extra Payment</th><th className="px-5 py-3 text-right">Closing Balance</th></tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--falcon-soft-border)]">
                       {selectedMonthlyRows.map((row) => (
                         <tr key={row.month} className="text-zinc-700">
-                          <td className="sticky left-0 bg-white px-5 py-3 font-semibold text-zinc-950">Month {row.month}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.openingBalance)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.payment)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.extraPayment)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.closingBalance)}</td>
+                          <td className="sticky left-0 bg-white px-5 py-3 font-semibold text-zinc-950">Month {row.month}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.openingBalance)}</td>{loanType === "flexi" ? <td className="px-5 py-3 text-right font-semibold tabular-nums text-[var(--falcon-gold-dark)]">{formatMoney(row.interestBearingBalance)}</td> : null}<td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.payment)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.extraPayment)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.closingBalance)}</td>
                         </tr>
                       ))}
                     </tbody>

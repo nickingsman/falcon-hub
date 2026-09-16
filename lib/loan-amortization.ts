@@ -5,11 +5,13 @@ export type LoanAmortizationInput = {
   annualInterestRatePercent: number;
   tenureYears: number;
   extraMonthlyPayment?: number;
+  flexiOffsetBalance?: number;
 };
 
 export type AmortizationPayment = {
   month: number;
   openingBalance: number;
+  interestBearingBalance: number;
   scheduledInstalment: number;
   extraPayment: number;
   payment: number;
@@ -51,7 +53,9 @@ function isValidInput(input: LoanAmortizationInput) {
     input.tenureYears > 0 &&
     Number.isInteger(input.tenureYears * 12) &&
     Number.isFinite(input.extraMonthlyPayment ?? 0) &&
-    (input.extraMonthlyPayment ?? 0) >= 0
+    (input.extraMonthlyPayment ?? 0) >= 0 &&
+    Number.isFinite(input.flexiOffsetBalance ?? 0) &&
+    (input.flexiOffsetBalance ?? 0) >= 0
   );
 }
 
@@ -71,13 +75,19 @@ export function generateAmortizationSchedule(
   const contractualMonths = Math.round(input.tenureYears * 12);
   const monthlyRate = input.annualInterestRatePercent / 100 / 12;
   const extraMonthlyPayment = input.extraMonthlyPayment ?? 0;
+  const flexiOffsetBalance = input.flexiOffsetBalance ?? 0;
   const plannedMonthlyPayment = monthlyInstalment + extraMonthlyPayment;
   const schedule: AmortizationPayment[] = [];
   let balance = input.loanAmount;
 
   for (let month = 1; month <= contractualMonths && balance > 0; month += 1) {
     const openingBalance = balance;
-    const interest = monthlyRate === 0 ? 0 : openingBalance * monthlyRate;
+    const interestBearingBalance = Math.max(
+      openingBalance - flexiOffsetBalance,
+      0,
+    );
+    const interest =
+      monthlyRate === 0 ? 0 : interestBearingBalance * monthlyRate;
     const amountDue = openingBalance + interest;
     const payment = Math.min(plannedMonthlyPayment, amountDue);
     const principal = Math.min(openingBalance, Math.max(0, payment - interest));
@@ -87,6 +97,7 @@ export function generateAmortizationSchedule(
     schedule.push({
       month,
       openingBalance,
+      interestBearingBalance,
       scheduledInstalment: Math.min(monthlyInstalment, payment),
       extraPayment: Math.max(0, payment - Math.min(monthlyInstalment, payment)),
       payment,
