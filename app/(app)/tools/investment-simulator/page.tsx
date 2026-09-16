@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
 import {
+  calculateInvestmentEntryCapital,
   calculateInvestmentFinancing,
+  calculateInvestmentPricePosition,
   calculateInvestmentSimulation,
   investmentScenarioAssumptions,
   type InvestmentScenario,
@@ -16,7 +18,8 @@ import {
 type ScenarioSelection = InvestmentScenario | "custom";
 
 type SimulatorForm = {
-  purchasePrice: string;
+  spaPrice: string;
+  nettPrice: string;
   loanMarginPercent: string;
   annualInterestRatePercent: string;
   loanTenureYears: string;
@@ -55,7 +58,8 @@ type UnitTypeOption = {
 };
 
 const defaultForm: SimulatorForm = {
-  purchasePrice: "",
+  spaPrice: "",
+  nettPrice: "",
   loanMarginPercent: "90",
   annualInterestRatePercent: "3.70",
   loanTenureYears: "35",
@@ -226,33 +230,62 @@ export default function InvestmentSimulatorPage() {
     return () => controller.abort();
   }, []);
 
-  const spaPriceInput = parseInput(form.purchasePrice);
-  const loanMarginInput = parseInput(form.loanMarginPercent);
-  const calculatedDownpayment =
-    spaPriceInput !== null &&
-    spaPriceInput >= 0 &&
-    loanMarginInput !== null &&
-    loanMarginInput >= 0 &&
-    loanMarginInput <= 100
-      ? Math.round(spaPriceInput * (1 - loanMarginInput / 100) * 100) / 100
+  const nettPriceInput = parseInput(form.nettPrice);
+  const financing = useMemo(() => {
+    const spaPrice = parseInput(form.spaPrice);
+    const loanMarginPercent = parseInput(form.loanMarginPercent);
+    const annualInterestRatePercent = parseInput(form.annualInterestRatePercent);
+    const loanTenureYears = parseInput(form.loanTenureYears);
+
+    if (
+      spaPrice === null ||
+      loanMarginPercent === null ||
+      annualInterestRatePercent === null ||
+      loanTenureYears === null
+    ) {
+      return null;
+    }
+
+    return calculateInvestmentFinancing({
+      spaPrice,
+      loanMarginPercent,
+      annualInterestRatePercent,
+      loanTenureYears,
+    });
+  }, [
+    form.annualInterestRatePercent,
+    form.loanMarginPercent,
+    form.loanTenureYears,
+    form.spaPrice,
+  ]);
+  const pricePosition =
+    nettPriceInput !== null && financing
+      ? calculateInvestmentPricePosition(nettPriceInput, financing.loanAmount)
       : null;
+  const calculatedDownpayment = pricePosition?.suggestedDownpayment ?? null;
+  const cashback = pricePosition?.cashback ?? 0;
   const downpaymentInputValue = downpaymentOverridden
     ? customDownpayment
     : calculatedDownpayment === null
       ? ""
       : String(calculatedDownpayment);
-  const derivedInitialCapital =
-    parseEntryCapitalAmount(downpaymentInputValue) +
-    parseEntryCapitalAmount(renovation) +
-    otherEntryCosts.reduce(
-      (sum, cost) => sum + parseEntryCapitalAmount(cost.amount),
-      0,
-    );
+  const otherEntryCostsTotal = otherEntryCosts.reduce(
+    (sum, cost) => sum + parseEntryCapitalAmount(cost.amount),
+    0,
+  );
+  const entryCapital = calculateInvestmentEntryCapital({
+    downpayment: parseEntryCapitalAmount(downpaymentInputValue),
+    renovation: parseEntryCapitalAmount(renovation),
+    otherCosts: otherEntryCostsTotal,
+    cashback,
+  });
+  const netInitialCapital = entryCapital.netInitialCapital;
 
   const parsedInput = useMemo<InvestmentSimulatorInput | null>(() => {
     const values = {
-      purchasePrice: parseInput(form.purchasePrice),
-      initialCashRequired: derivedInitialCapital,
+      spaPrice: parseInput(form.spaPrice),
+      nettPrice: parseInput(form.nettPrice),
+      initialCashRequired: netInitialCapital,
       loanMarginPercent: parseInput(form.loanMarginPercent),
       annualInterestRatePercent: parseInput(form.annualInterestRatePercent),
       loanTenureYears: parseInput(form.loanTenureYears),
@@ -266,44 +299,17 @@ export default function InvestmentSimulatorPage() {
     };
     if (Object.values(values).some((value) => value === null)) return null;
     return values as InvestmentSimulatorInput;
-  }, [derivedInitialCapital, form]);
-  const financing = useMemo(() => {
-    const purchasePrice = parseInput(form.purchasePrice);
-    const loanMarginPercent = parseInput(form.loanMarginPercent);
-    const annualInterestRatePercent = parseInput(form.annualInterestRatePercent);
-    const loanTenureYears = parseInput(form.loanTenureYears);
-
-    if (
-      purchasePrice === null ||
-      loanMarginPercent === null ||
-      annualInterestRatePercent === null ||
-      loanTenureYears === null
-    ) {
-      return null;
-    }
-
-    return calculateInvestmentFinancing({
-      purchasePrice,
-      loanMarginPercent,
-      annualInterestRatePercent,
-      loanTenureYears,
-    });
-  }, [
-    form.annualInterestRatePercent,
-    form.loanMarginPercent,
-    form.loanTenureYears,
-    form.purchasePrice,
-  ]);
+  }, [netInitialCapital, form]);
   const result = useMemo(() => parsedInput ? calculateInvestmentSimulation(parsedInput) : null, [parsedInput]);
   const selected = result?.selectedYear ?? null;
   const yearOne = result?.years[0] ?? null;
   const journey = result?.years.slice(0, parsedInput?.holdingPeriodYears ?? 0) ?? [];
   const exitScenarios = result?.years.filter((year) => exitYears.includes(year.year)) ?? [];
-  const hasInitialCapitalForRoi = derivedInitialCapital > 0;
+  const hasInitialCapitalForRoi = netInitialCapital > 0;
   const hasLowInitialCapital =
-    spaPriceInput !== null &&
-    spaPriceInput > 0 &&
-    derivedInitialCapital < spaPriceInput * 0.01;
+    nettPriceInput !== null &&
+    nettPriceInput > 0 &&
+    netInitialCapital < nettPriceInput * 0.01;
   const yearOneAverageLoanPayment = result?.loan
     ? result.loan.schedule
         .slice(0, 12)
@@ -372,11 +378,13 @@ export default function InvestmentSimulatorPage() {
     const unitType = unitTypes.find((item) => item.id === unitTypeId);
     const project = projects.find((item) => item.id === selectedProjectId);
     if (!unitType) return;
-    const purchasePrice = unitType.price_from ?? unitType.spa_price_from;
+    const spaPrice = unitType.spa_price_from ?? unitType.price_from;
+    const nettPrice = unitType.price_from ?? spaPrice;
     const maintenance = unitType.size_sqft !== null && project?.maintenance_fee_per_sqft !== null && project?.maintenance_fee_per_sqft !== undefined ? unitType.size_sqft * project.maintenance_fee_per_sqft : null;
     setForm((current) => ({
       ...current,
-      purchasePrice: purchasePrice === null ? current.purchasePrice : String(purchasePrice),
+      spaPrice: spaPrice === null ? current.spaPrice : String(spaPrice),
+      nettPrice: nettPrice === null ? current.nettPrice : String(nettPrice),
       startingMonthlyRental: unitType.estimated_rental_from === null ? current.startingMonthlyRental : String(unitType.estimated_rental_from),
       monthlyMaintenance: maintenance === null ? current.monthlyMaintenance : String(maintenance),
     }));
@@ -400,13 +408,16 @@ export default function InvestmentSimulatorPage() {
             </div>
             <p className="mt-3 text-xs text-zinc-500">Project data can prefill available unit price, rental and maintenance assumptions. Every value remains editable.</p>
             {projectMessage ? <p className="mt-2 text-xs font-medium text-amber-700">{projectMessage}</p> : null}
-            <div className="mt-4 max-w-md"><InputField label="SPA Price" prefix="RM" value={form.purchasePrice} onChange={(value) => updateField("purchasePrice", value)} /></div>
+            <div className="mt-4 grid max-w-3xl gap-4 sm:grid-cols-2">
+              <InputField label="SPA Price" prefix="RM" value={form.spaPrice} onChange={(value) => updateField("spaPrice", value)} helper="Contractual price used as the bank financing reference." />
+              <InputField label="Nett Price" prefix="RM" value={form.nettPrice} onChange={(value) => updateField("nettPrice", value)} helper="Effective acquisition price after applicable discounts or rebates." />
+            </div>
 
             <div className="mt-5 border-t border-[var(--falcon-soft-border)] pt-5">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Entry Capital Breakdown</p>
               <div className="mt-3 divide-y divide-[var(--falcon-soft-border)] rounded-2xl border border-[var(--falcon-soft-border)] px-4">
                 <div className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-center">
-                  <div><p className="text-sm font-semibold text-zinc-800">Downpayment</p><p className="mt-1 text-xs text-zinc-500">Suggested from SPA Price and Loan Margin.</p>{downpaymentOverridden && calculatedDownpayment !== null ? <button type="button" onClick={() => { setDownpaymentOverridden(false); setCustomDownpayment(""); }} className="mt-1 text-xs font-semibold text-[var(--falcon-gold-dark)] hover:text-zinc-900">Use Calculated Downpayment ({formatMoney(calculatedDownpayment)})</button> : null}</div>
+                  <div><p className="text-sm font-semibold text-zinc-800">Downpayment</p><p className="mt-1 text-xs text-zinc-500">Suggested from Nett Price less Loan Amount.</p>{downpaymentOverridden && calculatedDownpayment !== null ? <button type="button" onClick={() => { setDownpaymentOverridden(false); setCustomDownpayment(""); }} className="mt-1 text-xs font-semibold text-[var(--falcon-gold-dark)] hover:text-zinc-900">Use Calculated Downpayment ({formatMoney(calculatedDownpayment)})</button> : null}</div>
                   <div className="flex overflow-hidden rounded-xl border border-[var(--falcon-soft-border)] bg-white"><span className="flex items-center border-r border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 text-xs font-semibold text-zinc-500">RM</span><input aria-label="Downpayment" inputMode="decimal" value={downpaymentInputValue} onChange={(event) => { setCustomDownpayment(normalizeEntryCapitalInput(event.target.value)); setDownpaymentOverridden(true); }} className="min-h-11 min-w-0 flex-1 px-3 text-sm font-medium outline-none" /></div>
                 </div>
                 <div className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-center">
@@ -422,8 +433,13 @@ export default function InvestmentSimulatorPage() {
                 ))}
               </div>
               <button type="button" onClick={addEntryCost} className="mt-3 min-h-10 rounded-full border border-[var(--falcon-soft-border)] bg-white px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">+ Add Cost</button>
-              <div className="mt-4 rounded-2xl border border-[#d8c48e] bg-[#fbf8ef] px-4 py-4"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">Initial Capital Required</p><p className="mt-1 text-2xl font-semibold text-[var(--falcon-charcoal)]">{formatMoney(derivedInitialCapital)}</p><p className="mt-1 text-xs text-zinc-500">Upfront cash paid by the buyer, including downpayment and applicable purchase costs.</p></div>
-              {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Very low initial capital can produce an unusually high ROI. Check that all upfront cash costs have been included.</p> : null}
+              <div className="mt-4 space-y-2 rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 py-3 text-sm">
+                <div className="flex items-center justify-between gap-4"><span className="text-zinc-600">Gross Entry Costs</span><strong className="tabular-nums text-zinc-950">{formatMoney(entryCapital.grossEntryCosts)}</strong></div>
+                <div className="flex items-center justify-between gap-4 text-emerald-700"><span className="font-medium">Cashback</span><strong className="tabular-nums">− {formatMoney(cashback)}</strong></div>
+              </div>
+              <div className="mt-3 rounded-2xl border border-[#d8c48e] bg-[#fbf8ef] px-4 py-4"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">Net Initial Capital Required</p><p className="mt-1 text-2xl font-semibold text-[var(--falcon-charcoal)]">{formatMoney(netInitialCapital)}</p><p className="mt-1 text-xs text-zinc-500">Gross entry costs less derived cashback, floored at RM0.</p></div>
+              {entryCapital.excessCashback > 0 ? <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">Excess Cashback</p><p className="mt-1 text-lg font-semibold text-emerald-800">{formatMoney(entryCapital.excessCashback)}</p></div> : null}
+              {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Low net initial capital can produce a very high simple ROI. Check that all upfront costs and cashback assumptions are complete.</p> : null}
             </div>
           </section>
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
@@ -443,11 +459,11 @@ export default function InvestmentSimulatorPage() {
           </section>
         </div>
 
-        {!selected || !yearOne ? <section className="rounded-[28px] border border-dashed border-[var(--falcon-soft-border)] bg-white px-5 py-12 text-center"><p className="font-semibold text-zinc-950">Enter valid purchase, capital and rental assumptions to run the simulation.</p><p className="mt-2 text-sm text-zinc-500">SPA Price and Starting Monthly Rental are not assumed automatically. Initial Capital is derived from the entry-capital breakdown.</p></section> : <>
+        {!selected || !yearOne ? <section className="rounded-[28px] border border-dashed border-[var(--falcon-soft-border)] bg-white px-5 py-12 text-center"><p className="font-semibold text-zinc-950">Enter valid purchase, capital and rental assumptions to run the simulation.</p><p className="mt-2 text-sm text-zinc-500">SPA Price, Nett Price and Starting Monthly Rental are required. Net Initial Capital is derived from the entry-capital breakdown and cashback.</p></section> : <>
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Today</p>
             <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Your Investment Starting Point</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="SPA Price" value={formatMoney(result?.input.purchasePrice ?? 0)} featured /><Metric label="Loan Amount" value={formatMoney(result?.loanAmount ?? 0)} /><Metric label="Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Monthly Instalment" value={formatMoney(result?.monthlyInstalment ?? 0)} /></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><Metric label="SPA Price" value={formatMoney(result?.input.spaPrice ?? 0)} featured /><Metric label="Nett Price" value={formatMoney(result?.input.nettPrice ?? 0)} featured /><Metric label="Loan Amount" value={formatMoney(result?.loanAmount ?? 0)} /><Metric label="Net Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Monthly Instalment" value={formatMoney(result?.monthlyInstalment ?? 0)} />{cashback > 0 ? <Metric label="Cashback" value={formatMoney(cashback)} tone="positive" /> : null}</div>
           </section>
 
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
@@ -479,10 +495,10 @@ export default function InvestmentSimulatorPage() {
 
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Result</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Outcome</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Cumulative Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} /><Metric label="Net Sale Proceeds" value={formatMoney(selected.netSaleProceedsBeforeTax)} /><Metric label="Estimated Investment Profit" value={formatSignedMoney(selected.estimatedInvestmentProfit)} featured tone={selected.estimatedInvestmentProfit >= 0 ? "positive" : "negative"} /><Metric label="Estimated ROI" value={displayRoi(selected)} tone={(selected.estimatedRoiPercent ?? 0) >= 0 ? "positive" : "negative"} /></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Metric label="Net Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Cumulative Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} /><Metric label="Net Sale Proceeds" value={formatMoney(selected.netSaleProceedsBeforeTax)} /><Metric label="Estimated Investment Profit" value={formatSignedMoney(selected.estimatedInvestmentProfit)} featured tone={selected.estimatedInvestmentProfit >= 0 ? "positive" : "negative"} /><Metric label="Estimated ROI" value={displayRoi(selected)} tone={(selected.estimatedRoiPercent ?? 0) >= 0 ? "positive" : "negative"} /></div>
             <p className="mt-4 text-xs text-zinc-500">Simple ROI based on total cash invested. It is not an annualized return.</p>
-            {!hasInitialCapitalForRoi ? <p className="mt-2 text-xs font-medium text-amber-700">Enter initial capital to calculate ROI.</p> : null}
-            {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Very low initial capital can produce an unusually high ROI. Check that all upfront cash costs have been included.</p> : null}
+            {!hasInitialCapitalForRoi ? <p className="mt-2 text-xs font-medium text-amber-700">Estimated ROI is unavailable because there is no positive net initial capital denominator.</p> : null}
+            {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Low net initial capital can produce a very high simple ROI. Check that all upfront costs and cashback assumptions are complete.</p> : null}
           </section>
 
           <section className="min-w-0 overflow-hidden rounded-[28px] border border-[var(--falcon-soft-border)] bg-white shadow-sm"><div className="p-5 sm:p-6"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Compare</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Exit Scenarios</h2></div><div className="max-w-full overflow-x-auto border-t border-[var(--falcon-soft-border)]"><table className="w-full min-w-[940px] text-sm"><thead className="bg-[var(--falcon-warm-background)] text-xs uppercase tracking-[0.08em] text-zinc-500"><tr><th className="sticky left-0 z-10 bg-[var(--falcon-warm-background)] px-4 py-3 text-left">Exit Year</th><th className="px-4 py-3 text-right">Property Value</th><th className="px-4 py-3 text-right">Outstanding Loan</th><th className="px-4 py-3 text-right">Net Sale Proceeds</th><th className="px-4 py-3 text-right">Investment Profit</th><th className="px-4 py-3 text-right">Estimated ROI</th></tr></thead><tbody className="divide-y divide-[var(--falcon-soft-border)]">{exitScenarios.map((year) => <tr key={year.year} className={year.year === selected.year ? "bg-[#fbf8ef]" : ""}><td className={`sticky left-0 z-10 px-4 py-3 font-semibold text-zinc-950 ${year.year === selected.year ? "bg-[#fbf8ef]" : "bg-white"}`}>Year {year.year}</td><td className="px-4 py-3 text-right tabular-nums">{formatMoney(year.propertyValue)}</td><td className="px-4 py-3 text-right tabular-nums">{formatMoney(year.outstandingLoan)}</td><td className="px-4 py-3 text-right tabular-nums">{formatMoney(year.netSaleProceedsBeforeTax)}</td><td className={`px-4 py-3 text-right font-semibold tabular-nums ${year.estimatedInvestmentProfit >= 0 ? "text-emerald-700" : "text-red-700"}`}>{formatSignedMoney(year.estimatedInvestmentProfit)}</td><td className="px-4 py-3 text-right font-semibold tabular-nums">{displayRoi(year)}</td></tr>)}</tbody></table></div></section>

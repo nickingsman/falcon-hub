@@ -16,7 +16,8 @@ export const investmentScenarioAssumptions: Record<
 };
 
 export type InvestmentSimulatorInput = {
-  purchasePrice: number;
+  spaPrice: number;
+  nettPrice: number;
   initialCashRequired: number;
   loanMarginPercent: number;
   annualInterestRatePercent: number;
@@ -59,7 +60,7 @@ export type InvestmentSimulatorResult = {
 
 export type InvestmentFinancingInput = Pick<
   InvestmentSimulatorInput,
-  | "purchasePrice"
+  | "spaPrice"
   | "loanMarginPercent"
   | "annualInterestRatePercent"
   | "loanTenureYears"
@@ -71,13 +72,25 @@ export type InvestmentFinancingResult = {
   loan: LoanAmortizationResult | null;
 };
 
+export type InvestmentPricePosition = {
+  suggestedDownpayment: number;
+  cashback: number;
+};
+
+export type InvestmentEntryCapitalResult = {
+  grossEntryCosts: number;
+  netInitialCapital: number;
+  excessCashback: number;
+};
+
 function isFiniteWithin(value: number, minimum: number, maximum: number) {
   return Number.isFinite(value) && value >= minimum && value <= maximum;
 }
 
 function isValidInvestmentInput(input: InvestmentSimulatorInput) {
   return (
-    isFiniteWithin(input.purchasePrice, 1, 100_000_000) &&
+    isFiniteWithin(input.spaPrice, 1, 100_000_000) &&
+    isFiniteWithin(input.nettPrice, 1, 100_000_000) &&
     isFiniteWithin(input.initialCashRequired, 0, 100_000_000) &&
     isFiniteWithin(input.loanMarginPercent, 0, 100) &&
     isFiniteWithin(input.annualInterestRatePercent, 0, 20) &&
@@ -105,7 +118,7 @@ export function calculateInvestmentFinancing(
   input: InvestmentFinancingInput,
 ): InvestmentFinancingResult | null {
   if (
-    !isFiniteWithin(input.purchasePrice, 1, 100_000_000) ||
+    !isFiniteWithin(input.spaPrice, 1, 100_000_000) ||
     !isFiniteWithin(input.loanMarginPercent, 0, 100) ||
     !isFiniteWithin(input.annualInterestRatePercent, 0, 20) ||
     !isFiniteWithin(input.loanTenureYears, 1 / 12, 40) ||
@@ -114,7 +127,7 @@ export function calculateInvestmentFinancing(
     return null;
   }
 
-  const loanAmount = input.purchasePrice * (input.loanMarginPercent / 100);
+  const loanAmount = input.spaPrice * (input.loanMarginPercent / 100);
   const loan =
     loanAmount > 0
       ? generateAmortizationSchedule({
@@ -130,6 +143,44 @@ export function calculateInvestmentFinancing(
     loanAmount,
     monthlyInstalment: loan?.monthlyInstalment ?? 0,
     loan,
+  };
+}
+
+export function calculateInvestmentPricePosition(
+  nettPrice: number,
+  loanAmount: number,
+): InvestmentPricePosition | null {
+  if (
+    !Number.isFinite(nettPrice) ||
+    nettPrice < 0 ||
+    !Number.isFinite(loanAmount) ||
+    loanAmount < 0
+  ) {
+    return null;
+  }
+
+  return {
+    suggestedDownpayment: Math.max(nettPrice - loanAmount, 0),
+    cashback: Math.max(loanAmount - nettPrice, 0),
+  };
+}
+
+export function calculateInvestmentEntryCapital(input: {
+  downpayment: number;
+  renovation: number;
+  otherCosts: number;
+  cashback: number;
+}): InvestmentEntryCapitalResult {
+  const grossEntryCosts =
+    Math.max(input.downpayment, 0) +
+    Math.max(input.renovation, 0) +
+    Math.max(input.otherCosts, 0);
+  const cashback = Math.max(input.cashback, 0);
+
+  return {
+    grossEntryCosts,
+    netInitialCapital: Math.max(grossEntryCosts - cashback, 0),
+    excessCashback: Math.max(cashback - grossEntryCosts, 0),
   };
 }
 
@@ -171,7 +222,7 @@ export function calculateInvestmentSimulation(
     }
 
     const propertyValue =
-      input.purchasePrice * (1 + input.capitalAppreciationPercent / 100) ** year;
+      input.nettPrice * (1 + input.capitalAppreciationPercent / 100) ** year;
     const outstandingLoan = loan
       ? getOutstandingBalanceAtMonth(loan, year * 12)
       : 0;

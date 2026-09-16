@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   applyInvestmentScenario,
+  calculateInvestmentEntryCapital,
   calculateInvestmentFinancing,
+  calculateInvestmentPricePosition,
   calculateInvestmentSimulation,
   getInvestmentYear,
   type InvestmentSimulatorInput,
@@ -14,7 +16,8 @@ import {
 } from "./loan-amortization";
 
 const baseInvestment: InvestmentSimulatorInput = {
-  purchasePrice: 600_000,
+  spaPrice: 600_000,
+  nettPrice: 600_000,
   initialCashRequired: 72_000,
   loanMarginPercent: 90,
   annualInterestRatePercent: 3.7,
@@ -109,7 +112,8 @@ test("Case G: zero selling cost makes net proceeds equal value minus loan", () =
 
 test("Case H: presets change only capital and rental growth assumptions", () => {
   const preservedKeys: Array<keyof InvestmentSimulatorInput> = [
-    "purchasePrice",
+    "spaPrice",
+    "nettPrice",
     "initialCashRequired",
     "loanMarginPercent",
     "annualInterestRatePercent",
@@ -133,7 +137,7 @@ test("Case H: presets change only capital and rental growth assumptions", () => 
 
 test("financing remains available independently of entry capital and rental assumptions", () => {
   const financing = calculateInvestmentFinancing({
-    purchasePrice: 500_000,
+    spaPrice: 500_000,
     loanMarginPercent: 90,
     annualInterestRatePercent: 3.7,
     loanTenureYears: 35,
@@ -145,7 +149,8 @@ test("financing remains available independently of entry capital and rental assu
 
   const zeroCapitalAndRental = calculateInvestmentSimulation({
     ...baseInvestment,
-    purchasePrice: 500_000,
+    spaPrice: 500_000,
+    nettPrice: 500_000,
     initialCashRequired: 0,
     loanMarginPercent: 90,
     startingMonthlyRental: 0,
@@ -157,7 +162,7 @@ test("financing remains available independently of entry capital and rental assu
 
 test("financing uses SPA Price and loan margin rather than downpayment assumptions", () => {
   const financing = calculateInvestmentFinancing({
-    purchasePrice: 600_000,
+    spaPrice: 600_000,
     loanMarginPercent: 80,
     annualInterestRatePercent: 3.7,
     loanTenureYears: 35,
@@ -166,4 +171,73 @@ test("financing uses SPA Price and loan margin rather than downpayment assumptio
   assert.ok(financing);
   assert.equal(financing.loanAmount, 480_000);
   assert.equal(financing.monthlyInstalment.toFixed(2), "2039.82");
+});
+
+test("SPA-based financing and Nett-based projections remain distinct", () => {
+  const result = requireSimulation({
+    ...baseInvestment,
+    spaPrice: 600_000,
+    nettPrice: 530_000,
+    loanMarginPercent: 90,
+  });
+
+  assert.equal(result.loanAmount, 540_000);
+  assert.equal(result.years[0]?.propertyValue, 530_000 * 1.03);
+});
+
+test("price position derives either downpayment or cashback without negatives", () => {
+  assert.deepEqual(calculateInvestmentPricePosition(550_000, 525_600), {
+    suggestedDownpayment: 24_400,
+    cashback: 0,
+  });
+  assert.deepEqual(calculateInvestmentPricePosition(530_000, 540_000), {
+    suggestedDownpayment: 0,
+    cashback: 10_000,
+  });
+  assert.deepEqual(calculateInvestmentPricePosition(600_000, 540_000), {
+    suggestedDownpayment: 60_000,
+    cashback: 0,
+  });
+});
+
+test("cashback reconciles gross costs to net initial capital and excess cashback", () => {
+  const reconciled = calculateInvestmentEntryCapital({
+    downpayment: 0,
+    renovation: 20_000,
+    otherCosts: 13_000 + 15_000,
+    cashback: 10_000,
+  });
+
+  assert.deepEqual(reconciled, {
+    grossEntryCosts: 48_000,
+    netInitialCapital: 38_000,
+    excessCashback: 0,
+  });
+
+  const result = requireSimulation({
+    ...baseInvestment,
+    spaPrice: 600_000,
+    nettPrice: 530_000,
+    initialCashRequired: reconciled.netInitialCapital,
+    loanMarginPercent: 90,
+  });
+  assert.equal(result.input.initialCashRequired, 38_000);
+  assert.equal(
+    result.years[0]?.totalCashInvested,
+    38_000 + (result.years[0]?.cumulativeNegativeOperatingCashFlow ?? 0),
+  );
+
+  assert.deepEqual(
+    calculateInvestmentEntryCapital({
+      downpayment: 0,
+      renovation: 2_000,
+      otherCosts: 0,
+      cashback: 10_000,
+    }),
+    {
+      grossEntryCosts: 2_000,
+      netInitialCapital: 0,
+      excessCashback: 8_000,
+    },
+  );
 });
