@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
@@ -16,7 +16,6 @@ type ScenarioSelection = InvestmentScenario | "custom";
 
 type SimulatorForm = {
   purchasePrice: string;
-  initialCashRequired: string;
   loanMarginPercent: string;
   annualInterestRatePercent: string;
   loanTenureYears: string;
@@ -27,6 +26,12 @@ type SimulatorForm = {
   capitalAppreciationPercent: string;
   estimatedSellingCostPercent: string;
   holdingPeriodYears: string;
+};
+
+type EntryCapitalCost = {
+  id: string;
+  description: string;
+  amount: string;
 };
 
 type ProjectOption = {
@@ -50,7 +55,6 @@ type UnitTypeOption = {
 
 const defaultForm: SimulatorForm = {
   purchasePrice: "",
-  initialCashRequired: "",
   loanMarginPercent: "90",
   annualInterestRatePercent: "3.70",
   loanTenureYears: "35",
@@ -81,6 +85,15 @@ function parseInput(value: string) {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseEntryCapitalAmount(value: string) {
+  return Math.max(0, parseInput(value) ?? 0);
+}
+
+function normalizeEntryCapitalInput(value: string) {
+  const parsed = parseInput(value);
+  return parsed !== null && parsed < 0 ? "0" : value;
 }
 
 function formatMoney(value: number) {
@@ -185,6 +198,11 @@ function EquityChart({ years }: { years: InvestmentYearResult[] }) {
 
 export default function InvestmentSimulatorPage() {
   const [form, setForm] = useState<SimulatorForm>(defaultForm);
+  const [customDownpayment, setCustomDownpayment] = useState("");
+  const [downpaymentOverridden, setDownpaymentOverridden] = useState(false);
+  const [renovation, setRenovation] = useState("0");
+  const [otherEntryCosts, setOtherEntryCosts] = useState<EntryCapitalCost[]>([]);
+  const nextEntryCostId = useRef(1);
   const [scenario, setScenario] = useState<ScenarioSelection>("base");
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -207,10 +225,33 @@ export default function InvestmentSimulatorPage() {
     return () => controller.abort();
   }, []);
 
+  const spaPriceInput = parseInput(form.purchasePrice);
+  const loanMarginInput = parseInput(form.loanMarginPercent);
+  const calculatedDownpayment =
+    spaPriceInput !== null &&
+    spaPriceInput >= 0 &&
+    loanMarginInput !== null &&
+    loanMarginInput >= 0 &&
+    loanMarginInput <= 100
+      ? Math.round(spaPriceInput * (1 - loanMarginInput / 100) * 100) / 100
+      : null;
+  const downpaymentInputValue = downpaymentOverridden
+    ? customDownpayment
+    : calculatedDownpayment === null
+      ? ""
+      : String(calculatedDownpayment);
+  const derivedInitialCapital =
+    parseEntryCapitalAmount(downpaymentInputValue) +
+    parseEntryCapitalAmount(renovation) +
+    otherEntryCosts.reduce(
+      (sum, cost) => sum + parseEntryCapitalAmount(cost.amount),
+      0,
+    );
+
   const parsedInput = useMemo<InvestmentSimulatorInput | null>(() => {
     const values = {
       purchasePrice: parseInput(form.purchasePrice),
-      initialCashRequired: parseInput(form.initialCashRequired),
+      initialCashRequired: derivedInitialCapital,
       loanMarginPercent: parseInput(form.loanMarginPercent),
       annualInterestRatePercent: parseInput(form.annualInterestRatePercent),
       loanTenureYears: parseInput(form.loanTenureYears),
@@ -224,21 +265,17 @@ export default function InvestmentSimulatorPage() {
     };
     if (Object.values(values).some((value) => value === null)) return null;
     return values as InvestmentSimulatorInput;
-  }, [form]);
+  }, [derivedInitialCapital, form]);
   const result = useMemo(() => parsedInput ? calculateInvestmentSimulation(parsedInput) : null, [parsedInput]);
   const selected = result?.selectedYear ?? null;
   const yearOne = result?.years[0] ?? null;
   const journey = result?.years.slice(0, parsedInput?.holdingPeriodYears ?? 0) ?? [];
   const exitScenarios = result?.years.filter((year) => exitYears.includes(year.year)) ?? [];
-  const purchasePrice = parseInput(form.purchasePrice);
-  const initialCapital = parseInput(form.initialCashRequired);
-  const hasInitialCapitalForRoi = initialCapital !== null && initialCapital > 0;
+  const hasInitialCapitalForRoi = derivedInitialCapital > 0;
   const hasLowInitialCapital =
-    purchasePrice !== null &&
-    purchasePrice > 0 &&
-    initialCapital !== null &&
-    initialCapital >= 0 &&
-    initialCapital < purchasePrice * 0.01;
+    spaPriceInput !== null &&
+    spaPriceInput > 0 &&
+    derivedInitialCapital < spaPriceInput * 0.01;
   const yearOneAverageLoanPayment = result?.loan
     ? result.loan.schedule
         .slice(0, 12)
@@ -252,6 +289,30 @@ export default function InvestmentSimulatorPage() {
   function updateField(field: keyof SimulatorForm, value: string, growthField = false) {
     setForm((current) => ({ ...current, [field]: value }));
     if (growthField) setScenario("custom");
+  }
+
+  function addEntryCost() {
+    const id = `entry-cost-${nextEntryCostId.current}`;
+    nextEntryCostId.current += 1;
+    setOtherEntryCosts((current) => [...current, { id, description: "", amount: "" }]);
+  }
+
+  function updateEntryCost(id: string, changes: Partial<Omit<EntryCapitalCost, "id">>) {
+    setOtherEntryCosts((current) =>
+      current.map((cost) => (cost.id === id ? { ...cost, ...changes } : cost)),
+    );
+  }
+
+  function resetSimulator() {
+    setForm(defaultForm);
+    setCustomDownpayment("");
+    setDownpaymentOverridden(false);
+    setRenovation("0");
+    setOtherEntryCosts([]);
+    setScenario("base");
+    setSelectedProjectId("");
+    setSelectedUnitTypeId("");
+    setUnitTypes([]);
   }
 
   function applyScenario(nextScenario: InvestmentScenario) {
@@ -296,7 +357,7 @@ export default function InvestmentSimulatorPage() {
   return (
     <main className="min-h-screen bg-[var(--falcon-warm-background)] px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <PageHeader eyebrow="Customer Tools" title="Investment Simulator" description="Explore projected value, rental, financing, cash flow and exit outcomes using transparent assumptions." actions={<Button type="button" variant="secondary" onClick={() => { setForm(defaultForm); setScenario("base"); setSelectedProjectId(""); setSelectedUnitTypeId(""); setUnitTypes([]); }}>Reset</Button>} meta={<StatusBadge variant="accent">Illustrative assumptions</StatusBadge>} />
+        <PageHeader eyebrow="Customer Tools" title="Investment Simulator" description="Explore projected value, rental, financing, cash flow and exit outcomes using transparent assumptions." actions={<Button type="button" variant="secondary" onClick={resetSimulator}>Reset</Button>} meta={<StatusBadge variant="accent">Illustrative assumptions</StatusBadge>} />
 
         <div className="grid gap-6 xl:grid-cols-2">
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
@@ -308,14 +369,34 @@ export default function InvestmentSimulatorPage() {
                 {selectedProjectId ? <button type="button" onClick={() => void selectProject("")} className="mt-2 text-xs font-semibold text-zinc-500 hover:text-zinc-900">Clear project selection</button> : null}
               </div>
               <label className="text-sm font-semibold text-zinc-700">Unit Type <span className="font-normal text-zinc-400">(Optional)</span><select value={selectedUnitTypeId} onChange={(event) => selectUnitType(event.target.value)} disabled={!selectedProjectId || loadingUnitTypes} className="mt-2 min-h-12 w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-white px-4 text-sm outline-none disabled:bg-zinc-50 disabled:text-zinc-400"><option value="">{loadingUnitTypes ? "Loading Unit Types..." : "Select Unit Type"}</option>{unitTypes.map((unitType) => <option key={unitType.id} value={unitType.id}>{unitType.type_code}{unitType.type_name ? ` · ${unitType.type_name}` : ""}</option>)}</select></label>
-              <InputField label="Purchase Price / Final Nett Price" prefix="RM" value={form.purchasePrice} onChange={(value) => updateField("purchasePrice", value)} />
-              <div>
-                <InputField label="Initial Capital Required" prefix="RM" value={form.initialCashRequired} onChange={(value) => updateField("initialCashRequired", value)} helper="Upfront cash paid by the buyer, including downpayment and applicable purchase costs." />
-                {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Very low initial capital can produce an unusually high ROI. Check that all upfront cash costs have been included.</p> : null}
-              </div>
             </div>
             <p className="mt-3 text-xs text-zinc-500">Project data can prefill available unit price, rental and maintenance assumptions. Every value remains editable.</p>
             {projectMessage ? <p className="mt-2 text-xs font-medium text-amber-700">{projectMessage}</p> : null}
+            <div className="mt-4 max-w-md"><InputField label="SPA Price" prefix="RM" value={form.purchasePrice} onChange={(value) => updateField("purchasePrice", value)} /></div>
+
+            <div className="mt-5 border-t border-[var(--falcon-soft-border)] pt-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">Entry Capital Breakdown</p>
+              <div className="mt-3 divide-y divide-[var(--falcon-soft-border)] rounded-2xl border border-[var(--falcon-soft-border)] px-4">
+                <div className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-center">
+                  <div><p className="text-sm font-semibold text-zinc-800">Downpayment</p><p className="mt-1 text-xs text-zinc-500">Suggested from SPA Price and Loan Margin.</p>{downpaymentOverridden && calculatedDownpayment !== null ? <button type="button" onClick={() => { setDownpaymentOverridden(false); setCustomDownpayment(""); }} className="mt-1 text-xs font-semibold text-[var(--falcon-gold-dark)] hover:text-zinc-900">Use Calculated Downpayment ({formatMoney(calculatedDownpayment)})</button> : null}</div>
+                  <div className="flex overflow-hidden rounded-xl border border-[var(--falcon-soft-border)] bg-white"><span className="flex items-center border-r border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 text-xs font-semibold text-zinc-500">RM</span><input aria-label="Downpayment" inputMode="decimal" value={downpaymentInputValue} onChange={(event) => { setCustomDownpayment(normalizeEntryCapitalInput(event.target.value)); setDownpaymentOverridden(true); }} className="min-h-11 min-w-0 flex-1 px-3 text-sm font-medium outline-none" /></div>
+                </div>
+                <div className="grid gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-center">
+                  <div><p className="text-sm font-semibold text-zinc-800">Renovation</p><p className="mt-1 text-xs text-zinc-500">Optional renovation budget.</p></div>
+                  <div className="flex overflow-hidden rounded-xl border border-[var(--falcon-soft-border)] bg-white"><span className="flex items-center border-r border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 text-xs font-semibold text-zinc-500">RM</span><input aria-label="Renovation" inputMode="decimal" value={renovation} onChange={(event) => setRenovation(normalizeEntryCapitalInput(event.target.value))} className="min-h-11 min-w-0 flex-1 px-3 text-sm font-medium outline-none" /></div>
+                </div>
+                {otherEntryCosts.map((cost) => (
+                  <div key={cost.id} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_200px_auto] sm:items-center">
+                    <input aria-label="Other cost description" value={cost.description} onChange={(event) => updateEntryCost(cost.id, { description: event.target.value })} placeholder="Other Cost description" className="min-h-11 rounded-xl border border-[var(--falcon-soft-border)] px-3 text-sm outline-none focus:border-[var(--falcon-gold-dark)]" />
+                    <div className="flex overflow-hidden rounded-xl border border-[var(--falcon-soft-border)] bg-white"><span className="flex items-center border-r border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] px-3 text-xs font-semibold text-zinc-500">RM</span><input aria-label={cost.description.trim() || "Other Cost amount"} inputMode="decimal" value={cost.amount} onChange={(event) => updateEntryCost(cost.id, { amount: normalizeEntryCapitalInput(event.target.value) })} className="min-h-11 min-w-0 flex-1 px-3 text-sm font-medium outline-none" /></div>
+                    <button type="button" aria-label={`Remove ${cost.description.trim() || "Other Cost"}`} onClick={() => setOtherEntryCosts((current) => current.filter((item) => item.id !== cost.id))} className="min-h-10 rounded-full px-3 text-xs font-semibold text-red-700 hover:bg-red-50">Remove</button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addEntryCost} className="mt-3 min-h-10 rounded-full border border-[var(--falcon-soft-border)] bg-white px-4 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">+ Add Cost</button>
+              <div className="mt-4 rounded-2xl border border-[#d8c48e] bg-[#fbf8ef] px-4 py-4"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--falcon-gold-dark)]">Initial Capital Required</p><p className="mt-1 text-2xl font-semibold text-[var(--falcon-charcoal)]">{formatMoney(derivedInitialCapital)}</p><p className="mt-1 text-xs text-zinc-500">Upfront cash paid by the buyer, including downpayment and applicable purchase costs.</p></div>
+              {hasLowInitialCapital ? <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Very low initial capital can produce an unusually high ROI. Check that all upfront cash costs have been included.</p> : null}
+            </div>
           </section>
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Financing</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Housing Loan</h2>
@@ -334,11 +415,11 @@ export default function InvestmentSimulatorPage() {
           </section>
         </div>
 
-        {!selected || !yearOne ? <section className="rounded-[28px] border border-dashed border-[var(--falcon-soft-border)] bg-white px-5 py-12 text-center"><p className="font-semibold text-zinc-950">Enter valid purchase, capital and rental assumptions to run the simulation.</p><p className="mt-2 text-sm text-zinc-500">Property Price, Initial Capital Required and Starting Monthly Rental are not assumed automatically.</p></section> : <>
+        {!selected || !yearOne ? <section className="rounded-[28px] border border-dashed border-[var(--falcon-soft-border)] bg-white px-5 py-12 text-center"><p className="font-semibold text-zinc-950">Enter valid purchase, capital and rental assumptions to run the simulation.</p><p className="mt-2 text-sm text-zinc-500">SPA Price and Starting Monthly Rental are not assumed automatically. Initial Capital is derived from the entry-capital breakdown.</p></section> : <>
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Today</p>
             <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Your Investment Starting Point</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Property Price" value={formatMoney(result?.input.purchasePrice ?? 0)} featured /><Metric label="Loan Amount" value={formatMoney(result?.loanAmount ?? 0)} /><Metric label="Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Monthly Instalment" value={formatMoney(result?.monthlyInstalment ?? 0)} /></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Metric label="SPA Price" value={formatMoney(result?.input.purchasePrice ?? 0)} featured /><Metric label="Loan Amount" value={formatMoney(result?.loanAmount ?? 0)} /><Metric label="Initial Capital" value={formatMoney(result?.input.initialCashRequired ?? 0)} /><Metric label="Monthly Instalment" value={formatMoney(result?.monthlyInstalment ?? 0)} /></div>
           </section>
 
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
