@@ -16,9 +16,15 @@ import {
   type RoiCalculatorResult,
 } from "@/lib/property-finance";
 import {
+  calculatePurchaseCostTreatmentSummary,
+  getApplicableForeignerConsent,
   getPurchaseCostEstimates,
+  resolvePurchaseCostAmount,
   type PurchaseCostEstimate,
   type PurchaseCostEstimateKey,
+  type PurchaseCostSource,
+  type PurchaseCostTreatment,
+  type RoiBuyerType,
 } from "@/lib/purchase-costs";
 import {
   roiSavedWorkSchemaVersion,
@@ -68,9 +74,6 @@ type EditablePackageItem = {
   treatment: CashBenefitTreatment;
   receiveAt: string;
 };
-
-type PurchaseCostTreatment = "customer_pay" | "developer_absorbed" | "not_applicable";
-type PurchaseCostSource = "auto" | "estimate" | "manual";
 
 type PurchaseCostItem = {
   id: string;
@@ -433,17 +436,24 @@ function resolvePurchaseCosts(
 ): ResolvedPurchaseCostItem[] {
   return purchaseCosts.map((item) => {
     const estimate = item.estimateKey ? estimates[item.estimateKey] : null;
+    const manualAmount = parseMoney(item.amount);
+    const resolvedAmountNumber = resolvePurchaseCostAmount(
+      item.source,
+      manualAmount,
+      estimate?.amount ?? manualAmount,
+    );
     const resolvedAmount =
       (item.source === "auto" || item.source === "estimate") && estimate
         ? formatAmountInputValue(estimate.amount)
         : item.amount;
-    const parsedAmount = parseMoney(resolvedAmount);
 
     return {
       ...item,
       resolvedAmount,
       resolvedAmountNumber:
-        Number.isFinite(parsedAmount) && parsedAmount >= 0 ? parsedAmount : Number.NaN,
+        Number.isFinite(resolvedAmountNumber) && resolvedAmountNumber >= 0
+          ? resolvedAmountNumber
+          : Number.NaN,
       estimate,
     };
   });
@@ -1031,26 +1041,11 @@ function calculateTotalCashback(result: RoiCalculatorResult) {
 }
 
 function calculatePurchaseCostSummary(purchaseCosts: ResolvedPurchaseCostItem[]) {
-  return purchaseCosts.reduce(
-    (summary, item) => {
-      const amount = item.resolvedAmountNumber;
-
-      if (!Number.isFinite(amount) || amount < 0) return summary;
-
-      if (item.treatment === "customer_pay") {
-        summary.customerPayPurchaseCosts += amount;
-      }
-
-      if (item.treatment === "developer_absorbed") {
-        summary.developerAbsorbedPurchaseCosts += amount;
-      }
-
-      return summary;
-    },
-    {
-      customerPayPurchaseCosts: 0,
-      developerAbsorbedPurchaseCosts: 0,
-    },
+  return calculatePurchaseCostTreatmentSummary(
+    purchaseCosts.map((item) => ({
+      treatment: item.treatment,
+      amount: item.resolvedAmountNumber,
+    })),
   );
 }
 
@@ -1166,6 +1161,8 @@ function writeProposalPreparationState(
 function buildRoiProposalHtml({
   form,
   purchasePurpose,
+  buyerType,
+  foreignerConsent,
   numericInput,
   result,
   branding,
@@ -1177,6 +1174,8 @@ function buildRoiProposalHtml({
 }: {
   form: CalculatorForm;
   purchasePurpose: RoiPurchasePurpose;
+  buyerType: RoiBuyerType;
+  foreignerConsent: number;
   numericInput: {
     loanMarginPercent: number;
     annualInterestRatePercent: number;
@@ -1201,6 +1200,10 @@ function buildRoiProposalHtml({
   const monthlyCashFlow = result.monthlyCashFlow ?? 0;
   const purchaseCostRows = purchaseCosts.map(purchaseCostPdfRow).join("");
   const proposalPurchaseCostSummary = calculatePurchaseCostSummary(purchaseCosts);
+  const applicableForeignerConsent = getApplicableForeignerConsent(
+    buyerType,
+    foreignerConsent,
+  );
   const monthlyCashFlowBreakdown = [
     `Rental ${formatCurrencyDetailed(numericInput.expectedMonthlyRental)}`,
     `− Loan Instalment ${formatCurrencyDetailed(result.estimatedMonthlyInstalment)}`,
@@ -2162,6 +2165,7 @@ function buildRoiProposalHtml({
       <section class="section wide" style="margin-top: 9px;">
         <h2>Property Information</h2>
         <div class="compact-fields">
+          ${proposalCompactField("Buyer Type", buyerType === "foreigner" ? "Foreigner" : "Malaysian / PR")}
           ${proposalCompactField("Unit", form.unitNumber || "-")}
           ${proposalCompactField("Type", form.unitType || "-")}
           ${proposalCompactField("Configuration", form.unitConfiguration || "-")}
@@ -2201,6 +2205,7 @@ function buildRoiProposalHtml({
           ${proposalRow("Upfront Cash Required", formatCurrency(result.upfrontCashBeforeOtherCosts))}
           ${proposalRow("Other Upfront Costs", formatCurrency(numericInput.otherUpfrontCosts))}
           ${purchaseCostRows ? `<div class="purchase-costs">${purchaseCostRows}</div>` : ""}
+          ${applicableForeignerConsent > 0 ? proposalRow("Foreigner Consent", formatCurrencyDetailed(applicableForeignerConsent)) : ""}
           ${proposalSummaryRow("Total Savings", formatCurrencyDetailed(proposalPurchaseCostSummary.developerAbsorbedPurchaseCosts), "savings-row")}
           ${proposalSummaryRow("Estimated Total Cash Required", formatCurrencyDetailed(result.estimatedTotalCashRequired), "cash-required-row")}
           ${
@@ -2426,6 +2431,8 @@ function SaveWorkModal({
 export default function RoiCalculatorPage() {
   const { displayName, phone } = useAppPermissions();
   const [purchasePurpose, setPurchasePurpose] = useState<RoiPurchasePurpose>("own_stay");
+  const [buyerType, setBuyerType] = useState<RoiBuyerType>("malaysian_pr");
+  const [foreignerConsent, setForeignerConsent] = useState("0");
   const [form, setForm] = useState<CalculatorForm>({
     projectName: "",
     unitNumber: "",
@@ -2508,8 +2515,9 @@ export default function RoiCalculatorPage() {
       maintenanceRatePerSqft: parseMoney(form.maintenanceRatePerSqft),
       expectedMonthlyRental: parseMoney(form.expectedMonthlyRental),
       otherUpfrontCosts: parseMoney(form.otherUpfrontCosts),
+      foreignerConsent: parseMoney(foreignerConsent),
     }),
-    [form],
+    [form, foreignerConsent],
   );
   const baseResultForPurchaseCostEstimates = useMemo(
     () =>
@@ -2524,8 +2532,9 @@ export default function RoiCalculatorPage() {
       getPurchaseCostEstimates(
         numericInput.spaPrice,
         baseResultForPurchaseCostEstimates.loanAmount,
+        buyerType,
       ),
-    [numericInput.spaPrice, baseResultForPurchaseCostEstimates.loanAmount],
+    [buyerType, numericInput.spaPrice, baseResultForPurchaseCostEstimates.loanAmount],
   );
   const resolvedPurchaseCosts = useMemo(
     () => resolvePurchaseCosts(purchaseCosts, purchaseCostEstimates),
@@ -2590,6 +2599,13 @@ export default function RoiCalculatorPage() {
       messages.push("Other Upfront Costs cannot be negative.");
     }
 
+    if (
+      buyerType === "foreigner" &&
+      (!Number.isFinite(numericInput.foreignerConsent) || numericInput.foreignerConsent < 0)
+    ) {
+      messages.push("Foreigner Consent cannot be negative or invalid.");
+    }
+
     for (const item of packageItems) {
       if (item.type === "discount") {
         const value = parseMoney(item.value);
@@ -2635,16 +2651,22 @@ export default function RoiCalculatorPage() {
     }
 
     return messages;
-  }, [numericInput, packageItems, purchasePurpose, resolvedPurchaseCosts]);
+  }, [buyerType, numericInput, packageItems, purchasePurpose, resolvedPurchaseCosts]);
+  const applicableForeignerConsent = getApplicableForeignerConsent(
+    buyerType,
+    numericInput.foreignerConsent,
+  );
   const result = useMemo(
     () =>
       calculateRoi({
         ...numericInput,
         otherUpfrontCosts:
-          numericInput.otherUpfrontCosts + purchaseCostSummary.customerPayPurchaseCosts,
+          numericInput.otherUpfrontCosts +
+          purchaseCostSummary.customerPayPurchaseCosts +
+          applicableForeignerConsent,
         packageItems: packageItems.map(toPackageItem),
       }),
-    [numericInput, packageItems, purchaseCostSummary.customerPayPurchaseCosts],
+    [applicableForeignerConsent, numericInput, packageItems, purchaseCostSummary.customerPayPurchaseCosts],
   );
   const hasBlockingValidation = validationMessages.length > 0;
   const cashFlowIsPositive = (result.monthlyCashFlow ?? 0) >= 0;
@@ -3025,6 +3047,8 @@ export default function RoiCalculatorPage() {
       tool: "roi",
       schemaVersion: roiSavedWorkSchemaVersion,
       purchasePurpose,
+      buyerType,
+      foreignerConsent: getApplicableForeignerConsent("foreigner", numericInput.foreignerConsent),
       form,
       packageItems,
       purchaseCosts,
@@ -3114,6 +3138,8 @@ export default function RoiCalculatorPage() {
 
   function hydrateSavedRoiPayload(payload: RoiSavedWorkPayloadV1) {
     setPurchasePurpose(payload.purchasePurpose);
+    setBuyerType(payload.buyerType);
+    setForeignerConsent(String(payload.foreignerConsent));
     setForm(payload.form);
     setPackageItems(payload.packageItems);
     setPurchaseCosts(payload.purchaseCosts.length ? payload.purchaseCosts : defaultPurchaseCosts);
@@ -3248,6 +3274,8 @@ export default function RoiCalculatorPage() {
         buildRoiProposalHtml({
           form,
           purchasePurpose,
+          buyerType,
+          foreignerConsent: applicableForeignerConsent,
           numericInput,
           result,
           branding: {
@@ -4028,6 +4056,39 @@ export default function RoiCalculatorPage() {
                 description="Enter confirmed package costs. Only Customer Pay rows affect total cash required."
               />
 
+              <div className="mt-4">
+                <p className="text-sm font-semibold text-zinc-900">Buyer Type</p>
+                <div className="mt-2 inline-flex rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-1" aria-label="Buyer type">
+                  {(["malaysian_pr", "foreigner"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={buyerType === value}
+                      onClick={() => setBuyerType(value)}
+                      className={`min-h-9 rounded-full px-4 text-xs font-semibold transition ${buyerType === value ? "bg-[var(--falcon-charcoal)] text-white shadow-sm" : "text-zinc-600 hover:bg-white"}`}
+                    >
+                      {value === "malaysian_pr" ? "Malaysian / PR" : "Foreigner"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {buyerType === "foreigner" ? (
+                <label className="mt-4 block max-w-md text-sm text-zinc-600">
+                  <span className="mb-1 block font-medium text-zinc-900">Foreigner Consent</span>
+                  <div className={`flex rounded-2xl border ${getPendingInputClass(false, !Number.isFinite(numericInput.foreignerConsent) || numericInput.foreignerConsent < 0)}`}>
+                    <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">RM</span>
+                    <input
+                      inputMode="decimal"
+                      value={foreignerConsent}
+                      onChange={(event) => setForeignerConsent(event.target.value)}
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
+                    />
+                  </div>
+                  <span className="mt-1 block text-xs leading-5 text-zinc-500">Estimated State Authority / foreign acquisition consent cost. Enter the applicable amount where required.</span>
+                </label>
+              ) : null}
+
               <div className="mt-4 space-y-3">
                 {resolvedPurchaseCosts.map((item) => {
                   const amount = item.resolvedAmountNumber;
@@ -4083,11 +4144,17 @@ export default function RoiCalculatorPage() {
                           ) : null}
                         </div>
                         {item.id === "mot-transfer-stamp-duty" ? (
-                          <p className="mt-2 inline-flex rounded-full border border-amber-200 bg-[#FFF9E8] px-2.5 py-1 text-xs font-bold text-[#9A6B1F]">
-                            Only payable after VP
-                          </p>
+                          <>
+                            <p className="mt-2 inline-flex rounded-full border border-amber-200 bg-[#FFF9E8] px-2.5 py-1 text-xs font-bold text-[#9A6B1F]">
+                              Only payable after VP
+                            </p>
+                            {buyerType === "foreigner" ? (
+                              <p className="mt-2 text-xs leading-5 text-amber-700">Estimated at the current 8% foreign-buyer residential transfer rate. Actual stamp duty is subject to the applicable transfer instrument, valuation and prevailing law.</p>
+                            ) : null}
+                          </>
                         ) : null}
                         {item.estimate?.note &&
+                        !(item.id === "mot-transfer-stamp-duty" && buyerType === "foreigner") &&
                         (item.source === "auto" || item.source === "estimate") ? (
                           <p className="mt-1 text-xs text-amber-700">
                             {item.estimate.note}
@@ -4450,6 +4517,12 @@ export default function RoiCalculatorPage() {
                   label="Other Upfront Costs"
                   value={formatCurrency(numericInput.otherUpfrontCosts)}
                 />
+                {buyerType === "foreigner" && applicableForeignerConsent > 0 ? (
+                  <ResultRow
+                    label="Foreigner Consent"
+                    value={formatCurrencyDetailed(applicableForeignerConsent)}
+                  />
+                ) : null}
                 <ResultRow
                   label="Customer-Paid Purchase Costs"
                   value={formatCurrency(purchaseCostSummary.customerPayPurchaseCosts)}

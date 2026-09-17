@@ -6,11 +6,37 @@ export type PurchaseCostEstimateKey =
   | "loan_stamp_duty"
   | "mot_transfer_stamp_duty";
 
+export type RoiBuyerType = "malaysian_pr" | "foreigner";
+export type PurchaseCostTreatment = "customer_pay" | "developer_absorbed" | "not_applicable";
+export type PurchaseCostSource = "auto" | "estimate" | "manual";
+
 export type PurchaseCostEstimate = {
   amount: number;
   requiresManualConfirmation: boolean;
   note?: string;
 };
+
+export function resolvePurchaseCostAmount(
+  source: PurchaseCostSource,
+  manualAmount: number,
+  estimateAmount: number,
+) {
+  return source === "manual" ? manualAmount : estimateAmount;
+}
+
+export function calculatePurchaseCostTreatmentSummary(
+  purchaseCosts: Array<{ treatment: PurchaseCostTreatment; amount: number }>,
+) {
+  return purchaseCosts.reduce(
+    (summary, item) => {
+      if (!Number.isFinite(item.amount) || item.amount < 0) return summary;
+      if (item.treatment === "customer_pay") summary.customerPayPurchaseCosts += item.amount;
+      if (item.treatment === "developer_absorbed") summary.developerAbsorbedPurchaseCosts += item.amount;
+      return summary;
+    },
+    { customerPayPurchaseCosts: 0, developerAbsorbedPurchaseCosts: 0 },
+  );
+}
 
 export const falconSpaDisbursementEstimate = 1500;
 export const falconLoanDisbursementEstimate = 1200;
@@ -91,9 +117,36 @@ export function calculateMotEstimate(spaPrice: number): PurchaseCostEstimate {
   };
 }
 
+export function calculateMotEstimateForBuyer(
+  spaPrice: number,
+  buyerType: RoiBuyerType,
+): PurchaseCostEstimate {
+  if (buyerType === "malaysian_pr") return calculateMotEstimate(spaPrice);
+
+  if (!Number.isFinite(spaPrice) || spaPrice <= 0) {
+    return { amount: 0, requiresManualConfirmation: false };
+  }
+
+  return {
+    amount: spaPrice * 0.08,
+    requiresManualConfirmation: false,
+    note: "Estimated at the current 8% foreign-buyer residential transfer rate. Actual stamp duty is subject to the applicable transfer instrument, valuation and prevailing law.",
+  };
+}
+
+export function getApplicableForeignerConsent(
+  buyerType: RoiBuyerType,
+  foreignerConsent: number,
+) {
+  return buyerType === "foreigner" && Number.isFinite(foreignerConsent)
+    ? Math.max(foreignerConsent, 0)
+    : 0;
+}
+
 export function getPurchaseCostEstimates(
   spaPrice: number,
   loanAmount: number,
+  buyerType: RoiBuyerType = "malaysian_pr",
 ): Record<PurchaseCostEstimateKey, PurchaseCostEstimate> {
   return {
     spa_legal_fee: calculateHdaLegalFeeEstimate(spaPrice),
@@ -101,6 +154,6 @@ export function getPurchaseCostEstimates(
     spa_disbursement_fee: createFixedFalconEstimate(falconSpaDisbursementEstimate),
     loan_disbursement_fee: createFixedFalconEstimate(falconLoanDisbursementEstimate),
     loan_stamp_duty: calculateLoanStampDutyEstimate(loanAmount),
-    mot_transfer_stamp_duty: calculateMotEstimate(spaPrice),
+    mot_transfer_stamp_duty: calculateMotEstimateForBuyer(spaPrice, buyerType),
   };
 }

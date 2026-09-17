@@ -2,8 +2,8 @@ import {
   type CashBenefitTreatment,
   type DiscountMethod,
   type PackageItemType,
-} from "@/lib/property-finance";
-import type { PurchaseCostEstimateKey } from "@/lib/purchase-costs";
+} from "./property-finance";
+import type { PurchaseCostEstimateKey, RoiBuyerType } from "./purchase-costs";
 
 export const roiSavedWorkSchemaVersion = 1;
 
@@ -116,6 +116,8 @@ export type RoiSavedWorkPayloadV1 = {
   tool: "roi";
   schemaVersion: 1;
   purchasePurpose: RoiPurchasePurpose;
+  buyerType: RoiBuyerType;
+  foreignerConsent: number;
   form: RoiSavedWorkFormV1;
   packageItems: RoiSavedPackageItemV1[];
   purchaseCosts: RoiSavedPurchaseCostV1[];
@@ -307,6 +309,13 @@ export function validateRoiSavedWorkPayload(value: unknown):
         value.purchasePurpose === "own_stay" || value.purchasePurpose === "investment"
           ? value.purchasePurpose
           : "investment",
+      buyerType: value.buyerType === "foreigner" ? "foreigner" : "malaysian_pr",
+      foreignerConsent:
+        typeof value.foreignerConsent === "number" &&
+        Number.isFinite(value.foreignerConsent) &&
+        value.foreignerConsent >= 0
+          ? value.foreignerConsent
+          : 0,
       form,
       packageItems,
       purchaseCosts,
