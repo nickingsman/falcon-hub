@@ -55,3 +55,22 @@ test("new foreigner Saved Work fields round-trip without changing schema version
   assert.equal(validated.payload.buyerType, "foreigner");
   assert.equal(validated.payload.foreignerConsent, 5_000);
 });
+
+test("legacy Saved Work retains non-cash benefit data", () => {
+  const validated = validateRoiSavedWorkPayload({
+    ...legacyPayload,
+    packageItems: [
+      {
+        id: "legacy-freebie",
+        type: "non_cash_benefit",
+        description: "Legacy Freebie",
+      },
+    ],
+  });
+
+  assert.equal(validated.valid, true);
+  if (!validated.valid) return;
+  assert.equal(validated.payload.packageItems.length, 1);
+  assert.equal(validated.payload.packageItems[0]?.type, "non_cash_benefit");
+  assert.equal(validated.payload.packageItems[0]?.description, "Legacy Freebie");
+});

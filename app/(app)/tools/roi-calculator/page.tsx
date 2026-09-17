@@ -307,6 +307,8 @@ const defaultPurchaseCosts: PurchaseCostItem[] = [
   },
 ];
 
+const activePackageItemTypes = ["discount", "cash_benefit"] as const;
+
 const currencyFormatter = new Intl.NumberFormat("en-MY", {
   style: "currency",
   currency: "MYR",
@@ -2433,6 +2435,7 @@ export default function RoiCalculatorPage() {
   const [purchasePurpose, setPurchasePurpose] = useState<RoiPurchasePurpose>("own_stay");
   const [buyerType, setBuyerType] = useState<RoiBuyerType>("malaysian_pr");
   const [foreignerConsent, setForeignerConsent] = useState("0");
+  const [showPackageExpiry, setShowPackageExpiry] = useState(false);
   const [form, setForm] = useState<CalculatorForm>({
     projectName: "",
     unitNumber: "",
@@ -2787,6 +2790,7 @@ export default function RoiCalculatorPage() {
     setSelectedCommercialPackageId("");
     setPackageItems([]);
     setPurchaseCosts(defaultPurchaseCosts.map((item) => ({ ...item })));
+    setShowPackageExpiry(false);
     updateField("packageValidUntil", "");
   }
 
@@ -2794,6 +2798,7 @@ export default function RoiCalculatorPage() {
     setSelectedCommercialPackageId(commercialPackage.id);
     setPackageItems(packageItemsFromCommercialPackage(commercialPackage));
     setPurchaseCosts(purchaseCostsFromCommercialPackage(commercialPackage));
+    setShowPackageExpiry(Boolean(commercialPackage.valid_until));
     updateField("packageValidUntil", commercialPackage.valid_until ?? "");
   }
 
@@ -3140,6 +3145,7 @@ export default function RoiCalculatorPage() {
     setPurchasePurpose(payload.purchasePurpose);
     setBuyerType(payload.buyerType);
     setForeignerConsent(String(payload.foreignerConsent));
+    setShowPackageExpiry(Boolean(payload.form.packageValidUntil));
     setForm(payload.form);
     setPackageItems(payload.packageItems);
     setPurchaseCosts(payload.purchaseCosts.length ? payload.purchaseCosts : defaultPurchaseCosts);
@@ -3808,50 +3814,55 @@ export default function RoiCalculatorPage() {
             </section>
 
             <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                <div className="min-w-0 xl:max-w-[520px]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <h2 className="text-lg font-semibold text-zinc-950">
                     Discounts & Benefits
                   </h2>
-                  <p className="mt-1 text-sm leading-6 text-[var(--falcon-muted-text)]">
-                    Discounts are applied in order. Cashback affects final price, not Nett Price.
-                  </p>
+                  <p className="mt-1 text-sm text-[var(--falcon-muted-text)]">Add applicable discounts or cashback.</p>
                 </div>
-                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end xl:w-auto xl:justify-end">
-                  <label className="block min-w-[180px] text-sm text-zinc-600">
-                    <span className="mb-1 block text-xs font-semibold text-[#9A6B1F]">
-                      Package Valid Until
-                    </span>
-                    <input
-                      type="date"
-                      value={form.packageValidUntil}
-                      onChange={(event) =>
-                        updateField("packageValidUntil", event.target.value)
-                      }
-                      className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[#d8c18d] focus:bg-white"
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-2 sm:justify-end">
-                    {(["discount", "cash_benefit", "non_cash_benefit"] as const).map(
-                      (type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => addPackageItem(type)}
-                          className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm font-semibold text-zinc-800 transition hover:border-[#d8c48e] hover:bg-[#fbf8ef]"
-                        >
-                          {getPackageAddLabel(type)}
-                        </button>
-                      ),
-                    )}
-                  </div>
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  {activePackageItemTypes.map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => addPackageItem(type)}
+                      className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-2 text-sm font-semibold text-zinc-800 transition hover:border-[#d8c48e] hover:bg-[#fbf8ef]"
+                    >
+                      {getPackageAddLabel(type)}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="mt-5 space-y-5">
-                {(["discount", "cash_benefit", "non_cash_benefit"] as const).map(
+              <div className="mt-4">
+                {form.packageValidUntil || showPackageExpiry ? (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="block w-full max-w-[220px] text-sm text-zinc-600">
+                      <span className="mb-1 block text-xs font-semibold text-[#9A6B1F]">Package Valid Until</span>
+                      <input
+                        type="date"
+                        value={form.packageValidUntil}
+                        onChange={(event) => updateField("packageValidUntil", event.target.value)}
+                        className="w-full rounded-2xl border border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-3 py-2.5 outline-none transition focus:border-[#d8c18d] focus:bg-white"
+                      />
+                    </label>
+                    <button type="button" onClick={() => { updateField("packageValidUntil", ""); setShowPackageExpiry(false); }} className="min-h-10 rounded-full px-3 text-xs font-semibold text-zinc-500 hover:bg-zinc-100">Remove Expiry Date</button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setShowPackageExpiry(true)} className="rounded-full px-2 py-1 text-xs font-semibold text-[var(--falcon-gold-dark)] hover:bg-[#fbf8ef]">+ Add Expiry Date</button>
+                )}
+              </div>
+
+              {!packageItems.some((item) => item.type === "discount" || item.type === "cash_benefit") ? (
+                <p className="mt-4 rounded-2xl border border-dashed border-[var(--falcon-soft-border)] bg-[#fbfaf7] px-4 py-3 text-sm text-zinc-500">No discounts or cashback added.</p>
+              ) : (
+              <div className="mt-4 space-y-4">
+                {activePackageItemTypes.map(
                   (type) => {
                     const items = packageItems.filter((item) => item.type === type);
+
+                    if (items.length === 0) return null;
 
                     return (
                       <div key={type} className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-[#fbfaf7] p-3">
@@ -3860,15 +3871,10 @@ export default function RoiCalculatorPage() {
                             {getPackageGroupTitle(type)}
                           </h3>
                           <span className="text-xs font-medium text-zinc-500">
-                            {items.length ? `${items.length} item${items.length === 1 ? "" : "s"}` : "Optional"}
+                            {items.length} item{items.length === 1 ? "" : "s"}
                           </span>
                         </div>
 
-                        {items.length === 0 ? (
-                          <p className="mt-3 text-sm text-zinc-500">
-                            Add {type === "discount" ? "a discount" : type === "cash_benefit" ? "cashback" : "a freebie"} if this package includes one.
-                          </p>
-                        ) : (
                           <div className="mt-3 space-y-2">
                             {items.map((item) => {
                               const discountValue = parseMoney(item.value);
@@ -4042,12 +4048,12 @@ export default function RoiCalculatorPage() {
                               );
                             })}
                           </div>
-                        )}
                       </div>
                     );
                   },
                 )}
               </div>
+              )}
             </section>
 
             <section className="rounded-[26px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">

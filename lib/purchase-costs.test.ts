@@ -105,3 +105,29 @@ test("Own Stay and Investment use the same purchase-cost total", () => {
   assert.deepEqual(investmentTotal, ownStayTotal);
   assert.equal(ownStayTotal.customerPayPurchaseCosts, 80_000);
 });
+
+test("legacy non-cash benefits remain financially neutral", () => {
+  const input = {
+    spaPrice: 500_000,
+    packageItems: [],
+    loanMarginPercent: 90,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+    unitSizeSqft: 900,
+    maintenanceRatePerSqft: 0.3,
+    expectedMonthlyRental: 2_500,
+    otherUpfrontCosts: 0,
+  };
+  const withoutFreebie = calculateRoi(input);
+  const withLegacyFreebie = calculateRoi({
+    ...input,
+    packageItems: [
+      { id: "legacy-freebie", type: "non_cash_benefit", description: "Legacy Freebie" },
+    ],
+  });
+
+  assert.equal(withLegacyFreebie.nonCashBenefits.length, 1);
+  assert.equal(withLegacyFreebie.nettPrice, withoutFreebie.nettPrice);
+  assert.equal(withLegacyFreebie.finalPriceAfterBenefits, withoutFreebie.finalPriceAfterBenefits);
+  assert.equal(withLegacyFreebie.estimatedTotalCashRequired, withoutFreebie.estimatedTotalCashRequired);
+});
