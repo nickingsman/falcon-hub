@@ -1,3 +1,5 @@
+import type { RoiPurchaseMethod } from "./property-finance";
+
 export type PurchaseCostEstimateKey =
   | "spa_legal_fee"
   | "loan_legal_fee"
@@ -7,6 +9,7 @@ export type PurchaseCostEstimateKey =
   | "mot_transfer_stamp_duty";
 
 export type RoiBuyerType = "malaysian_pr" | "foreigner";
+
 export type PurchaseCostTreatment = "customer_pay" | "developer_absorbed" | "not_applicable";
 export type PurchaseCostSource = "auto" | "estimate" | "manual";
 
@@ -15,6 +18,22 @@ export type PurchaseCostEstimate = {
   requiresManualConfirmation: boolean;
   note?: string;
 };
+
+const loanOnlyPurchaseCostIds = new Set([
+  "loan-legal-fee",
+  "loan-disbursement-fee",
+  "loan-stamp-duty",
+]);
+
+export function getApplicablePurchaseCostTreatment(
+  purchaseMethod: RoiPurchaseMethod,
+  purchaseCostId: string,
+  treatment: PurchaseCostTreatment,
+) {
+  return purchaseMethod === "cash" && loanOnlyPurchaseCostIds.has(purchaseCostId)
+    ? "not_applicable"
+    : treatment;
+}
 
 export function resolvePurchaseCostAmount(
   source: PurchaseCostSource,

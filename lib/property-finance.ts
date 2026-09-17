@@ -1,6 +1,7 @@
 export type DiscountMethod = "percentage_spa" | "percentage_previous_balance" | "fixed";
 export type CashBenefitTreatment = "immediate_offset" | "refund_later";
 export type PackageItemType = "discount" | "cash_benefit" | "non_cash_benefit";
+export type RoiPurchaseMethod = "loan" | "cash";
 
 export type DiscountPackageItem = {
   id: string;
@@ -31,6 +32,7 @@ export type PurchasePackageItem =
   | NonCashBenefitPackageItem;
 
 export type RoiCalculatorInput = {
+  purchaseMethod?: RoiPurchaseMethod;
   spaPrice: number;
   packageItems: PurchasePackageItem[];
   loanMarginPercent: number;
@@ -174,7 +176,8 @@ export function calculateRoi(input: RoiCalculatorInput): RoiCalculatorResult {
   const loanMarginPercent = Number.isFinite(input.loanMarginPercent)
     ? input.loanMarginPercent
     : 0;
-  const loanAmount = spaPrice * (loanMarginPercent / 100);
+  const purchaseMethod = input.purchaseMethod ?? "loan";
+  const loanAmount = purchaseMethod === "cash" ? 0 : spaPrice * (loanMarginPercent / 100);
   const estimatedMonthlyInstalment = calculateMonthlyInstalment(
     loanAmount,
     input.annualInterestRatePercent,

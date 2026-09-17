@@ -6,6 +6,7 @@ import {
   calculateMotEstimate,
   calculateMotEstimateForBuyer,
   calculatePurchaseCostTreatmentSummary,
+  getApplicablePurchaseCostTreatment,
   getApplicableForeignerConsent,
   resolvePurchaseCostAmount,
 } from "./purchase-costs";
@@ -130,4 +131,85 @@ test("legacy non-cash benefits remain financially neutral", () => {
   assert.equal(withLegacyFreebie.nettPrice, withoutFreebie.nettPrice);
   assert.equal(withLegacyFreebie.finalPriceAfterBenefits, withoutFreebie.finalPriceAfterBenefits);
   assert.equal(withLegacyFreebie.estimatedTotalCashRequired, withoutFreebie.estimatedTotalCashRequired);
+});
+
+test("loan purchase method exactly reproduces the existing calculation", () => {
+  const input = {
+    spaPrice: 1_000_000,
+    packageItems: [],
+    loanMarginPercent: 90,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+    unitSizeSqft: 1_000,
+    maintenanceRatePerSqft: 0.3,
+    expectedMonthlyRental: 4_000,
+    otherUpfrontCosts: 24_000,
+  };
+
+  assert.deepEqual(calculateRoi({ ...input, purchaseMethod: "loan" }), calculateRoi(input));
+});
+
+test("cash purchase uses zero financing while preserving discounts and benefits", () => {
+  const baseInput = {
+    purchaseMethod: "cash" as const,
+    spaPrice: 1_000_000,
+    packageItems: [],
+    loanMarginPercent: 90,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+    unitSizeSqft: 1_000,
+    maintenanceRatePerSqft: 0.3,
+    expectedMonthlyRental: 4_000,
+    otherUpfrontCosts: 0,
+  };
+  const basicCash = calculateRoi(baseInput);
+  const discountedCash = calculateRoi({
+    ...baseInput,
+    packageItems: [
+      { id: "discount", type: "discount", description: "Discount", method: "fixed", value: 50_000 },
+    ],
+  });
+
+  assert.equal(basicCash.loanAmount, 0);
+  assert.equal(basicCash.estimatedMonthlyInstalment, 0);
+  assert.equal(basicCash.upfrontCashBeforeOtherCosts, 1_000_000);
+  assert.equal(discountedCash.nettPrice, 950_000);
+  assert.equal(discountedCash.upfrontCashBeforeOtherCosts, 950_000);
+});
+
+test("cash purchase excludes loan-only costs without changing stored treatments", () => {
+  const storedTreatment = "customer_pay" as const;
+
+  assert.equal(getApplicablePurchaseCostTreatment("cash", "loan-legal-fee", storedTreatment), "not_applicable");
+  assert.equal(getApplicablePurchaseCostTreatment("cash", "loan-disbursement-fee", storedTreatment), "not_applicable");
+  assert.equal(getApplicablePurchaseCostTreatment("cash", "loan-stamp-duty", storedTreatment), "not_applicable");
+  assert.equal(getApplicablePurchaseCostTreatment("cash", "spa-legal-fee", storedTreatment), storedTreatment);
+  assert.equal(getApplicablePurchaseCostTreatment("cash", "mot-transfer-stamp-duty", storedTreatment), storedTreatment);
+  assert.equal(getApplicablePurchaseCostTreatment("loan", "loan-legal-fee", storedTreatment), storedTreatment);
+});
+
+test("cash foreigner purchase keeps MOT and consent while excluding loan costs", () => {
+  const mot = calculateMotEstimateForBuyer(1_000_000, "foreigner").amount;
+  const consent = getApplicableForeignerConsent("foreigner", 5_000);
+  const applicableCosts = calculatePurchaseCostTreatmentSummary([
+    { treatment: getApplicablePurchaseCostTreatment("cash", "mot-transfer-stamp-duty", "customer_pay"), amount: mot },
+    { treatment: getApplicablePurchaseCostTreatment("cash", "loan-stamp-duty", "customer_pay"), amount: 5_000 },
+  ]);
+  const result = calculateRoi({
+    purchaseMethod: "cash",
+    spaPrice: 1_000_000,
+    packageItems: [],
+    loanMarginPercent: 90,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+    unitSizeSqft: 1_000,
+    maintenanceRatePerSqft: 0.3,
+    expectedMonthlyRental: 4_000,
+    otherUpfrontCosts: applicableCosts.customerPayPurchaseCosts + consent,
+  });
+
+  assert.equal(mot, 80_000);
+  assert.equal(applicableCosts.customerPayPurchaseCosts, 80_000);
+  assert.equal(result.loanAmount, 0);
+  assert.equal(result.estimatedTotalCashRequired, 1_085_000);
 });

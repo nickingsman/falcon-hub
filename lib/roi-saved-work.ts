@@ -2,6 +2,7 @@ import {
   type CashBenefitTreatment,
   type DiscountMethod,
   type PackageItemType,
+  type RoiPurchaseMethod,
 } from "./property-finance";
 import type { PurchaseCostEstimateKey, RoiBuyerType } from "./purchase-costs";
 
@@ -116,6 +117,7 @@ export type RoiSavedWorkPayloadV1 = {
   tool: "roi";
   schemaVersion: 1;
   purchasePurpose: RoiPurchasePurpose;
+  purchaseMethod: RoiPurchaseMethod;
   buyerType: RoiBuyerType;
   foreignerConsent: number;
   form: RoiSavedWorkFormV1;
@@ -309,6 +311,7 @@ export function validateRoiSavedWorkPayload(value: unknown):
         value.purchasePurpose === "own_stay" || value.purchasePurpose === "investment"
           ? value.purchasePurpose
           : "investment",
+      purchaseMethod: value.purchaseMethod === "cash" ? "cash" : "loan",
       buyerType: value.buyerType === "foreigner" ? "foreigner" : "malaysian_pr",
       foreignerConsent:
         typeof value.foreignerConsent === "number" &&

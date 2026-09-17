@@ -24,6 +24,7 @@ test("legacy ROI Saved Work defaults to Malaysian / PR with RM0 consent", () => 
   if (!validated.valid) return;
   assert.equal(validated.payload.buyerType, "malaysian_pr");
   assert.equal(validated.payload.foreignerConsent, 0);
+  assert.equal(validated.payload.purchaseMethod, "loan");
 });
 
 test("invalid Saved Work buyer fields use safe defaults", () => {
@@ -73,4 +74,23 @@ test("legacy Saved Work retains non-cash benefit data", () => {
   assert.equal(validated.payload.packageItems.length, 1);
   assert.equal(validated.payload.packageItems[0]?.type, "non_cash_benefit");
   assert.equal(validated.payload.packageItems[0]?.description, "Legacy Freebie");
+});
+
+test("cash purchase method round-trips while financing assumptions remain stored", () => {
+  const validated = validateRoiSavedWorkPayload({
+    ...legacyPayload,
+    purchaseMethod: "cash",
+    form: {
+      loanMarginPercent: "90",
+      annualInterestRatePercent: "3.7",
+      loanTenureYears: "35",
+    },
+  });
+
+  assert.equal(validated.valid, true);
+  if (!validated.valid) return;
+  assert.equal(validated.payload.purchaseMethod, "cash");
+  assert.equal(validated.payload.form.loanMarginPercent, "90");
+  assert.equal(validated.payload.form.annualInterestRatePercent, "3.7");
+  assert.equal(validated.payload.form.loanTenureYears, "35");
 });
