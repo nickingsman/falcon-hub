@@ -8,12 +8,13 @@ import {
   type CustomerPdfBranding,
 } from "@/lib/customer-pdf-branding";
 import {
-  calculateProgressiveInterest,
-  scheduleHStages,
-  type ProgressiveInterestResult,
-  type ProgressiveInterestStageResult,
-  type ScheduleHStageId,
-} from "@/lib/progressive-interest";
+  calculateBuyerPaymentSchedule,
+  type BuyerPaymentScheduleResult,
+  type BuyerPaymentScheduleStage,
+  type PurchaseMethod,
+  type RebateTreatment,
+} from "@/lib/buyer-payment-schedule";
+import { scheduleHStages, type ScheduleHStageId } from "@/lib/progressive-interest";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 import { SearchCombobox } from "../../components/SearchCombobox";
 
@@ -32,30 +33,6 @@ type TimelineStageId = Extract<
 type StageTiming = {
   year: string;
   quarter: string;
-};
-
-type RebateTreatment = "direct_offset" | "cashback_later";
-
-type AdjustedPaymentStage = ProgressiveInterestStageResult & {
-  adjustedBuyerPays: number;
-  adjustedBankPays: number;
-  developerRebateOffset: number;
-};
-
-type AdjustedPaymentSchedule = {
-  grossBuyerEquity: number;
-  developerRebatePercent: number;
-  developerRebateAmount: number;
-  effectiveDeveloperRebate: number;
-  netOwnFundsRequired: number;
-  netOwnFundsPercent: number;
-  buyerFundsToPrepare: number;
-  netBuyerOutlayAfterCashback: number;
-  rebateTreatment: RebateTreatment;
-  applicationStageId: ScheduleHStageId;
-  applicationStageLabel: string;
-  allocationError: string | null;
-  stages: AdjustedPaymentStage[];
 };
 
 const timelineStageIds: TimelineStageId[] = [
@@ -105,12 +82,6 @@ function parseNumberInput(value: string) {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-function clampMoney(value: number) {
-  if (!Number.isFinite(value)) return 0;
-
-  return Math.max(value, 0);
-}
-
 function formatCurrency(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
 
@@ -152,11 +123,11 @@ function getStageTimingLabel(
   return timing?.year && timing?.quarter ? `${timing.year} ${timing.quarter}` : "Timing TBC";
 }
 
-function getStageDisplayTitle(result: ProgressiveInterestStageResult) {
+function getStageDisplayTitle(result: BuyerPaymentScheduleStage) {
   return `${result.stage.code} ${result.stage.englishTitle}`;
 }
 
-function getShortStageTitle(result: ProgressiveInterestStageResult) {
+function getShortStageTitle(result: BuyerPaymentScheduleStage) {
   if (result.stage.id === "spa") return "SPA Signing";
   if (!timelineStageIds.includes(result.stage.id as TimelineStageId)) {
     return result.stage.englishTitle;
@@ -173,30 +144,24 @@ function getScheduleStageOptionLabel(stage: (typeof scheduleHStages)[number]) {
   return `${stage.code} ${stage.englishTitle}`;
 }
 
-function getScheduleStageLabel(stageId: ScheduleHStageId) {
-  const stage = scheduleHStages.find((item) => item.id === stageId);
-
-  return stage ? getScheduleStageOptionLabel(stage) : "SPA Signing";
-}
-
-function getBuyerPaymentTone(result: AdjustedPaymentStage) {
-  if (result.adjustedBuyerPays <= 0) return "Bank funded";
-  if (result.adjustedBankPays > 0) return "Own Funds + Bank";
+function getBuyerPaymentTone(result: BuyerPaymentScheduleStage) {
+  if (result.requiredBuyerPayment <= 0) return "Bank funded";
+  if (result.bankPayment > 0) return "Own Funds + Bank";
 
   return "Own Funds Required";
 }
 
-function getBuyerPaymentSummary(stages: AdjustedPaymentStage[]) {
+function getBuyerPaymentSummary(stages: BuyerPaymentScheduleStage[]) {
   const spaStage = stages.find((result) => result.stage.id === "spa") ?? null;
-  const buyerStages = stages.filter((result) => result.adjustedBuyerPays > 0);
-  const bankStages = stages.filter((result) => result.adjustedBankPays > 0);
+  const buyerStages = stages.filter((result) => result.requiredBuyerPayment > 0);
+  const bankStages = stages.filter((result) => result.bankPayment > 0);
   const lastBuyerStage = buyerStages.at(-1) ?? null;
   const firstBankStage = bankStages[0] ?? null;
   const beginsDuringSplit =
     Boolean(firstBankStage) &&
     firstBankStage?.stage.id === lastBuyerStage?.stage.id &&
-    firstBankStage.adjustedBuyerPays > 0 &&
-    firstBankStage.adjustedBankPays > 0;
+    firstBankStage.requiredBuyerPayment > 0 &&
+    firstBankStage.bankPayment > 0;
 
   return {
     spaStage,
@@ -206,90 +171,8 @@ function getBuyerPaymentSummary(stages: AdjustedPaymentStage[]) {
   };
 }
 
-function calculateAdjustedPaymentSchedule(
-  result: ProgressiveInterestResult,
-  developerRebatePercentInput: number,
-  rebateTreatment: RebateTreatment,
-  applicationStageId: ScheduleHStageId,
-): AdjustedPaymentSchedule {
-  const developerRebatePercent =
-    Number.isFinite(developerRebatePercentInput) && developerRebatePercentInput >= 0
-      ? Math.min(developerRebatePercentInput, 100)
-      : 0;
-  const grossBuyerEquity = result.buyerEquity;
-  const developerRebateAmount = result.isValid
-    ? result.spaPrice * (developerRebatePercent / 100)
-    : 0;
-  const effectiveDeveloperRebate = Math.min(developerRebateAmount, grossBuyerEquity);
-  const netOwnFundsRequired = clampMoney(grossBuyerEquity - effectiveDeveloperRebate);
-  const buyerFundsToPrepare =
-    rebateTreatment === "cashback_later" ? grossBuyerEquity : netOwnFundsRequired;
-  const netBuyerOutlayAfterCashback = netOwnFundsRequired;
-  const selectedStageIndex = Math.max(
-    result.stages.findIndex((stage) => stage.stage.id === applicationStageId),
-    0,
-  );
-  const availableOffsetCapacity = result.stages
-    .slice(selectedStageIndex)
-    .reduce((sum, stage) => sum + clampMoney(stage.stageAmount), 0);
-  const allocationError =
-    rebateTreatment === "direct_offset" &&
-    effectiveDeveloperRebate > availableOffsetCapacity
-      ? "This rebate timing cannot be fully applied as a direct payment offset with the current financing structure. Consider Cashback Later or review the rebate application stage."
-      : null;
-  let remainingOwnFunds = buyerFundsToPrepare;
-  let remainingDeveloperOffset = effectiveDeveloperRebate;
-  let remainingLoanAmount = result.loanAmount;
-
-  const stages = result.stages.map((stage, index): AdjustedPaymentStage => {
-    const stageAmount = clampMoney(stage.stageAmount);
-    const canUseDeveloperOffset =
-      rebateTreatment === "direct_offset" && index >= selectedStageIndex && !allocationError;
-    const developerRebateOffset = canUseDeveloperOffset
-      ? Math.min(stageAmount, remainingDeveloperOffset)
-      : 0;
-    remainingDeveloperOffset = clampMoney(remainingDeveloperOffset - developerRebateOffset);
-
-    const adjustedBuyerPays = Math.min(
-      clampMoney(stageAmount - developerRebateOffset),
-      remainingOwnFunds,
-    );
-    remainingOwnFunds = clampMoney(remainingOwnFunds - adjustedBuyerPays);
-
-    const adjustedBankPays = Math.min(
-      clampMoney(stageAmount - developerRebateOffset - adjustedBuyerPays),
-      remainingLoanAmount,
-    );
-    remainingLoanAmount = clampMoney(remainingLoanAmount - adjustedBankPays);
-
-    return {
-      ...stage,
-      adjustedBuyerPays,
-      adjustedBankPays,
-      developerRebateOffset,
-    };
-  });
-
-  return {
-    grossBuyerEquity,
-    developerRebatePercent,
-    developerRebateAmount,
-    effectiveDeveloperRebate,
-    netOwnFundsRequired,
-    netOwnFundsPercent:
-      result.spaPrice > 0 ? (netOwnFundsRequired / result.spaPrice) * 100 : 0,
-    buyerFundsToPrepare,
-    netBuyerOutlayAfterCashback,
-    rebateTreatment,
-    applicationStageId,
-    applicationStageLabel: getScheduleStageLabel(applicationStageId),
-    allocationError,
-    stages,
-  };
-}
-
 function getBankBeginsLabel(
-  schedule: AdjustedPaymentSchedule,
+  schedule: BuyerPaymentScheduleResult,
   summary: ReturnType<typeof getBuyerPaymentSummary>,
 ) {
   if (schedule.buyerFundsToPrepare === 0 && schedule.effectiveDeveloperRebate === 0) {
@@ -308,7 +191,7 @@ function getBankBeginsLabel(
 }
 
 function getBuyerFullyUtilisedLabel(
-  schedule: AdjustedPaymentSchedule,
+  schedule: BuyerPaymentScheduleResult,
   summary: ReturnType<typeof getBuyerPaymentSummary>,
 ) {
   if (schedule.buyerFundsToPrepare === 0) {
@@ -334,56 +217,57 @@ function buildBuyerPaymentScheduleProposalHtml({
   projectName,
   unitNo,
   stageTimings,
-  result,
-  adjustedSchedule,
+  schedule,
   branding,
 }: {
   projectName: string;
   unitNo: string;
   stageTimings: Record<TimelineStageId, StageTiming>;
-  result: ProgressiveInterestResult;
-  adjustedSchedule: AdjustedPaymentSchedule;
+  schedule: BuyerPaymentScheduleResult;
   branding: CustomerPdfBranding;
 }) {
-  const ownFundsStages = adjustedSchedule.stages.filter((stage) => stage.adjustedBuyerPays > 0);
-  const summary = getBuyerPaymentSummary(adjustedSchedule.stages);
+  const ownFundsStages = schedule.stages.filter((stage) => stage.requiredBuyerPayment > 0);
+  const summary = getBuyerPaymentSummary(schedule.stages);
   const transitionStage = summary.firstBankStage;
-  const isCashbackLater = adjustedSchedule.rebateTreatment === "cashback_later";
+  const isCashbackLater = schedule.rebateTreatment === "cashback_later";
+  const isCashPurchase = schedule.purchaseMethod === "cash";
   const showDeveloperOffset =
-    adjustedSchedule.rebateTreatment === "direct_offset" &&
-    adjustedSchedule.effectiveDeveloperRebate > 0 &&
-    !adjustedSchedule.allocationError;
-  const rebateStageLabel = escapeHtml(adjustedSchedule.applicationStageLabel);
+    schedule.rebateTreatment === "direct_offset" &&
+    schedule.effectiveDeveloperRebate > 0 &&
+    !schedule.allocationError;
+  const rebateStageLabel = escapeHtml(schedule.rebateStageLabel);
   const summaryItems = isCashbackLater
     ? `
-        <div class="summary-item"><span>SPA Price</span><strong>${escapeHtml(formatCurrency(result.spaPrice))}</strong></div>
-        <div class="summary-item"><span>Loan Margin</span><strong>${escapeHtml(formatPercent(result.loanMarginPercent))}</strong></div>
-        <div class="summary-item"><span>Loan Amount</span><strong>${escapeHtml(formatCurrency(result.loanAmount))}</strong></div>
-        <div class="summary-item"><span>Buyer Funds To Prepare</span><strong>${escapeHtml(formatCurrency(adjustedSchedule.buyerFundsToPrepare))}</strong></div>
-        <div class="summary-item"><span>Developer Cashback</span><strong>${escapeHtml(formatCurrency(adjustedSchedule.effectiveDeveloperRebate))}</strong></div>
-        <div class="summary-item"><span>Cashback Payout Stage</span><strong>${rebateStageLabel}</strong></div>
-        <div class="summary-item highlight"><span>Net Buyer Outlay After Cashback</span><strong>${escapeHtml(formatCurrency(adjustedSchedule.netBuyerOutlayAfterCashback))}</strong></div>
+        <div class="summary-item"><span>Purchase Method</span><strong>${isCashPurchase ? "Cash" : "Loan"}</strong></div>
+        <div class="summary-item"><span>SPA Price</span><strong>${escapeHtml(formatCurrency(schedule.spaPrice))}</strong></div>
+        ${isCashPurchase ? "" : `<div class="summary-item"><span>Loan Margin</span><strong>${escapeHtml(formatPercent(schedule.loanMarginPercent))}</strong></div><div class="summary-item"><span>Loan Amount</span><strong>${escapeHtml(formatCurrency(schedule.loanAmount))}</strong></div>`}
+        <div class="summary-item"><span>Rebate Treatment</span><strong>Cashback Later</strong></div>
+        <div class="summary-item"><span>Gross Buyer Funds To Prepare</span><strong>${escapeHtml(formatCurrency(schedule.grossBuyerPayments))}</strong></div>
+        <div class="summary-item"><span>Cashback Received Later</span><strong>${escapeHtml(formatCurrency(schedule.totalCashbackReceived))}</strong></div>
+        <div class="summary-item"><span>Cashback Release Stage</span><strong>${rebateStageLabel}</strong></div>
+        <div class="summary-item highlight"><span>Final Net Buyer Outlay</span><strong>${escapeHtml(formatCurrency(schedule.finalNetBuyerOutlay))}</strong></div>
       `
     : `
-        <div class="summary-item"><span>SPA Price</span><strong>${escapeHtml(formatCurrency(result.spaPrice))}</strong></div>
-        <div class="summary-item"><span>Loan Margin</span><strong>${escapeHtml(formatPercent(result.loanMarginPercent))}</strong></div>
-        <div class="summary-item"><span>Loan Amount</span><strong>${escapeHtml(formatCurrency(result.loanAmount))}</strong></div>
-        <div class="summary-item"><span>Gross Buyer Equity</span><strong>${escapeHtml(formatCurrency(adjustedSchedule.grossBuyerEquity))}</strong></div>
-        <div class="summary-item"><span>Developer Rebate</span><strong>${escapeHtml(formatCurrency(adjustedSchedule.effectiveDeveloperRebate))}</strong></div>
-        <div class="summary-item highlight"><span>Net Own Funds Required</span><strong>${escapeHtml(formatCurrency(adjustedSchedule.netOwnFundsRequired))}</strong></div>
+        <div class="summary-item"><span>Purchase Method</span><strong>${isCashPurchase ? "Cash" : "Loan"}</strong></div>
+        <div class="summary-item"><span>SPA Price</span><strong>${escapeHtml(formatCurrency(schedule.spaPrice))}</strong></div>
+        ${isCashPurchase ? "" : `<div class="summary-item"><span>Loan Margin</span><strong>${escapeHtml(formatPercent(schedule.loanMarginPercent))}</strong></div><div class="summary-item"><span>Loan Amount</span><strong>${escapeHtml(formatCurrency(schedule.loanAmount))}</strong></div>`}
+        <div class="summary-item"><span>Rebate Treatment</span><strong>Direct Payment Offset</strong></div>
+        <div class="summary-item"><span>${isCashPurchase ? "Gross Purchase Obligation" : "Gross Buyer Equity"}</span><strong>${escapeHtml(formatCurrency(schedule.grossBuyerPaymentObligation))}</strong></div>
+        <div class="summary-item"><span>Developer Offset</span><strong>${escapeHtml(formatCurrency(schedule.effectiveDeveloperRebate))}</strong></div>
+        <div class="summary-item highlight"><span>${isCashPurchase ? "Net Buyer Funds Required" : "Net Own Funds Required"}</span><strong>${escapeHtml(formatCurrency(schedule.netOwnFundsRequired))}</strong></div>
       `;
   const transitionSplit =
     transitionStage && summary.beginsDuringSplit
       ? `
         <div class="transition-split">
           ${
-            transitionStage.adjustedBuyerPays > 0
-              ? `<span>Buyer: <strong>${escapeHtml(formatCurrency(transitionStage.adjustedBuyerPays))}</strong></span>`
+            transitionStage.requiredBuyerPayment > 0
+              ? `<span>Buyer: <strong>${escapeHtml(formatCurrency(transitionStage.requiredBuyerPayment))}</strong></span>`
               : ""
           }
           ${
-            transitionStage.adjustedBankPays > 0
-              ? `<span>Bank: <strong>${escapeHtml(formatCurrency(transitionStage.adjustedBankPays))}</strong></span>`
+            transitionStage.bankPayment > 0
+              ? `<span>Bank: <strong>${escapeHtml(formatCurrency(transitionStage.bankPayment))}</strong></span>`
               : ""
           }
         </div>
@@ -400,7 +284,7 @@ function buildBuyerPaymentScheduleProposalHtml({
                 <span>${escapeHtml(stage.stage.chineseTitle)}</span>
               </td>
               <td>${escapeHtml(formatPercent(stage.stagePercentage))}</td>
-              <td class="buyer-amount">${escapeHtml(formatCurrency(stage.adjustedBuyerPays))}</td>
+              <td class="buyer-amount">${escapeHtml(formatCurrency(stage.requiredBuyerPayment))}</td>
               <td>${escapeHtml(getStageTimingLabel(stage.stage.id, stageTimings))}</td>
             </tr>
           `,
@@ -412,16 +296,16 @@ function buildBuyerPaymentScheduleProposalHtml({
       </tr>
     `;
   const cashbackEvent =
-    isCashbackLater && adjustedSchedule.effectiveDeveloperRebate > 0
+    isCashbackLater && schedule.effectiveDeveloperRebate > 0
       ? `
         <div class="cashback-event">
           <span>Cashback Received</span>
-          <strong>${escapeHtml(formatCurrency(adjustedSchedule.effectiveDeveloperRebate))}</strong>
-          <em>At: ${rebateStageLabel}</em>
+          <strong>${escapeHtml(formatCurrency(schedule.effectiveDeveloperRebate))}</strong>
+          <em>At: ${rebateStageLabel} · ${escapeHtml(getStageTimingLabel(schedule.rebateStageId, stageTimings))}</em>
         </div>
       `
       : "";
-  const scheduleRows = adjustedSchedule.stages
+  const scheduleRows = schedule.stages
     .map(
       (stage) => `
         <tr>
@@ -430,11 +314,12 @@ function buildBuyerPaymentScheduleProposalHtml({
           <td>${escapeHtml(formatCurrency(stage.stageAmount))}</td>
           ${
             showDeveloperOffset
-              ? `<td class="offset-amount">${escapeHtml(formatCurrency(stage.developerRebateOffset))}</td>`
+              ? `<td class="offset-amount">${escapeHtml(formatCurrency(stage.developerOffset))}</td>`
               : ""
           }
-          <td class="buyer-amount">${escapeHtml(formatCurrency(stage.adjustedBuyerPays))}</td>
-          <td>${escapeHtml(formatCurrency(stage.adjustedBankPays))}</td>
+          <td class="buyer-amount">${escapeHtml(formatCurrency(stage.requiredBuyerPayment))}</td>
+          ${isCashPurchase ? "" : `<td>${escapeHtml(formatCurrency(stage.bankPayment))}</td>`}
+          ${isCashbackLater ? `<td class="offset-amount">${escapeHtml(formatCurrency(stage.cashbackReceived))}</td><td>${escapeHtml(formatCurrency(stage.netBuyerCashMovement))}</td><td>${escapeHtml(formatCurrency(stage.cumulativeNetBuyerOutlay))}</td>` : ""}
         </tr>
       `,
     )
@@ -499,7 +384,7 @@ function buildBuyerPaymentScheduleProposalHtml({
       }
       .summary-grid {
         display: grid;
-        grid-template-columns: repeat(${isCashbackLater ? "7" : "6"}, 1fr);
+        grid-template-columns: repeat(${isCashPurchase ? "5" : "6"}, 1fr);
         gap: 5px;
         margin-top: 8px;
       }
@@ -773,29 +658,19 @@ function buildBuyerPaymentScheduleProposalHtml({
           <tbody>${ownFundsRows}</tbody>
         </table>
         <div class="plan-total">
-          <span>${isCashbackLater ? "Buyer Funds To Prepare" : "Net Own Funds Required"}</span>
-          <strong>${escapeHtml(formatCurrency(adjustedSchedule.buyerFundsToPrepare))}</strong>
+          <span>${isCashbackLater ? "Gross Buyer Funds To Prepare" : isCashPurchase ? "Net Buyer Funds Required" : "Net Own Funds Required"}</span>
+          <strong>${escapeHtml(formatCurrency(schedule.buyerFundsToPrepare))}</strong>
         </div>
         ${cashbackEvent}
       </section>
 
       <section class="section">
         <div class="section-title">
-          <h2>Financing Transition</h2>
-          <span>Where bank financing begins</span>
+          <h2>${isCashPurchase ? "Purchase Funding" : "Financing Transition"}</h2>
+          <span>${isCashPurchase ? "Cash purchase" : "Where bank financing begins"}</span>
         </div>
         <div class="transition">
-          <div class="transition-card">
-            <span>Buyer Own Funds Fully Utilised At</span>
-            <strong>${escapeHtml(getBuyerFullyUtilisedLabel(adjustedSchedule, summary))}</strong>
-          </div>
-          <div class="transition-card">
-            <span>
-              ${summary.beginsDuringSplit ? "Bank Financing Begins During" : "Bank Financing Begins At"}
-            </span>
-            <strong>${escapeHtml(getBankBeginsLabel(adjustedSchedule, summary))}</strong>
-          </div>
-          ${transitionSplit}
+          ${isCashPurchase ? `<div class="transition-card"><span>Cash Purchase</span><strong>No bank financing required.</strong></div>` : `<div class="transition-card"><span>Buyer Own Funds Fully Utilised At</span><strong>${escapeHtml(getBuyerFullyUtilisedLabel(schedule, summary))}</strong></div><div class="transition-card"><span>${summary.beginsDuringSplit ? "Bank Financing Begins During" : "Bank Financing Begins At"}</span><strong>${escapeHtml(getBankBeginsLabel(schedule, summary))}</strong></div>${transitionSplit}`}
         </div>
       </section>
 
@@ -806,12 +681,13 @@ function buildBuyerPaymentScheduleProposalHtml({
         </div>
         <table>
           <colgroup>
-            <col style="width: 11%;" />
-            <col style="width: 11%;" />
-            <col style="width: 22%;" />
-            ${showDeveloperOffset ? `<col style="width: 20%;" />` : ""}
-            <col style="width: 20%;" />
-            <col style="width: ${showDeveloperOffset ? "16" : "36"}%;" />
+            <col />
+            <col />
+            <col />
+            ${showDeveloperOffset ? `<col />` : ""}
+            <col />
+            ${isCashPurchase ? "" : `<col />`}
+            ${isCashbackLater ? `<col /><col /><col />` : ""}
           </colgroup>
           <thead>
             <tr>
@@ -819,8 +695,9 @@ function buildBuyerPaymentScheduleProposalHtml({
               <th>%</th>
               <th>Stage Amount</th>
               ${showDeveloperOffset ? "<th>Developer Offset</th>" : ""}
-              <th>Buyer Pays</th>
-              <th>Bank Pays</th>
+              <th>Required Buyer Payment</th>
+              ${isCashPurchase ? "" : `<th>Bank Payment</th>`}
+              ${isCashbackLater ? `<th>Cashback Received</th><th>Net Buyer Cash Movement</th><th>Cumulative Net Buyer Outlay</th>` : ""}
             </tr>
           </thead>
           <tbody>${scheduleRows}</tbody>
@@ -830,12 +707,13 @@ function buildBuyerPaymentScheduleProposalHtml({
             ? `<p class="rebate-note">Application Stage: ${rebateStageLabel}. Developer Offset is shown for payment allocation illustration only. Actual rebate application and billing treatment may vary by developer.</p>`
             : ""
         }
+        <p class="rebate-note">Rebate Treatment: ${isCashbackLater ? "Cashback Later" : "Direct Payment Offset"}.</p>
       </section>
 
       <p class="disclaimer">
         <strong>Estimate only.</strong>
         This schedule estimates how buyer own funds and bank financing may be allocated across
-        Schedule H stages after the overall developer rebate offset. Actual payment timing and
+        Schedule H stages using the selected purchase method and rebate treatment. Actual payment timing and
         financing treatment are subject to bank, developer and final documentation.
       </p>
 
@@ -853,6 +731,7 @@ export default function BuyerPaymentSchedulePage() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [unitNo, setUnitNo] = useState("");
   const [spaPrice, setSpaPrice] = useState("");
+  const [purchaseMethod, setPurchaseMethod] = useState<PurchaseMethod>("loan");
   const [loanMarginPercent, setLoanMarginPercent] = useState("90");
   const [developerRebatePercent, setDeveloperRebatePercent] = useState("0");
   const [rebateTreatment, setRebateTreatment] = useState<RebateTreatment>("direct_offset");
@@ -891,53 +770,48 @@ export default function BuyerPaymentSchedulePage() {
     [developerRebatePercent, loanMarginPercent, spaPrice],
   );
 
-  const progressiveResult = useMemo(
+  const paymentSchedule = useMemo(
     () =>
-      calculateProgressiveInterest({
+      calculateBuyerPaymentSchedule({
         spaPrice: numericInput.spaPrice,
+        purchaseMethod,
         loanMarginPercent: numericInput.loanMarginPercent,
-        annualInterestRatePercent: 0,
+        developerRebatePercent: numericInput.developerRebatePercent,
+        rebateTreatment,
+        rebateStageId,
       }),
-    [numericInput.loanMarginPercent, numericInput.spaPrice],
+    [numericInput, purchaseMethod, rebateStageId, rebateTreatment],
   );
 
   const invalidSpaPrice =
     spaPrice.trim() !== "" &&
-    progressiveResult.validationErrors.some((error) => error.startsWith("SPA Price"));
+    paymentSchedule.validationErrors.some((error) => error.startsWith("SPA Price"));
   const invalidLoanMargin =
+    purchaseMethod === "loan" &&
     loanMarginPercent.trim() !== "" &&
-    progressiveResult.validationErrors.some((error) => error.startsWith("Loan margin"));
+    paymentSchedule.validationErrors.some((error) => error.startsWith("Loan margin"));
   const invalidDeveloperRebate =
     developerRebatePercent.trim() !== "" &&
     (!Number.isFinite(numericInput.developerRebatePercent) ||
       numericInput.developerRebatePercent < 0 ||
       numericInput.developerRebatePercent > 100);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
-  const adjustedSchedule = useMemo(
-    () =>
-      calculateAdjustedPaymentSchedule(
-        progressiveResult,
-        numericInput.developerRebatePercent,
-        rebateTreatment,
-        rebateStageId,
-      ),
-    [numericInput.developerRebatePercent, progressiveResult, rebateStageId, rebateTreatment],
-  );
-  const summary = getBuyerPaymentSummary(adjustedSchedule.stages);
-  const initialSpaPayment = summary.spaStage?.adjustedBuyerPays ?? 0;
+  const summary = getBuyerPaymentSummary(paymentSchedule.stages);
+  const initialSpaPayment = summary.spaStage?.requiredBuyerPayment ?? 0;
   const remainingOwnFundsAfterSpa = Math.max(
-    adjustedSchedule.buyerFundsToPrepare - initialSpaPayment,
+    paymentSchedule.buyerFundsToPrepare - initialSpaPayment,
     0,
   );
-  const canShowAdjustedSchedule = !adjustedSchedule.allocationError;
+  const canShowAdjustedSchedule = !paymentSchedule.allocationError;
   const ownFundsStages = canShowAdjustedSchedule
-    ? adjustedSchedule.stages.filter((result) => result.adjustedBuyerPays > 0)
+    ? paymentSchedule.stages.filter((result) => result.requiredBuyerPayment > 0)
     : [];
-  const isCashbackLater = adjustedSchedule.rebateTreatment === "cashback_later";
+  const isCashbackLater = paymentSchedule.rebateTreatment === "cashback_later";
+  const isCashPurchase = paymentSchedule.purchaseMethod === "cash";
   const showDeveloperOffset =
-    adjustedSchedule.rebateTreatment === "direct_offset" &&
-    adjustedSchedule.effectiveDeveloperRebate > 0 &&
-    !adjustedSchedule.allocationError;
+    paymentSchedule.rebateTreatment === "direct_offset" &&
+    paymentSchedule.effectiveDeveloperRebate > 0 &&
+    !paymentSchedule.allocationError;
 
   function updateStageTiming(stageId: TimelineStageId, field: keyof StageTiming, value: string) {
     setStageTimings((current) => ({
@@ -952,8 +826,12 @@ export default function BuyerPaymentSchedulePage() {
   function handleExportPdf() {
     setExportError("");
 
-    if (!progressiveResult.isValid) {
-      setExportError("Complete valid SPA Price and Loan Margin before exporting the customer PDF.");
+    if (!paymentSchedule.isValid) {
+      setExportError(
+        purchaseMethod === "loan"
+          ? "Complete valid SPA Price and Loan Margin before exporting the customer PDF."
+          : "Complete a valid SPA Price before exporting the customer PDF.",
+      );
       return;
     }
 
@@ -962,8 +840,8 @@ export default function BuyerPaymentSchedulePage() {
       return;
     }
 
-    if (adjustedSchedule.allocationError) {
-      setExportError(adjustedSchedule.allocationError);
+    if (paymentSchedule.allocationError) {
+      setExportError(paymentSchedule.allocationError);
       return;
     }
 
@@ -980,8 +858,7 @@ export default function BuyerPaymentSchedulePage() {
         projectName: selectedProject?.project_name?.trim() || "",
         unitNo: unitNo.trim(),
         stageTimings,
-        result: progressiveResult,
-        adjustedSchedule,
+        schedule: paymentSchedule,
         branding: {
           agentName: displayName,
           agentPhone: phone,
@@ -1102,18 +979,40 @@ export default function BuyerPaymentSchedulePage() {
                   </div>
                 </label>
 
-                <label className="block text-sm text-zinc-600">
-                  <span className="mb-1 block font-medium text-zinc-900">Loan Margin</span>
-                  <div className={`flex rounded-2xl border ${getInputStateClass(invalidLoanMargin)}`}>
-                    <input
-                      inputMode="decimal"
-                      value={loanMarginPercent}
-                      onChange={(event) => setLoanMarginPercent(event.target.value)}
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
-                    />
-                    <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">%</span>
+                <div className="block text-sm text-zinc-600">
+                  <span className="mb-1 block font-medium text-zinc-900">Purchase Method</span>
+                  <div className="grid grid-cols-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-1">
+                    {(["loan", "cash"] as const).map((method) => (
+                      <button
+                        key={method}
+                        type="button"
+                        onClick={() => setPurchaseMethod(method)}
+                        className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                          purchaseMethod === method
+                            ? "bg-zinc-900 text-white shadow-sm"
+                            : "text-zinc-600 hover:text-zinc-950"
+                        }`}
+                      >
+                        {method === "loan" ? "Loan" : "Cash"}
+                      </button>
+                    ))}
                   </div>
-                </label>
+                </div>
+
+                {purchaseMethod === "loan" ? (
+                  <label className="block text-sm text-zinc-600">
+                    <span className="mb-1 block font-medium text-zinc-900">Loan Margin</span>
+                    <div className={`flex rounded-2xl border ${getInputStateClass(invalidLoanMargin)}`}>
+                      <input
+                        inputMode="decimal"
+                        value={loanMarginPercent}
+                        onChange={(event) => setLoanMarginPercent(event.target.value)}
+                        className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
+                      />
+                      <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">%</span>
+                    </div>
+                  </label>
+                ) : null}
 
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
@@ -1133,12 +1032,14 @@ export default function BuyerPaymentSchedulePage() {
                     />
                     <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">%</span>
                   </div>
-                  {progressiveResult.isValid && !invalidDeveloperRebate ? (
+                  {paymentSchedule.isValid && !invalidDeveloperRebate ? (
                     <span className="mt-1 block text-xs text-zinc-500">
-                      Offset: {formatCurrency(adjustedSchedule.effectiveDeveloperRebate)}
-                      {adjustedSchedule.developerRebateAmount >
-                      adjustedSchedule.effectiveDeveloperRebate
-                        ? " capped to gross buyer equity"
+                      {rebateTreatment === "cashback_later" ? "Cashback" : "Offset"}: {formatCurrency(paymentSchedule.effectiveDeveloperRebate)}
+                      {paymentSchedule.developerRebateAmount >
+                      paymentSchedule.effectiveDeveloperRebate
+                        ? isCashPurchase
+                          ? " capped to gross purchase obligation"
+                          : " capped to gross buyer equity"
                         : ""}
                     </span>
                   ) : null}
@@ -1164,7 +1065,7 @@ export default function BuyerPaymentSchedulePage() {
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     {rebateTreatment === "cashback_later"
-                      ? "Payout Stage"
+                      ? "Cashback Release Stage"
                       : "Application Stage"}
                   </span>
                   <select
@@ -1181,20 +1082,22 @@ export default function BuyerPaymentSchedulePage() {
                 </label>
               </div>
 
-              {progressiveResult.validationErrors.length ||
+              {paymentSchedule.validationErrors.length ||
               invalidDeveloperRebate ||
-              adjustedSchedule.allocationError ? (
+              paymentSchedule.allocationError ? (
                 <div className="mt-5 rounded-2xl border border-amber-200 bg-[#FFF9E8] px-4 py-3 text-sm text-amber-800">
                   <p className="font-semibold">Check inputs</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    {progressiveResult.validationErrors.map((error) => (
+                    {paymentSchedule.validationErrors
+                      .filter((error) => !error.startsWith("Developer Rebate"))
+                      .map((error) => (
                       <li key={error}>{error}</li>
                     ))}
                     {invalidDeveloperRebate ? (
                       <li>Developer Rebate must be between 0% and 100%.</li>
                     ) : null}
-                    {adjustedSchedule.allocationError ? (
-                      <li>{adjustedSchedule.allocationError}</li>
+                    {paymentSchedule.allocationError ? (
+                      <li>{paymentSchedule.allocationError}</li>
                     ) : null}
                   </ul>
                 </div>
@@ -1299,33 +1202,45 @@ export default function BuyerPaymentSchedulePage() {
               ) : null}
               <div className="mt-5 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
+                  <span className="text-zinc-500">Purchase Method</span>
+                  <strong className="text-right text-zinc-900">
+                    {isCashPurchase ? "Cash" : "Loan"}
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
                   <span className="text-zinc-500">SPA Price</span>
                   <strong className="text-right text-zinc-900">
-                    {formatCurrency(progressiveResult.spaPrice)}
+                    {formatCurrency(paymentSchedule.spaPrice)}
                   </strong>
                 </div>
-                <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
-                  <span className="text-zinc-500">Loan Margin</span>
-                  <strong className="text-right text-zinc-900">
-                    {formatPercent(progressiveResult.loanMarginPercent)}
-                  </strong>
-                </div>
-                <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
-                  <span className="text-zinc-500">Loan Amount</span>
-                  <strong className="text-right text-zinc-900">
-                    {formatCurrency(progressiveResult.loanAmount)}
-                  </strong>
-                </div>
+                {!isCashPurchase ? (
+                  <>
+                    <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
+                      <span className="text-zinc-500">Loan Margin</span>
+                      <strong className="text-right text-zinc-900">
+                        {formatPercent(paymentSchedule.loanMarginPercent)}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
+                      <span className="text-zinc-500">Loan Amount</span>
+                      <strong className="text-right text-zinc-900">
+                        {formatCurrency(paymentSchedule.loanAmount)}
+                      </strong>
+                    </div>
+                  </>
+                ) : null}
                 <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
                   <span className="text-zinc-500">
-                    {isCashbackLater ? "Buyer Funds To Prepare" : "Gross Buyer Equity"}
+                    {isCashPurchase
+                      ? isCashbackLater
+                        ? "Gross Buyer Payments"
+                        : "Gross Purchase Obligation"
+                      : isCashbackLater
+                        ? "Gross Buyer Funds To Prepare"
+                        : "Gross Buyer Equity"}
                   </span>
                   <strong className="text-right text-zinc-900">
-                    {formatCurrency(
-                      isCashbackLater
-                        ? adjustedSchedule.buyerFundsToPrepare
-                        : adjustedSchedule.grossBuyerEquity,
-                    )}
+                    {formatCurrency(paymentSchedule.grossBuyerPaymentObligation)}
                   </strong>
                 </div>
                 <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
@@ -1333,33 +1248,41 @@ export default function BuyerPaymentSchedulePage() {
                     {isCashbackLater ? "Developer Cashback" : "Developer Rebate"}
                   </span>
                   <strong className="text-right text-zinc-900">
-                    {formatCurrency(adjustedSchedule.effectiveDeveloperRebate)}
+                    {formatCurrency(paymentSchedule.effectiveDeveloperRebate)}
+                  </strong>
+                </div>
+                <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
+                  <span className="text-zinc-500">Rebate Treatment</span>
+                  <strong className="text-right text-zinc-900">
+                    {isCashbackLater ? "Cashback Later" : "Direct Payment Offset"}
                   </strong>
                 </div>
                 {isCashbackLater ? (
                   <div className="flex items-center justify-between gap-4 border-b border-zinc-100 pb-3">
-                    <span className="text-zinc-500">Cashback Payout Stage</span>
+                    <span className="text-zinc-500">Cashback Release Stage</span>
                     <strong className="text-right text-zinc-900">
-                      {adjustedSchedule.applicationStageLabel}
+                      {paymentSchedule.rebateStageLabel}
                     </strong>
                   </div>
                 ) : null}
                 <div className="rounded-2xl border border-[#b7e6dc] bg-[#f1fbf8] p-4">
                   <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#087F6B]">
                     {isCashbackLater
-                      ? "Net Buyer Outlay After Cashback"
-                      : "Net Own Funds Required"}
+                      ? "Final Net Buyer Outlay"
+                      : isCashPurchase
+                        ? "Net Buyer Funds Required"
+                        : "Net Own Funds Required"}
                   </p>
                   <p className="mt-2 text-2xl font-semibold text-[#087F6B]">
                     {formatCurrency(
                       isCashbackLater
-                        ? adjustedSchedule.netBuyerOutlayAfterCashback
-                        : adjustedSchedule.netOwnFundsRequired,
+                        ? paymentSchedule.finalNetBuyerOutlay
+                        : paymentSchedule.netOwnFundsRequired,
                     )}
                   </p>
                   {!isCashbackLater ? (
                     <p className="mt-1 text-sm font-medium text-[#087F6B]">
-                      {formatPercent(adjustedSchedule.netOwnFundsPercent)}
+                      {formatPercent(paymentSchedule.netOwnFundsPercent)}
                     </p>
                   ) : null}
                 </div>
@@ -1370,9 +1293,9 @@ export default function BuyerPaymentSchedulePage() {
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
                 Buyer Payment Summary
               </p>
-              {adjustedSchedule.allocationError ? (
+              {paymentSchedule.allocationError ? (
                 <p className="mt-5 rounded-2xl border border-amber-200 bg-[#FFF9E8] px-4 py-3 text-sm leading-6 text-amber-800">
-                  {adjustedSchedule.allocationError}
+                  {paymentSchedule.allocationError}
                 </p>
               ) : (
                 <div className="mt-5 space-y-3 text-sm">
@@ -1388,35 +1311,48 @@ export default function BuyerPaymentSchedulePage() {
                       {formatCurrency(remainingOwnFundsAfterSpa)}
                     </strong>
                   </div>
-                  <div className="border-b border-zinc-100 pb-3">
-                    <span className="text-zinc-500">Buyer Own Funds Fully Utilised At</span>
-                    <strong className="mt-1 block text-zinc-900">
-                      {getBuyerFullyUtilisedLabel(adjustedSchedule, summary)}
-                    </strong>
-                  </div>
+                  {!isCashPurchase ? (
+                    <div className="border-b border-zinc-100 pb-3">
+                      <span className="text-zinc-500">Buyer Own Funds Fully Utilised At</span>
+                      <strong className="mt-1 block text-zinc-900">
+                        {getBuyerFullyUtilisedLabel(paymentSchedule, summary)}
+                      </strong>
+                    </div>
+                  ) : null}
                   <div>
+                    {isCashPurchase ? (
+                      <>
+                        <span className="text-zinc-500">Cash Purchase</span>
+                        <strong className="mt-1 block text-zinc-900">
+                          No bank financing required.
+                        </strong>
+                      </>
+                    ) : (
+                      <>
                     <span className="text-zinc-500">
                       {summary.beginsDuringSplit
                         ? "Bank Financing Begins During"
                         : "Bank Financing Begins At"}
                     </span>
                     <strong className="mt-1 block text-zinc-900">
-                      {getBankBeginsLabel(adjustedSchedule, summary)}
+                      {getBankBeginsLabel(paymentSchedule, summary)}
                     </strong>
                     {summary.firstBankStage && summary.beginsDuringSplit ? (
                       <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                        {summary.firstBankStage.adjustedBuyerPays > 0 ? (
+                        {summary.firstBankStage.requiredBuyerPayment > 0 ? (
                           <span className="rounded-full bg-zinc-100 px-3 py-1 text-zinc-600">
-                            Buyer {formatCurrency(summary.firstBankStage.adjustedBuyerPays)}
+                            Buyer {formatCurrency(summary.firstBankStage.requiredBuyerPayment)}
                           </span>
                         ) : null}
-                        {summary.firstBankStage.adjustedBankPays > 0 ? (
+                        {summary.firstBankStage.bankPayment > 0 ? (
                           <span className="rounded-full bg-zinc-100 px-3 py-1 text-zinc-600">
-                            Bank {formatCurrency(summary.firstBankStage.adjustedBankPays)}
+                            Bank {formatCurrency(summary.firstBankStage.bankPayment)}
                           </span>
                         ) : null}
                       </div>
                     ) : null}
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -1436,10 +1372,16 @@ export default function BuyerPaymentSchedulePage() {
             </div>
             <div className="rounded-2xl border border-[#b7e6dc] bg-white px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#087F6B]">
-                {isCashbackLater ? "Buyer Funds To Prepare" : "Net Own Funds"}
+                {isCashbackLater
+                  ? isCashPurchase
+                    ? "Gross Buyer Payments"
+                    : "Gross Buyer Funds To Prepare"
+                  : isCashPurchase
+                    ? "Net Buyer Funds"
+                    : "Net Own Funds"}
               </p>
               <p className="mt-1 text-xl font-semibold text-[#087F6B]">
-                {formatCurrency(adjustedSchedule.buyerFundsToPrepare)}
+                {formatCurrency(paymentSchedule.buyerFundsToPrepare)}
               </p>
             </div>
           </div>
@@ -1465,7 +1407,7 @@ export default function BuyerPaymentSchedulePage() {
                     </span>
                   </div>
                   <p className="mt-4 text-2xl font-semibold text-[#087F6B]">
-                    {formatCurrency(result.adjustedBuyerPays)}
+                    {formatCurrency(result.requiredBuyerPayment)}
                   </p>
                   <p className="mt-2 text-sm text-zinc-500">
                     {getStageTimingLabel(result.stage.id, stageTimings)}
@@ -1479,17 +1421,17 @@ export default function BuyerPaymentSchedulePage() {
               </div>
             )}
           </div>
-          {isCashbackLater && adjustedSchedule.effectiveDeveloperRebate > 0 ? (
+          {isCashbackLater && paymentSchedule.effectiveDeveloperRebate > 0 ? (
             <div className="mt-5 rounded-[22px] border border-zinc-200 bg-white p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
                 Cashback Received
               </p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <p className="text-2xl font-semibold text-[#1E4E79]">
-                  {formatCurrency(adjustedSchedule.effectiveDeveloperRebate)}
+                  {formatCurrency(paymentSchedule.effectiveDeveloperRebate)}
                 </p>
                 <p className="text-sm font-semibold text-zinc-600">
-                  At: {adjustedSchedule.applicationStageLabel}
+                  At: {paymentSchedule.rebateStageLabel} · {getStageTimingLabel(paymentSchedule.rebateStageId, stageTimings)}
                 </p>
               </div>
             </div>
@@ -1505,22 +1447,22 @@ export default function BuyerPaymentSchedulePage() {
             </p>
             {showDeveloperOffset ? (
               <p className="mt-3 max-w-3xl rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-600">
-                Application Stage: {adjustedSchedule.applicationStageLabel}. Developer Offset is
+                Application Stage: {paymentSchedule.rebateStageLabel}. Developer Offset is
                 shown for payment allocation illustration only. Actual rebate application and
                 billing treatment may vary by developer.
               </p>
             ) : null}
           </div>
 
-          {adjustedSchedule.allocationError ? (
+          {paymentSchedule.allocationError ? (
             <div className="mt-5 rounded-[22px] border border-amber-200 bg-[#FFF9E8] p-5 text-sm leading-6 text-amber-800">
-              {adjustedSchedule.allocationError}
+              {paymentSchedule.allocationError}
             </div>
           ) : (
             <div className="mt-5 grid gap-3">
-              {adjustedSchedule.stages.map((result) => {
-              const hasBuyerPayment = result.adjustedBuyerPays > 0;
-              const bankAmount = result.adjustedBankPays;
+              {paymentSchedule.stages.map((result) => {
+              const hasBuyerPayment = result.requiredBuyerPayment > 0;
+              const bankAmount = result.bankPayment;
 
               return (
                 <article
@@ -1531,13 +1473,7 @@ export default function BuyerPaymentSchedulePage() {
                       : "border-zinc-200 bg-white"
                   }`}
                 >
-                  <div
-                    className={`grid gap-4 lg:items-center ${
-                      showDeveloperOffset
-                        ? "lg:grid-cols-[76px_minmax(0,1.4fr)_76px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_120px]"
-                        : "lg:grid-cols-[76px_minmax(0,1.5fr)_80px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_130px]"
-                    }`}
-                  >
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-start">
                     <div>
                       <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
                         Stage
@@ -1580,33 +1516,63 @@ export default function BuyerPaymentSchedulePage() {
                         </p>
                         <p
                           className={`mt-1 font-semibold ${
-                            result.developerRebateOffset > 0 ? "text-[#1E4E79]" : "text-zinc-500"
+                            result.developerOffset > 0 ? "text-[#1E4E79]" : "text-zinc-500"
                           }`}
                         >
-                          {formatCurrency(result.developerRebateOffset)}
+                          {formatCurrency(result.developerOffset)}
                         </p>
                       </div>
                     ) : null}
                     <div>
                       <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-                        Buyer Pays
+                        Required Buyer Payment
                       </p>
                       <p
                         className={`mt-1 font-semibold ${
                           hasBuyerPayment ? "text-[#087F6B]" : "text-zinc-500"
                         }`}
                       >
-                        {formatCurrency(result.adjustedBuyerPays)}
+                        {formatCurrency(result.requiredBuyerPayment)}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
-                        Bank Pays
-                      </p>
-                      <p className="mt-1 font-semibold text-zinc-900">
-                        {formatCurrency(bankAmount)}
-                      </p>
-                    </div>
+                    {!isCashPurchase ? (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+                          Bank Payment
+                        </p>
+                        <p className="mt-1 font-semibold text-zinc-900">
+                          {formatCurrency(bankAmount)}
+                        </p>
+                      </div>
+                    ) : null}
+                    {isCashbackLater ? (
+                      <>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+                            Cashback Received
+                          </p>
+                          <p className={`mt-1 font-semibold ${result.cashbackReceived > 0 ? "text-[#1E4E79]" : "text-zinc-500"}`}>
+                            {formatCurrency(result.cashbackReceived)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+                            Net Buyer Cash Movement
+                          </p>
+                          <p className={`mt-1 font-semibold ${result.netBuyerCashMovement < 0 ? "text-[#1E4E79]" : "text-zinc-900"}`}>
+                            {formatCurrency(result.netBuyerCashMovement)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
+                            Cumulative Net Buyer Outlay
+                          </p>
+                          <p className="mt-1 font-semibold text-zinc-900">
+                            {formatCurrency(result.cumulativeNetBuyerOutlay)}
+                          </p>
+                        </div>
+                      </>
+                    ) : null}
                     <div>
                       <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-400">
                         Estimated Timing
