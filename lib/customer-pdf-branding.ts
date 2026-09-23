@@ -103,6 +103,38 @@ export function getCustomerPdfBrandingStyles() {
       margin-top: 5px;
       -webkit-text-fill-color: currentColor !important;
     }
+    .customer-pdf-watermark-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      position: fixed;
+      user-select: none;
+      z-index: 1;
+    }
+    .customer-pdf-watermark-grid-mark {
+      align-items: center;
+      color: rgba(82, 82, 91, 0.055) !important;
+      display: flex;
+      font-size: 11px;
+      font-weight: 700;
+      justify-content: center;
+      line-height: 1.2;
+      padding: 12px;
+      text-align: center;
+      text-decoration: none !important;
+      transform: rotate(-24deg);
+      -webkit-text-fill-color: currentColor !important;
+      white-space: nowrap;
+    }
+    .customer-pdf-watermark-grid-mark * {
+      color: inherit !important;
+      font: inherit !important;
+      text-decoration: none !important;
+      -webkit-text-fill-color: currentColor !important;
+    }
     .customer-pdf-branding {
       border-top: 1px solid #e4e4e7;
       color: #71717a;
@@ -163,6 +195,20 @@ export function renderCustomerPdfWatermark(
       </div>
     </div>
   `;
+}
+
+export function renderRepeatedCustomerPdfWatermark(branding: CustomerPdfBranding) {
+  const agentName = getCustomerPdfWatermarkAgentName(branding);
+  const agentPhone = normalizeText(branding.agentPhone);
+  const attribution = agentPhone
+    ? `${escapeHtml(agentName)} · ${renderPdfSafePhone(agentPhone)}`
+    : escapeHtml(agentName);
+  const marks = Array.from(
+    { length: 15 },
+    (_, index) => `<div class="customer-pdf-watermark-grid-mark" aria-hidden="true" data-watermark-index="${index + 1}">${attribution}</div>`,
+  ).join("");
+
+  return `<div class="customer-pdf-watermark-grid" aria-hidden="true">${marks}</div>`;
 }
 
 export function renderCustomerPdfBranding(branding: CustomerPdfBranding) {
