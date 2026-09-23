@@ -9,7 +9,7 @@ import {
 } from "@/lib/sales";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
-const rankingPeriods = ["this_week", "this_month", "this_year"] as const;
+const rankingPeriods = ["last_week", "this_week", "this_month", "this_year"] as const;
 
 type RankingPeriod = (typeof rankingPeriods)[number];
 
@@ -31,7 +31,7 @@ type SalesRankingRow = {
 function getRankingPeriod(value: string | null): RankingPeriod {
   return rankingPeriods.includes(value as RankingPeriod)
     ? (value as RankingPeriod)
-    : "this_week";
+    : "last_week";
 }
 
 export async function GET(request: Request) {

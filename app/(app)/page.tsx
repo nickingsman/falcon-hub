@@ -136,7 +136,7 @@ type LeaderDashboardResponse = {
 };
 
 type LoadStatus = "loading" | "ready" | "error";
-type SalesRankingPeriod = "this_week" | "this_month" | "this_year";
+type SalesRankingPeriod = "last_week" | "this_week" | "this_month" | "this_year";
 
 type SalesRankingResponse = {
   period: SalesRankingPeriod;
@@ -177,6 +177,7 @@ const salesRankingPeriodOptions: Array<{
   value: SalesRankingPeriod;
   label: string;
 }> = [
+  { value: "last_week", label: "Last Week" },
   { value: "this_week", label: "This Week" },
   { value: "this_month", label: "This Month" },
   { value: "this_year", label: "This Year" },
@@ -440,14 +441,14 @@ function SalesTopClosersCard({
           <p className="text-sm font-semibold text-zinc-900">Top Closers</p>
           <p className="text-sm text-zinc-500">Closing and credited GDV</p>
         </div>
-        <div className="grid grid-cols-3 gap-1 rounded-full border border-zinc-200 bg-zinc-100 p-1">
+        <div className="grid grid-cols-4 gap-1 rounded-full border border-zinc-200 bg-zinc-100 p-1">
           {salesRankingPeriodOptions.map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => onPeriodChange(option.value)}
               aria-pressed={period === option.value}
-              className={`min-h-9 rounded-full px-3 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-1 ${
+              className={`min-h-9 whitespace-nowrap rounded-full px-2 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-1 sm:px-3 ${
                 period === option.value
                   ? "bg-white text-zinc-950 shadow-sm"
                   : "text-zinc-500 hover:text-zinc-900"
@@ -1240,7 +1241,7 @@ export default function Home() {
   const [leaderStatus, setLeaderStatus] = useState<LoadStatus>("ready");
   const [leaderErrorMessage, setLeaderErrorMessage] = useState("");
   const [salesRankingPeriod, setSalesRankingPeriod] =
-    useState<SalesRankingPeriod>("this_week");
+    useState<SalesRankingPeriod>("last_week");
   const [salesRanking, setSalesRanking] =
     useState<SalesRankingResponse | null>(null);
   const [salesRankingStatus, setSalesRankingStatus] =
