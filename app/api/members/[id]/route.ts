@@ -4,6 +4,10 @@ import {
   isMemberPosition,
   isMemberStatus,
 } from "@/lib/member-options";
+import {
+  getLeaderAssignmentError,
+  type HierarchyMember,
+} from "@/lib/member-hierarchy";
 import { requireMembersApiWriteAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
@@ -140,6 +144,33 @@ async function buildMemberPayload(
   };
 }
 
+async function validateLeaderAssignment(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  memberId: string,
+  leaderId: string | null,
+) {
+  if (!leaderId) return;
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, leader_id, status")
+    .eq("is_deleted", false);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const validationError = getLeaderAssignmentError(
+    (data ?? []) as HierarchyMember[],
+    memberId,
+    leaderId,
+  );
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -154,6 +185,7 @@ export async function PATCH(
     const { id } = await params;
     const supabase = createSupabaseAdminClient();
     const payload = await buildMemberPayload(supabase, await request.json());
+    await validateLeaderAssignment(supabase, id, payload.leader_id);
 
     const { data, error } = await supabase
       .from("users")

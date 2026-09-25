@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppPermissions } from "@/app/(app)/components/AppPermissionProvider";
+import { SearchCombobox } from "@/app/(app)/components/SearchCombobox";
+import { OrganizationChart } from "@/app/(app)/team/members/OrganizationChart";
 import { formatMemberCode, formatMemberDisplayName } from "@/lib/member-display";
+import { getHierarchyDescendants } from "@/lib/member-hierarchy";
+import type { OrganizationChartMember } from "@/lib/organization-chart";
 import {
   employmentTypeOptions,
   falconPositionRankings,
@@ -82,6 +86,9 @@ export default function MembersPage() {
   const [employmentFilter, setEmploymentFilter] = useState("All");
   const [leaderFilter, setLeaderFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [activeView, setActiveView] = useState<"members" | "organization">("members");
+  const [organizationMembers, setOrganizationMembers] = useState<OrganizationChartMember[]>([]);
+  const [organizationChartAvailable, setOrganizationChartAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -113,15 +120,65 @@ export default function MembersPage() {
     }
   };
 
+  const fetchOrganizationChart = async () => {
+    try {
+      const response = await fetch("/api/members/organization-chart", {
+        cache: "no-store",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to load organization chart");
+      }
+
+      setOrganizationChartAvailable(Boolean(result.available));
+      setOrganizationMembers((result.members ?? []) as OrganizationChartMember[]);
+    } catch {
+      setOrganizationChartAvailable(false);
+      setOrganizationMembers([]);
+    }
+  };
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void fetchMembers();
+      void fetchOrganizationChart();
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, []);
 
   const normalizedSearch = search.trim().toLowerCase();
+  const leaderDescendantIds = useMemo(() => {
+    if (leaderFilter === "All") return null;
+
+    return new Set(
+      getHierarchyDescendants(members, leaderFilter).map((member) => member.id),
+    );
+  }, [leaderFilter, members]);
+  const leaderFilterOptions = useMemo(
+    () => [
+      { id: "All", label: "All Leaders", searchText: "all leaders" },
+      ...members.map((member) => ({
+        id: member.id,
+        label: formatMemberDisplayName(member),
+        description:
+          member.display_name && member.full_name
+            ? member.full_name
+            : undefined,
+        searchText: [
+          member.display_name,
+          member.full_name,
+          formatMemberCode(member.member_code),
+          member.member_code,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      })),
+    ],
+    [members],
+  );
+
   const filteredMembers = members.filter((member) => {
     const matchSearch = [
       member.full_name,
@@ -142,7 +199,7 @@ export default function MembersPage() {
       employmentFilter === "All" || member.employment_type === employmentFilter;
 
     const matchLeader =
-      leaderFilter === "All" || member.leader_id === leaderFilter;
+      leaderDescendantIds === null || leaderDescendantIds.has(member.id);
 
     const matchStatus = statusFilter === "All" || member.status === statusFilter;
 
@@ -262,7 +319,7 @@ export default function MembersPage() {
       }
 
       closeDrawer();
-      await fetchMembers();
+      await Promise.all([fetchMembers(), fetchOrganizationChart()]);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to save member",
@@ -291,7 +348,7 @@ export default function MembersPage() {
         throw new Error(result.error || "Unable to delete member");
       }
 
-      await fetchMembers();
+      await Promise.all([fetchMembers(), fetchOrganizationChart()]);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to delete member",
@@ -371,6 +428,35 @@ export default function MembersPage() {
           </div>
         </section>
 
+        <div className="mt-6 flex w-fit rounded-full border border-zinc-200 bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveView("members")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+              activeView === "members"
+                ? "bg-zinc-900 text-white"
+                : "text-zinc-600 hover:text-zinc-950"
+            }`}
+          >
+            Members
+          </button>
+          {organizationChartAvailable ? (
+            <button
+              type="button"
+              onClick={() => setActiveView("organization")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                activeView === "organization"
+                  ? "bg-zinc-900 text-white"
+                  : "text-zinc-600 hover:text-zinc-950"
+              }`}
+            >
+              Organization Chart
+            </button>
+          ) : null}
+        </div>
+
+        {activeView === "members" ? (
+          <>
         <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           {summaryCards.map((card) => (
             <div
@@ -433,23 +519,29 @@ export default function MembersPage() {
                 ))}
               </select>
             </label>
-            <label className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
-              <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
-                Leader
-              </span>
-              <select
-                className="w-full bg-transparent outline-none"
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-xs uppercase tracking-[0.24em] text-zinc-400">
+                  Leader
+                </span>
+                {leaderFilter !== "All" ? (
+                  <button
+                    type="button"
+                    onClick={() => setLeaderFilter("All")}
+                    className="text-xs font-medium text-zinc-500 hover:text-zinc-900"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <SearchCombobox
                 value={leaderFilter}
-                onChange={(event) => setLeaderFilter(event.target.value)}
-              >
-                <option value="All">All</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {formatMemberDisplayName(member)}
-                  </option>
-                ))}
-              </select>
-            </label>
+                options={leaderFilterOptions}
+                placeholder="Search leader name or member code..."
+                emptyLabel="No leaders found"
+                onChange={setLeaderFilter}
+              />
+            </div>
             <label className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
               <span className="mb-1 block text-xs uppercase tracking-[0.24em] text-zinc-400">
                 Status
@@ -564,6 +656,10 @@ export default function MembersPage() {
             </div>
           </div>
         </section>
+          </>
+        ) : (
+          <OrganizationChart members={organizationMembers} />
+        )}
       </main>
 
       {canManageMembers ? (
