@@ -28,6 +28,7 @@ export const desktopNavItems: AppNavItem[] = [
   { label: "Unit Calculation", href: "/tools/roi-calculator" },
   { label: "Loan Amortization", href: "/tools/loan-amortization" },
   { label: "Investment Simulator", href: "/tools/investment-simulator" },
+  { label: "生涯运数", href: "/tools/career-numerology", permission: "canManageUsers" },
   { label: "Project Comparison", href: "/tools/project-comparison" },
   { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
   { label: "Progressive Interest", href: "/tools/progressive-interest" },
@@ -110,6 +111,9 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
         { label: "Unit Calculation", href: "/tools/roi-calculator" },
         { label: "Loan Amortization", href: "/tools/loan-amortization" },
         { label: "Investment Simulator", href: "/tools/investment-simulator" },
+        ...(permissions.canManageUsers
+          ? [{ label: "生涯运数", href: "/tools/career-numerology" }]
+          : []),
         { label: "Project Comparison", href: "/tools/project-comparison" },
         { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
         { label: "Progressive Interest", href: "/tools/progressive-interest" },
