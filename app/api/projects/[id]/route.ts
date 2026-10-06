@@ -6,6 +6,12 @@ import {
 } from "@/lib/permissions";
 import { normalizeNullableNumber } from "@/lib/project-comparison";
 import { isUnitNumberFormat } from "@/lib/unit-number-format";
+import { isCanonicalValue, maintenanceCalculationBases, maintenanceFeeTypes, ownershipTitleTypes, projectCategories } from "@/lib/project-property";
+
+function canonicalOrNull<T extends readonly string[]>(value: unknown, values: T) {
+  if (value === null || value === undefined || value === "") return null;
+  return isCanonicalValue(value, values) ? value : undefined;
+}
 
 function normalizeProjectUnitNumberFormat(value: unknown) {
   if (value === null || value === undefined || value === "") return null;
@@ -62,13 +68,18 @@ export async function GET(
         developer,
         location,
         property_type,
+        property_category,
         tenure,
         title_type,
+        ownership_title_type,
         starting_price,
         total_units,
         estimated_vp_year,
         estimated_vp_quarter,
         maintenance_fee_per_sqft,
+        maintenance_fee_type,
+        maintenance_fee_fixed_monthly,
+        maintenance_calculation_basis,
         contact_role,
         contact_name,
         contact_phone,
@@ -129,6 +140,18 @@ export async function PATCH(
     const maintenanceFeePerSqft = hasMaintenanceFeePerSqft
       ? normalizeNullableNumber(body.maintenance_fee_per_sqft)
       : null;
+    const hasPropertyCategory = Object.hasOwn(body, "property_category");
+    const hasOwnershipTitleType = Object.hasOwn(body, "ownership_title_type");
+    const hasMaintenanceConfiguration = Object.hasOwn(body, "maintenance_fee_type");
+    const propertyCategory = hasPropertyCategory ? canonicalOrNull(body.property_category, projectCategories) : null;
+    const ownershipTitleType = hasOwnershipTitleType ? canonicalOrNull(body.ownership_title_type, ownershipTitleTypes) : null;
+    const maintenanceFeeType = hasMaintenanceConfiguration ? canonicalOrNull(body.maintenance_fee_type, maintenanceFeeTypes) : null;
+    const maintenanceCalculationBasis = hasMaintenanceConfiguration ? canonicalOrNull(body.maintenance_calculation_basis, maintenanceCalculationBases) : null;
+    const maintenanceFeeFixedMonthly = hasMaintenanceConfiguration ? normalizeNullableNumber(body.maintenance_fee_fixed_monthly) : null;
+
+    if (propertyCategory === undefined || ownershipTitleType === undefined || maintenanceFeeType === undefined || maintenanceCalculationBasis === undefined) {
+      return NextResponse.json({ error: "Invalid Project classification or maintenance configuration" }, { status: 400 });
+    }
 
     if (unitNumberFormat === undefined) {
       return NextResponse.json(
@@ -159,6 +182,15 @@ export async function PATCH(
         { status: 400 },
       );
     }
+    if (maintenanceFeeFixedMonthly !== null && (!Number.isFinite(maintenanceFeeFixedMonthly) || maintenanceFeeFixedMonthly < 0)) {
+      return NextResponse.json({ error: "Fixed Monthly Maintenance must be non-negative" }, { status: 400 });
+    }
+    if (hasMaintenanceConfiguration && maintenanceFeeType === "per_sqft" && (maintenanceFeePerSqft === null || maintenanceCalculationBasis === null)) {
+      return NextResponse.json({ error: "Per Sqft maintenance requires a rate and calculation basis" }, { status: 400 });
+    }
+    if (hasMaintenanceConfiguration && maintenanceFeeType === "fixed" && maintenanceFeeFixedMonthly === null) {
+      return NextResponse.json({ error: "Fixed maintenance requires a monthly amount" }, { status: 400 });
+    }
 
     const supabase = createSupabaseAdminClient();
     const payload = {
@@ -166,8 +198,10 @@ export async function PATCH(
       developer: body.developer || null,
       location: body.location || null,
       property_type: body.property_type || null,
+      ...(hasPropertyCategory ? { property_category: propertyCategory } : {}),
       tenure: body.tenure || null,
       title_type: body.title_type || null,
+      ...(hasOwnershipTitleType ? { ownership_title_type: ownershipTitleType } : {}),
       starting_price: body.starting_price
         ? Number(body.starting_price)
         : null,
@@ -190,6 +224,11 @@ export async function PATCH(
       ...(hasMaintenanceFeePerSqft
         ? { maintenance_fee_per_sqft: maintenanceFeePerSqft }
         : {}),
+      ...(hasMaintenanceConfiguration ? {
+        maintenance_fee_type: maintenanceFeeType,
+        maintenance_fee_fixed_monthly: maintenanceFeeType === "fixed" ? maintenanceFeeFixedMonthly : null,
+        maintenance_calculation_basis: maintenanceFeeType === "per_sqft" ? maintenanceCalculationBasis : null,
+      } : {}),
     };
 
     const { data, error } = await supabase

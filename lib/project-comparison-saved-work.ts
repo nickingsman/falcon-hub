@@ -40,12 +40,17 @@ export type ProjectComparisonSavedProjectOptionsV1 = {
     developer: string | null;
     location: string | null;
     property_type: string | null;
+    property_category: string | null;
     tenure: string | null;
     title_type: string | null;
+    ownership_title_type: string | null;
     total_units: number | null;
     estimated_vp_year: number | null;
     estimated_vp_quarter: number | null;
     maintenance_fee_per_sqft: number | null;
+    maintenance_fee_type: "per_sqft" | "fixed" | null;
+    maintenance_fee_fixed_monthly: number | null;
+    maintenance_calculation_basis: "built_up" | "land_size" | null;
     cover_media: ProjectComparisonSavedMediaSnapshotV1 | null;
   };
   unit_types: Array<{
@@ -57,6 +62,7 @@ export type ProjectComparisonSavedProjectOptionsV1 = {
     bathrooms: number | null;
     display_configuration: string | null;
     size_sqft: number | null;
+    land_size_sqft: number | null;
     default_carparks: number | null;
     carpark_description: string | null;
     spa_price_from: number | null;
@@ -205,12 +211,17 @@ function normalizeProjectOptions(
       developer: nullableString(value.project.developer),
       location: nullableString(value.project.location),
       property_type: nullableString(value.project.property_type),
+      property_category: nullableString(value.project.property_category),
       tenure: nullableString(value.project.tenure),
       title_type: nullableString(value.project.title_type),
+      ownership_title_type: nullableString(value.project.ownership_title_type),
       total_units: nullableNumber(value.project.total_units),
       estimated_vp_year: nullableNumber(value.project.estimated_vp_year),
       estimated_vp_quarter: nullableNumber(value.project.estimated_vp_quarter),
       maintenance_fee_per_sqft: nullableNumber(value.project.maintenance_fee_per_sqft),
+      maintenance_fee_type: value.project.maintenance_fee_type === "fixed" || value.project.maintenance_fee_type === "per_sqft" ? value.project.maintenance_fee_type : null,
+      maintenance_fee_fixed_monthly: nullableNumber(value.project.maintenance_fee_fixed_monthly),
+      maintenance_calculation_basis: value.project.maintenance_calculation_basis === "land_size" || value.project.maintenance_calculation_basis === "built_up" ? value.project.maintenance_calculation_basis : (nullableNumber(value.project.maintenance_fee_per_sqft) !== null ? "built_up" : null),
       cover_media: normalizeMedia(value.project.cover_media),
     },
     unit_types: Array.isArray(value.unit_types)
@@ -223,6 +234,7 @@ function normalizeProjectOptions(
           bathrooms: nullableNumber(unitType.bathrooms),
           display_configuration: nullableString(unitType.display_configuration),
           size_sqft: nullableNumber(unitType.size_sqft),
+          land_size_sqft: nullableNumber(unitType.land_size_sqft),
           default_carparks: nullableNumber(unitType.default_carparks),
           carpark_description: nullableString(unitType.carpark_description),
           spa_price_from: nullableNumber(unitType.spa_price_from),

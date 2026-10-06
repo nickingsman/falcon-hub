@@ -25,6 +25,20 @@ test("legacy ROI Saved Work defaults to Malaysian / PR with RM0 consent", () => 
   assert.equal(validated.payload.buyerType, "malaysian_pr");
   assert.equal(validated.payload.foreignerConsent, 0);
   assert.equal(validated.payload.purchaseMethod, "loan");
+  assert.equal(validated.payload.form.maintenanceFeeType, "");
+  assert.equal(validated.payload.form.landSizeSqft, "");
+});
+
+test("legacy per-sqft ROI Saved Work defaults its basis to built-up", () => {
+  const validated = validateRoiSavedWorkPayload({
+    ...legacyPayload,
+    form: { unitSizeSqft: "1000", maintenanceRatePerSqft: "0.35" },
+  });
+
+  assert.equal(validated.valid, true);
+  if (!validated.valid) return;
+  assert.equal(validated.payload.form.maintenanceFeeType, "per_sqft");
+  assert.equal(validated.payload.form.maintenanceCalculationBasis, "built_up");
 });
 
 test("invalid Saved Work buyer fields use safe defaults", () => {

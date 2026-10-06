@@ -10,6 +10,7 @@ type ProjectRow = {
   location: string | null;
   tenure: string | null;
   property_type: string | null;
+  property_category: "high_rise" | "landed" | null;
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
 };
@@ -21,6 +22,7 @@ type UnitTypeRow = {
   type_name: string | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
   default_carparks: number | null;
@@ -73,6 +75,7 @@ export async function GET() {
         location,
         tenure,
         property_type,
+        property_category,
         estimated_vp_year,
         estimated_vp_quarter
       `)
@@ -98,6 +101,7 @@ export async function GET() {
               type_name,
               display_configuration,
               size_sqft,
+              land_size_sqft,
               bedrooms,
               bathrooms,
               default_carparks,
@@ -160,6 +164,7 @@ export async function GET() {
         location: project.location,
         tenure: project.tenure,
         property_type: project.property_type,
+        property_category: project.property_category,
         estimated_vp_year: project.estimated_vp_year,
         estimated_vp_quarter: project.estimated_vp_quarter,
       })),
@@ -170,6 +175,7 @@ export async function GET() {
         type_name: unitType.type_name,
         display_configuration: unitType.display_configuration,
         size_sqft: unitType.size_sqft,
+        land_size_sqft: unitType.land_size_sqft,
         bedrooms: unitType.bedrooms,
         bathrooms: unitType.bathrooms,
         default_carparks: unitType.default_carparks,

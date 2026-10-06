@@ -47,6 +47,7 @@ import {
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, SectionHeader, StatusBadge } from "../../components/ui";
+import type { MaintenanceCalculationBasis, MaintenanceFeeType } from "@/lib/project-property";
 
 type CalculatorForm = {
   projectName: string;
@@ -54,6 +55,7 @@ type CalculatorForm = {
   unitType: string;
   unitConfiguration: string;
   unitSizeSqft: string;
+  landSizeSqft: string;
   carpark: string;
   calculationDate: string;
   packageValidUntil: string;
@@ -63,6 +65,9 @@ type CalculatorForm = {
   loanTenureYears: string;
   expectedMonthlyRental: string;
   maintenanceRatePerSqft: string;
+  maintenanceFeeType: MaintenanceFeeType | "";
+  maintenanceCalculationBasis: MaintenanceCalculationBasis | "";
+  fixedMonthlyMaintenance: string;
   otherUpfrontCosts: string;
 };
 
@@ -98,6 +103,10 @@ type ProjectOption = {
   developer: string | null;
   location: string | null;
   maintenance_fee_per_sqft: number | null;
+  maintenance_fee_type: MaintenanceFeeType | null;
+  maintenance_fee_fixed_monthly: number | null;
+  maintenance_calculation_basis: MaintenanceCalculationBasis | null;
+  property_category: "high_rise" | "landed" | null;
   unit_number_format: UnitNumberFormat | null;
 };
 
@@ -161,6 +170,7 @@ type ProjectUnitType = {
   type_name: string | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   default_carparks: number | null;
   carpark_description: string | null;
   layout: ProjectLayout | null;
@@ -221,6 +231,7 @@ type UnitPresentationSnapshot = {
   typeName: string | null;
   configuration: string | null;
   sizeSqft: number | null;
+  landSizeSqft: number | null;
   carpark: string;
   layout: ProjectLayout | null;
   furnishingPackage: FurnishingPackage | null;
@@ -652,6 +663,7 @@ function getUnitPresentationSnapshot(
     typeName: unitType.type_name,
     configuration: unitType.display_configuration,
     sizeSqft: unitType.size_sqft,
+    landSizeSqft: unitType.land_size_sqft,
     carpark: formatCarpark(unitType),
     layout: unitType.layout,
     furnishingPackage: null,
@@ -750,6 +762,7 @@ function sanitizeUnitPresentationSnapshot(
     typeName: snapshot.typeName,
     configuration: snapshot.configuration,
     sizeSqft: snapshot.sizeSqft,
+    landSizeSqft: snapshot.landSizeSqft,
     carpark: snapshot.carpark,
     layout: sanitizeLayoutSnapshot(snapshot.layout),
     furnishingPackage: snapshot.furnishingPackage,
@@ -768,6 +781,7 @@ function restoreUnitPresentationSnapshot(
     typeName: snapshot.typeName,
     configuration: snapshot.configuration,
     sizeSqft: snapshot.sizeSqft,
+    landSizeSqft: snapshot.landSizeSqft,
     carpark: snapshot.carpark,
     layout: freshUnitType?.layout ?? restoreLayoutSnapshot(snapshot.layout),
     furnishingPackage: snapshot.furnishingPackage,
@@ -1398,7 +1412,8 @@ function buildRoiProposalHtml({
           ${proposalUnitInfoField("Unit", form.unitNumber || "-")}
           ${proposalUnitInfoField("Type", form.unitType || unitPresentation?.typeCode || "-")}
           ${proposalUnitInfoField("Configuration", form.unitConfiguration || unitPresentation?.configuration || "-")}
-          ${proposalUnitInfoField("Size", form.unitSizeSqft ? `${form.unitSizeSqft} sqft` : unitPresentation?.sizeSqft ? `${unitPresentation.sizeSqft} sqft` : "-")}
+          ${proposalUnitInfoField("Built-Up Size", form.unitSizeSqft ? `${form.unitSizeSqft} sqft` : unitPresentation?.sizeSqft ? `${unitPresentation.sizeSqft} sqft` : "-")}
+          ${form.landSizeSqft ? proposalUnitInfoField("Land Size", `${form.landSizeSqft} sqft`) : ""}
           ${proposalUnitInfoField("Carpark", form.carpark || unitPresentation?.carpark || "-")}
           ${
             unitPresentation?.typeName
@@ -2178,7 +2193,8 @@ function buildRoiProposalHtml({
           ${proposalCompactField("Unit", form.unitNumber || "-")}
           ${proposalCompactField("Type", form.unitType || "-")}
           ${proposalCompactField("Configuration", form.unitConfiguration || "-")}
-          ${proposalCompactField("Size", form.unitSizeSqft ? `${form.unitSizeSqft} sqft` : "-")}
+          ${proposalCompactField("Built-Up Size", form.unitSizeSqft ? `${form.unitSizeSqft} sqft` : "-")}
+          ${form.landSizeSqft ? proposalCompactField("Land Size", `${form.landSizeSqft} sqft`) : ""}
           ${proposalCompactField("Carpark", form.carpark || "-")}
         </div>
       </section>
@@ -2453,6 +2469,7 @@ export default function RoiCalculatorPage() {
     unitType: "",
     unitConfiguration: "",
     unitSizeSqft: "",
+    landSizeSqft: "",
     carpark: "",
     calculationDate: getMalaysiaDateInputValue(),
     packageValidUntil: "",
@@ -2462,6 +2479,9 @@ export default function RoiCalculatorPage() {
     loanTenureYears: "35",
     expectedMonthlyRental: "",
     maintenanceRatePerSqft: "",
+    maintenanceFeeType: "",
+    maintenanceCalculationBasis: "",
+    fixedMonthlyMaintenance: "",
     otherUpfrontCosts: "0",
   });
   const [packageItems, setPackageItems] = useState<EditablePackageItem[]>([]);
@@ -2526,7 +2546,11 @@ export default function RoiCalculatorPage() {
       annualInterestRatePercent: parseMoney(form.annualInterestRatePercent),
       loanTenureYears: parseMoney(form.loanTenureYears),
       unitSizeSqft: parseMoney(form.unitSizeSqft),
+      landSizeSqft: parseMoney(form.landSizeSqft),
       maintenanceRatePerSqft: parseMoney(form.maintenanceRatePerSqft),
+      maintenanceFeeType: form.maintenanceFeeType || null,
+      maintenanceCalculationBasis: form.maintenanceCalculationBasis || null,
+      fixedMonthlyMaintenance: parseMoney(form.fixedMonthlyMaintenance),
       expectedMonthlyRental: parseMoney(form.expectedMonthlyRental),
       otherUpfrontCosts: parseMoney(form.otherUpfrontCosts),
       foreignerConsent: parseMoney(foreignerConsent),
@@ -2603,7 +2627,11 @@ export default function RoiCalculatorPage() {
     }
 
     if (!Number.isFinite(numericInput.unitSizeSqft) || numericInput.unitSizeSqft < 0) {
-      messages.push("Unit Size cannot be negative.");
+      messages.push("Built-Up Size cannot be negative.");
+    }
+
+    if (form.maintenanceCalculationBasis === "land_size" && (!Number.isFinite(numericInput.landSizeSqft) || numericInput.landSizeSqft <= 0)) {
+      messages.push("Land Size is required for land-size maintenance.");
     }
 
     if (
@@ -2680,7 +2708,7 @@ export default function RoiCalculatorPage() {
     }
 
     return messages;
-  }, [applicablePurchaseCosts, buyerType, numericInput, packageItems, purchaseMethod, purchasePurpose]);
+  }, [applicablePurchaseCosts, buyerType, form.maintenanceCalculationBasis, numericInput, packageItems, purchaseMethod, purchasePurpose]);
   const applicableForeignerConsent = getApplicableForeignerConsent(
     buyerType,
     numericInput.foreignerConsent,
@@ -2866,6 +2894,9 @@ export default function RoiCalculatorPage() {
         selectedProject?.maintenance_fee_per_sqft === undefined
           ? ""
           : String(selectedProject.maintenance_fee_per_sqft),
+      maintenanceFeeType: selectedProject?.maintenance_fee_type ?? (selectedProject?.maintenance_fee_per_sqft !== null && selectedProject?.maintenance_fee_per_sqft !== undefined ? "per_sqft" : ""),
+      maintenanceCalculationBasis: selectedProject?.maintenance_calculation_basis ?? (selectedProject?.maintenance_fee_per_sqft !== null && selectedProject?.maintenance_fee_per_sqft !== undefined ? "built_up" : ""),
+      fixedMonthlyMaintenance: selectedProject?.maintenance_fee_fixed_monthly === null || selectedProject?.maintenance_fee_fixed_monthly === undefined ? "" : String(selectedProject.maintenance_fee_fixed_monthly),
       packageValidUntil: "",
     }));
 
@@ -2892,6 +2923,7 @@ export default function RoiCalculatorPage() {
       unitType: unitType.type_code || current.unitType,
       unitConfiguration: unitType.display_configuration || current.unitConfiguration,
       unitSizeSqft: unitType.size_sqft ? String(unitType.size_sqft) : current.unitSizeSqft,
+      landSizeSqft: unitType.land_size_sqft ? String(unitType.land_size_sqft) : "",
       carpark: snapshot.carpark || current.carpark,
     }));
     setUnitPresentation(snapshot);
@@ -3795,7 +3827,7 @@ export default function RoiCalculatorPage() {
                 </label>
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
-                    Unit Size
+                    Built-Up Size
                   </span>
                   <div
                     className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.unitSizeSqft.trim(), hasEnteredValue(form.unitSizeSqft) && (!Number.isFinite(numericInput.unitSizeSqft) || numericInput.unitSizeSqft < 0))}`}
@@ -3812,6 +3844,10 @@ export default function RoiCalculatorPage() {
                     </span>
                   </div>
                 </label>
+                {(form.maintenanceCalculationBasis === "land_size" || projects.find((item) => item.id === selectedProjectId)?.property_category === "landed") ? <label className="block text-sm text-zinc-600">
+                  <span className="mb-1 block font-medium text-zinc-900">Land Size</span>
+                  <div className="flex rounded-2xl border border-[var(--falcon-soft-border)]"><input inputMode="decimal" value={form.landSizeSqft} onChange={(event) => updateField("landSizeSqft", event.target.value)} className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none" placeholder="1650" /><span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">sqft</span></div>
+                </label> : null}
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Carpark
@@ -4361,9 +4397,9 @@ export default function RoiCalculatorPage() {
                       />
                   </label>
                 ) : null}
-                <label className="block text-sm text-zinc-600">
+                {form.maintenanceFeeType !== "fixed" ? <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
-                    Maintenance Rate
+                    Maintenance Rate {form.maintenanceCalculationBasis === "land_size" ? "(Land Size)" : "(Built-Up Size)"}
                   </span>
                   <div className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.maintenanceRatePerSqft.trim(), hasEnteredValue(form.maintenanceRatePerSqft) && (!Number.isFinite(numericInput.maintenanceRatePerSqft) || numericInput.maintenanceRatePerSqft < 0))}`}>
                     <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">
@@ -4385,7 +4421,7 @@ export default function RoiCalculatorPage() {
                   <span className="mt-1 block text-xs text-zinc-500">
                     Including sinking fund
                   </span>
-                </label>
+                </label> : <label className="block text-sm text-zinc-600"><span className="mb-1 block font-medium text-zinc-900">Fixed Monthly Maintenance</span><div className="flex rounded-2xl border border-[var(--falcon-soft-border)]"><span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">RM</span><input inputMode="decimal" value={form.fixedMonthlyMaintenance} onChange={(event) => updateField("fixedMonthlyMaintenance", event.target.value)} className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none" /></div></label>}
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Other Upfront Costs

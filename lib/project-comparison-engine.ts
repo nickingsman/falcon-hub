@@ -1,4 +1,5 @@
-import { calculateMonthlyInstalment } from "@/lib/property-finance";
+import { calculateMonthlyInstalment } from "./property-finance";
+import { resolveMonthlyMaintenance, type MaintenanceCalculationBasis, type MaintenanceFeeType } from "./project-property";
 
 export type ComparisonAssumptions = {
   loanMarginPercent: number;
@@ -10,7 +11,11 @@ export type ComparisonUnitInput = {
   price_from: number | null;
   price_to: number | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   maintenance_fee_per_sqft: number | null;
+  maintenance_fee_type: MaintenanceFeeType | null;
+  maintenance_fee_fixed_monthly: number | null;
+  maintenance_calculation_basis: MaintenanceCalculationBasis | null;
   estimated_rental_from: number | null;
   estimated_rental_to: number | null;
 };
@@ -120,18 +125,13 @@ function calculatePsf(priceRange: ComparisonRange, sizeSqft: number | null | und
   return mapRange(priceRange, (price) => price / size);
 }
 
-function calculateMonthlyMaintenance(
-  sizeSqft: number | null | undefined,
-  maintenanceFeePerSqft: number | null | undefined,
-) {
-  const size = normalizePositiveNumber(sizeSqft);
-  const fee = normalizeNonNegativeNumber(maintenanceFeePerSqft);
-
-  if (size === null || fee === null) return unavailable;
+function calculateMonthlyMaintenance(input: ComparisonUnitInput) {
+  const value = resolveMonthlyMaintenance(input, input);
+  if (value === null) return unavailable;
 
   return {
     kind: "single",
-    value: size * fee,
+    value,
   } satisfies SingleRange;
 }
 
@@ -192,10 +192,7 @@ export function calculateProjectComparisonMetrics(
   return {
     finalNetPrice,
     psf: calculatePsf(finalNetPrice, input.size_sqft),
-    monthlyMaintenance: calculateMonthlyMaintenance(
-      input.size_sqft,
-      input.maintenance_fee_per_sqft,
-    ),
+    monthlyMaintenance: calculateMonthlyMaintenance(input),
     estimatedMonthlyInstalment: calculateInstalment(loanAmount, assumptions),
     loanAmount,
     estimatedRental,

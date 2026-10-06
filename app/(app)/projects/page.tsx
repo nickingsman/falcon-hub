@@ -24,8 +24,10 @@ type Project = {
   developer: string | null;
   location: string | null;
   property_type: string | null;
+  property_category: string | null;
   tenure: string | null;
   title_type: string | null;
+  ownership_title_type: string | null;
   starting_price: number | null;
   total_units: number | null;
   status: string | null;
@@ -34,6 +36,9 @@ type Project = {
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
   maintenance_fee_per_sqft: number | null;
+  maintenance_fee_type: string | null;
+  maintenance_fee_fixed_monthly: number | null;
+  maintenance_calculation_basis: string | null;
   contact_role: string | null;
   contact_name: string | null;
   contact_phone: string | null;
@@ -46,8 +51,10 @@ type ProjectForm = {
   developer: string;
   location: string;
   property_type: string;
+  property_category: string;
   tenure: string;
   title_type: string;
+  ownership_title_type: string;
   starting_price: string;
   total_units: string;
   status: string;
@@ -56,6 +63,9 @@ type ProjectForm = {
   estimated_vp_year: string;
   estimated_vp_quarter: string;
   maintenance_fee_per_sqft: string;
+  maintenance_fee_type: string;
+  maintenance_fee_fixed_monthly: string;
+  maintenance_calculation_basis: string;
   contact_role: string;
   contact_name: string;
   contact_phone: string;
@@ -67,8 +77,10 @@ const emptyForm: ProjectForm = {
   developer: "",
   location: "",
   property_type: "",
+  property_category: "",
   tenure: "",
   title_type: "",
+  ownership_title_type: "",
   starting_price: "",
   total_units: "",
   status: "Active",
@@ -77,6 +89,9 @@ const emptyForm: ProjectForm = {
   estimated_vp_year: "",
   estimated_vp_quarter: "",
   maintenance_fee_per_sqft: "",
+  maintenance_fee_type: "",
+  maintenance_fee_fixed_monthly: "",
+  maintenance_calculation_basis: "",
   contact_role: "",
   contact_name: "",
   contact_phone: "",
@@ -154,8 +169,10 @@ export default function ProjectsPage() {
     developer: project.developer || "",
     location: project.location || "",
     property_type: project.property_type || "",
+    property_category: project.property_category || "",
     tenure: project.tenure || "",
     title_type: project.title_type || "",
+    ownership_title_type: project.ownership_title_type || "",
     starting_price:
       project.starting_price !== null
         ? String(project.starting_price)
@@ -179,6 +196,11 @@ export default function ProjectsPage() {
       project.maintenance_fee_per_sqft !== null
         ? String(project.maintenance_fee_per_sqft)
         : "",
+    maintenance_fee_type: project.maintenance_fee_type || (project.maintenance_fee_per_sqft !== null ? "per_sqft" : ""),
+    maintenance_fee_fixed_monthly:
+      project.maintenance_fee_fixed_monthly !== null ? String(project.maintenance_fee_fixed_monthly) : "",
+    maintenance_calculation_basis:
+      project.maintenance_calculation_basis || (project.maintenance_fee_per_sqft !== null ? "built_up" : ""),
     contact_role: project.contact_role || "",
     contact_name: project.contact_name || "",
     contact_phone: project.contact_phone || "",
@@ -318,6 +340,16 @@ if (projectsResponse.ok) {
       (!form.estimated_vp_year && form.estimated_vp_quarter)
     ) {
       setErrorMessage("Estimated VP requires both Year and Quarter.");
+      return;
+    }
+
+    if (form.maintenance_fee_type === "per_sqft" && (!form.maintenance_fee_per_sqft || !form.maintenance_calculation_basis)) {
+      setErrorMessage("Per Sqft maintenance requires a rate and calculation basis.");
+      return;
+    }
+
+    if (form.maintenance_fee_type === "fixed" && !form.maintenance_fee_fixed_monthly) {
+      setErrorMessage("Fixed maintenance requires a monthly amount.");
       return;
     }
 
@@ -566,7 +598,8 @@ if (projectsResponse.ok) {
                   <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <ProjectInfoItem label="Developer" value={project.developer} />
                     <ProjectInfoItem label="Location" value={project.location} />
-                    <ProjectInfoItem label="Property Type" value={project.property_type} />
+                    {project.property_category ? <ProjectInfoItem label="Property Category" value={project.property_category === "high_rise" ? "High-Rise" : "Landed"} /> : null}
+                    <ProjectInfoItem label="Property Subtype" value={project.property_type} />
                     <ProjectInfoItem label="Tenure" value={project.tenure} />
                     <ProjectInfoItem
                       label="Starting Price"
@@ -701,7 +734,7 @@ if (projectsResponse.ok) {
 
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-700">
-                        Property Type
+                        Property Subtype
                       </label>
 
                       <input
@@ -715,6 +748,15 @@ if (projectsResponse.ok) {
                         placeholder="e.g. Condominium"
                         className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900"
                       />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">Property Category</label>
+                      <select value={form.property_category} onChange={(e) => updateField("property_category", e.target.value)} className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900">
+                        <option value="">Select property category</option>
+                        <option value="high_rise">High-Rise</option>
+                        <option value="landed">Landed</option>
+                      </select>
                     </div>
 
                     <div>
@@ -744,7 +786,7 @@ if (projectsResponse.ok) {
 
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-700">
-                        Title Type
+                        Title Classification
                       </label>
 
                       <select
@@ -769,6 +811,15 @@ if (projectsResponse.ok) {
                         <option value="Commercial under HDA">
                           Commercial under HDA
                         </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">Ownership Title</label>
+                      <select value={form.ownership_title_type} onChange={(e) => updateField("ownership_title_type", e.target.value)} className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900">
+                        <option value="">Select ownership title</option>
+                        <option value="strata">Strata Title</option>
+                        <option value="individual">Individual Title</option>
                       </select>
                     </div>
                   </div>
@@ -944,28 +995,32 @@ if (projectsResponse.ok) {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-zinc-700">
-                        Maintenance Fee (RM / psf)
-                      </label>
-
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={form.maintenance_fee_per_sqft}
-                        onChange={(e) =>
-                          updateField(
-                            "maintenance_fee_per_sqft",
-                            e.target.value
-                          )
-                        }
-                        placeholder="e.g. 0.33"
-                        className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900"
-                      />
-                      <p className="mt-2 text-xs text-zinc-500">
-                        Displayed as RM per psf, including sinking fund where applicable.
-                      </p>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">Maintenance Fee Type</label>
+                      <select value={form.maintenance_fee_type} onChange={(e) => setForm((current) => ({ ...current, maintenance_fee_type: e.target.value, maintenance_fee_per_sqft: e.target.value === "per_sqft" ? current.maintenance_fee_per_sqft : "", maintenance_fee_fixed_monthly: e.target.value === "fixed" ? current.maintenance_fee_fixed_monthly : "", maintenance_calculation_basis: e.target.value === "per_sqft" ? (current.maintenance_calculation_basis || "built_up") : "" }))} className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900">
+                        <option value="">No maintenance configured</option>
+                        <option value="per_sqft">Per Sqft</option>
+                        <option value="fixed">Fixed Amount</option>
+                      </select>
                     </div>
+
+                    {form.maintenance_fee_type === "per_sqft" ? <>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-zinc-700">Maintenance Rate (RM / sqft)</label>
+                        <input type="number" min="0" step="0.01" value={form.maintenance_fee_per_sqft} onChange={(e) => updateField("maintenance_fee_per_sqft", e.target.value)} placeholder="e.g. 0.33" className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-zinc-700">Calculation Basis</label>
+                        <select value={form.maintenance_calculation_basis} onChange={(e) => updateField("maintenance_calculation_basis", e.target.value)} className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900">
+                          <option value="built_up">Built-Up Size</option>
+                          <option value="land_size">Land Size</option>
+                        </select>
+                      </div>
+                    </> : null}
+
+                    {form.maintenance_fee_type === "fixed" ? <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-700">Fixed Monthly Maintenance (RM / month)</label>
+                      <input type="number" min="0" step="0.01" value={form.maintenance_fee_fixed_monthly} onChange={(e) => updateField("maintenance_fee_fixed_monthly", e.target.value)} placeholder="e.g. 150" className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none focus:border-zinc-900" />
+                    </div> : null}
 
                     <div className="md:col-span-2 rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                       <p className="text-sm font-semibold text-zinc-800">Person In Charge</p>

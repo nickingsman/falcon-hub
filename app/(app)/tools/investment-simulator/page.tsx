@@ -20,6 +20,7 @@ import {
   type InvestmentSimulatorInput,
   type InvestmentYearResult,
 } from "@/lib/investment-simulator";
+import { resolveMonthlyMaintenance, type MaintenanceCalculationBasis, type MaintenanceFeeType } from "@/lib/project-property";
 
 type ScenarioSelection = InvestmentScenario | "custom";
 type PresentationMode = "simple" | "advanced";
@@ -51,6 +52,9 @@ type ProjectOption = {
   developer: string | null;
   location: string | null;
   maintenance_fee_per_sqft: number | null;
+  maintenance_fee_type: MaintenanceFeeType | null;
+  maintenance_fee_fixed_monthly: number | null;
+  maintenance_calculation_basis: MaintenanceCalculationBasis | null;
 };
 
 type UnitTypeOption = {
@@ -59,6 +63,7 @@ type UnitTypeOption = {
   type_name: string | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   spa_price_from: number | null;
   price_from: number | null;
   estimated_rental_from: number | null;
@@ -666,13 +671,18 @@ export default function InvestmentSimulatorPage() {
     if (!unitType) return;
     const spaPrice = unitType.spa_price_from ?? unitType.price_from;
     const nettPrice = unitType.price_from ?? spaPrice;
-    const maintenance = unitType.size_sqft !== null && project?.maintenance_fee_per_sqft !== null && project?.maintenance_fee_per_sqft !== undefined ? unitType.size_sqft * project.maintenance_fee_per_sqft : null;
+    const maintenance = project ? resolveMonthlyMaintenance(project, unitType) : null;
     setForm((current) => ({
       ...current,
       spaPrice: spaPrice === null ? current.spaPrice : String(spaPrice),
       nettPrice: nettPrice === null ? current.nettPrice : String(nettPrice),
       startingMonthlyRental: unitType.estimated_rental_from === null ? current.startingMonthlyRental : String(unitType.estimated_rental_from),
-      monthlyMaintenance: maintenance === null ? current.monthlyMaintenance : String(maintenance),
+      monthlyMaintenance:
+        maintenance === null
+          ? project?.maintenance_fee_type
+            ? ""
+            : current.monthlyMaintenance
+          : String(maintenance),
     }));
   }
 

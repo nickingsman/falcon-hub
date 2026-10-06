@@ -79,6 +79,7 @@ function getUnitTypePayload(body: Record<string, unknown>) {
   const additionalRooms = normalizeInteger(body.additional_rooms, 0);
   const bathrooms = normalizeInteger(body.bathrooms, Number.NaN);
   const sizeSqft = normalizeInteger(body.size_sqft, Number.NaN);
+  const landSizeSqft = normalizeInteger(body.land_size_sqft, Number.NaN);
   const defaultCarparks = normalizeInteger(body.default_carparks, Number.NaN);
   const sortOrder = normalizeInteger(body.sort_order, 0);
   const normalizedBedrooms = Number.isFinite(bedrooms) ? bedrooms : null;
@@ -102,6 +103,7 @@ function getUnitTypePayload(body: Record<string, unknown>) {
     bathrooms: normalizedBathrooms,
     display_configuration: displayConfiguration,
     size_sqft: Number.isFinite(sizeSqft) ? sizeSqft : null,
+    land_size_sqft: Number.isFinite(landSizeSqft) ? landSizeSqft : null,
     default_carparks: Number.isFinite(defaultCarparks) ? defaultCarparks : null,
     carpark_description: normalizeNullableText(body.carpark_description),
     layout_media_id: normalizeNullableText(body.layout_media_id),
@@ -124,6 +126,9 @@ function validateBaseUnitTypePayload(payload: ReturnType<typeof getUnitTypePaylo
   }
   if (payload.size_sqft !== null && payload.size_sqft <= 0) {
     return "Size must be more than 0 sqft";
+  }
+  if (payload.land_size_sqft !== null && payload.land_size_sqft <= 0) {
+    return "Land Size must be more than 0 sqft";
   }
   if (payload.default_carparks !== null && payload.default_carparks < 0) {
     return "Default Carparks must be a non-negative whole number";
@@ -240,6 +245,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         bathrooms,
         display_configuration,
         size_sqft,
+        land_size_sqft,
         default_carparks,
         carpark_description,
         layout_media_id,

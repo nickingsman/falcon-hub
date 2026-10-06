@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { formatMaintenanceConfiguration } from "@/lib/project-property";
 
 type Project = {
   id: string;
@@ -13,8 +14,10 @@ type Project = {
   developer: string | null;
   location: string | null;
   property_type: string | null;
+  property_category: "high_rise" | "landed" | null;
   tenure: string | null;
   title_type: string | null;
+  ownership_title_type: "strata" | "individual" | null;
   starting_price: number | null;
   total_units: number | null;
   status: string | null;
@@ -23,6 +26,9 @@ type Project = {
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
   maintenance_fee_per_sqft: number | null;
+  maintenance_fee_type: "per_sqft" | "fixed" | null;
+  maintenance_fee_fixed_monthly: number | null;
+  maintenance_calculation_basis: "built_up" | "land_size" | null;
   contact_role: string | null;
   contact_name: string | null;
   contact_phone: string | null;
@@ -188,6 +194,7 @@ type ProjectUnitType = {
   bathrooms: number | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   default_carparks: number | null;
   carpark_description: string | null;
   layout_media_id: string | null;
@@ -250,6 +257,7 @@ type UnitTypeForm = {
   bathrooms: string;
   display_configuration: string;
   size_sqft: string;
+  land_size_sqft: string;
   default_carparks: string;
   carpark_description: string;
   furnishing_package_id: string;
@@ -432,6 +440,7 @@ const emptyUnitTypeForm: UnitTypeForm = {
   bathrooms: "",
   display_configuration: "",
   size_sqft: "",
+  land_size_sqft: "",
   default_carparks: "",
   carpark_description: "",
   furnishing_package_id: "",
@@ -706,6 +715,7 @@ function getUnitTypeFormFromItem(item: ProjectUnitType): UnitTypeForm {
     bathrooms: item.bathrooms !== null ? String(item.bathrooms) : "",
     display_configuration: item.display_configuration || "",
     size_sqft: item.size_sqft !== null ? String(item.size_sqft) : "",
+    land_size_sqft: item.land_size_sqft !== null ? String(item.land_size_sqft) : "",
     default_carparks:
       item.default_carparks !== null ? String(item.default_carparks) : "",
     carpark_description: item.carpark_description || "",
@@ -3115,8 +3125,9 @@ export default function ProjectDetailPage() {
                             {unitType.display_configuration || "—"}
                           </span>
                           <span className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1 font-semibold text-zinc-800">
-                            {unitType.size_sqft ? `${unitType.size_sqft} sqft` : "—"}
+                            {unitType.size_sqft ? `${unitType.size_sqft} sqft Built-Up` : "—"}
                           </span>
+                          {project?.property_category === "landed" && unitType.land_size_sqft ? <span className="rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 py-1 font-semibold text-zinc-800">{unitType.land_size_sqft} sqft Land</span> : null}
                           <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-[var(--falcon-muted-text)]">
                             Order {unitType.sort_order ?? 0}
                           </span>
@@ -4209,9 +4220,11 @@ export default function ProjectDetailPage() {
   const projectSubtitle = [project.developer, project.location].filter(Boolean).join(" · ");
   const projectSummaryItems = [
     { label: "Location", value: project.location || "—" },
-    { label: "Property Type", value: project.property_type || "—" },
+    ...(project.property_category ? [{ label: "Property Category", value: project.property_category === "high_rise" ? "High-Rise" : "Landed" }] : []),
+    { label: "Property Subtype", value: project.property_type || "—" },
     { label: "Tenure", value: project.tenure || "—" },
-    { label: "Title Type", value: project.title_type || "—" },
+    ...(project.ownership_title_type ? [{ label: "Ownership Title", value: project.ownership_title_type === "strata" ? "Strata Title" : "Individual Title" }] : []),
+    { label: "Title Classification", value: project.title_type || "—" },
     {
       label: "Starting Price",
       value: project.starting_price
@@ -4232,11 +4245,7 @@ export default function ProjectDetailPage() {
     { label: "Estimated VP", value: formatEstimatedVp(project) },
     {
       label: "Maintenance Fee",
-      value:
-        project.maintenance_fee_per_sqft !== null
-          ? `RM${project.maintenance_fee_per_sqft.toFixed(2)} psf`
-          : "—",
-      helper: project.maintenance_fee_per_sqft !== null ? "including sinking fund" : "",
+      value: formatMaintenanceConfiguration(project) || "—",
     },
     {
       label: "Person In Charge",
@@ -4453,7 +4462,7 @@ export default function ProjectDetailPage() {
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-zinc-700">
-                      Size
+                      Built-Up Size
                     </label>
                     <input
                       type="number"
@@ -4464,6 +4473,10 @@ export default function ProjectDetailPage() {
                       placeholder="938"
                     />
                   </div>
+                  {project.property_category === "landed" ? <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-700">Land Size</label>
+                    <input type="number" min="1" value={unitTypeForm.land_size_sqft} onChange={(event) => updateUnitTypeField("land_size_sqft", event.target.value)} className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-900" placeholder="1650" />
+                  </div> : null}
                 </div>
 
                 <div>

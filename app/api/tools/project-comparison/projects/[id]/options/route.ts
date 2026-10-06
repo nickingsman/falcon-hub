@@ -35,6 +35,7 @@ type UnitTypeRow = {
   bathrooms: number | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   default_carparks: number | null;
   carpark_description: string | null;
   layout_media_id: string | null;
@@ -139,12 +140,17 @@ export async function GET(_request: Request, { params }: RouteContext) {
         developer,
         location,
         property_type,
+        property_category,
         tenure,
         title_type,
+        ownership_title_type,
         total_units,
         estimated_vp_year,
         estimated_vp_quarter,
-        maintenance_fee_per_sqft
+        maintenance_fee_per_sqft,
+        maintenance_fee_type,
+        maintenance_fee_fixed_monthly,
+        maintenance_calculation_basis
       `)
       .eq("id", id)
       .eq("is_deleted", false)
@@ -177,6 +183,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
           bathrooms,
           display_configuration,
           size_sqft,
+          land_size_sqft,
           default_carparks,
           carpark_description,
           layout_media_id,
@@ -406,12 +413,17 @@ export async function GET(_request: Request, { params }: RouteContext) {
         developer: project.developer,
         location: project.location,
         property_type: project.property_type,
+        property_category: project.property_category,
         tenure: project.tenure,
         title_type: project.title_type,
+        ownership_title_type: project.ownership_title_type,
         total_units: project.total_units,
         estimated_vp_year: project.estimated_vp_year,
         estimated_vp_quarter: project.estimated_vp_quarter,
         maintenance_fee_per_sqft: project.maintenance_fee_per_sqft,
+        maintenance_fee_type: project.maintenance_fee_type,
+        maintenance_fee_fixed_monthly: project.maintenance_fee_fixed_monthly,
+        maintenance_calculation_basis: project.maintenance_calculation_basis,
         cover_media: coverMedia
           ? {
               title: coverMedia.title,
@@ -436,6 +448,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
           bathrooms: unitType.bathrooms,
           display_configuration: unitType.display_configuration,
           size_sqft: unitType.size_sqft,
+          land_size_sqft: unitType.land_size_sqft,
           default_carparks: unitType.default_carparks,
           carpark_description: unitType.carpark_description,
           spa_price_from: normalizeNullableNumber(unitType.spa_price_from),

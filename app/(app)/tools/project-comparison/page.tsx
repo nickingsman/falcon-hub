@@ -75,6 +75,7 @@ type UnitTypeOption = {
   bathrooms: number | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   default_carparks: number | null;
   carpark_description: string | null;
   spa_price_from: number | null;
@@ -149,12 +150,17 @@ type ProjectOptions = {
     developer: string | null;
     location: string | null;
     property_type: string | null;
+    property_category: string | null;
     tenure: string | null;
     title_type: string | null;
+    ownership_title_type: string | null;
     total_units: number | null;
     estimated_vp_year: number | null;
     estimated_vp_quarter: number | null;
     maintenance_fee_per_sqft: number | null;
+    maintenance_fee_type: "per_sqft" | "fixed" | null;
+    maintenance_fee_fixed_monthly: number | null;
+    maintenance_calculation_basis: "built_up" | "land_size" | null;
     cover_media: ProjectCoverMedia | null;
   };
   unit_types: UnitTypeOption[];
@@ -539,7 +545,8 @@ function formatPercentValue(value: number) {
 function getUnitTypeLabel(unitType: UnitTypeOption) {
   const details = [
     unitType.display_configuration,
-    unitType.size_sqft ? `${unitType.size_sqft.toLocaleString("en-MY")} sqft` : null,
+    unitType.size_sqft ? `${unitType.size_sqft.toLocaleString("en-MY")} sqft Built-Up` : null,
+    unitType.land_size_sqft ? `${unitType.land_size_sqft.toLocaleString("en-MY")} sqft Land` : null,
   ].filter(Boolean);
   const name = [unitType.type_code, unitType.type_name].filter(Boolean).join(" - ");
 
@@ -1352,7 +1359,7 @@ function buildComparisonPdfSections({
           ),
         },
         {
-          label: "Size",
+          label: "Built-Up Size",
           values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
         },
         {
@@ -1515,11 +1522,19 @@ function buildComparisonPdfSections({
           values: comparedOptions.map((option) => formatText(option.project.tenure)),
         },
         {
-          label: "Property Type",
+          label: "Property Category",
+          values: comparedOptions.map((option) => formatText(option.project.property_category === "high_rise" ? "High-Rise" : option.project.property_category === "landed" ? "Landed" : null)),
+        },
+        {
+          label: "Property Subtype",
           values: comparedOptions.map((option) => formatText(option.project.property_type)),
         },
         {
-          label: "Title Type",
+          label: "Ownership Title",
+          values: comparedOptions.map((option) => formatText(option.project.ownership_title_type === "strata" ? "Strata Title" : option.project.ownership_title_type === "individual" ? "Individual Title" : null)),
+        },
+        {
+          label: "Title Classification",
           values: comparedOptions.map((option) => formatText(option.project.title_type)),
         },
         {
@@ -1552,8 +1567,12 @@ function buildComparisonPdfSections({
           values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.finalNetPrice)),
         },
         {
-          label: "Size",
+          label: "Built-Up Size",
           values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
+        },
+        {
+          label: "Land Size",
+          values: comparedOptions.map((option) => formatSize(option.unitType.land_size_sqft)),
         },
         {
           label: "Bedrooms",
@@ -3182,7 +3201,11 @@ export default function ProjectComparisonPage() {
             price_from: unitType.price_from,
             price_to: unitType.price_to,
             size_sqft: unitType.size_sqft,
+            land_size_sqft: unitType.land_size_sqft,
             maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
+            maintenance_fee_type: options.project.maintenance_fee_type,
+            maintenance_fee_fixed_monthly: options.project.maintenance_fee_fixed_monthly,
+            maintenance_calculation_basis: options.project.maintenance_calculation_basis,
             estimated_rental_from: unitType.estimated_rental_from,
             estimated_rental_to: unitType.estimated_rental_to,
           },
@@ -3194,7 +3217,11 @@ export default function ProjectComparisonPage() {
             price_from: effectiveComparisonPrice.value,
             price_to: effectiveComparisonPrice.value,
             size_sqft: unitType.size_sqft,
+            land_size_sqft: unitType.land_size_sqft,
             maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
+            maintenance_fee_type: options.project.maintenance_fee_type,
+            maintenance_fee_fixed_monthly: options.project.maintenance_fee_fixed_monthly,
+            maintenance_calculation_basis: options.project.maintenance_calculation_basis,
             estimated_rental_from: unitType.estimated_rental_from,
             estimated_rental_to: unitType.estimated_rental_to,
           },
@@ -3205,7 +3232,11 @@ export default function ProjectComparisonPage() {
             price_from: effectiveSpaPrice.value,
             price_to: effectiveSpaPrice.value,
             size_sqft: unitType.size_sqft,
+            land_size_sqft: unitType.land_size_sqft,
             maintenance_fee_per_sqft: options.project.maintenance_fee_per_sqft,
+            maintenance_fee_type: options.project.maintenance_fee_type,
+            maintenance_fee_fixed_monthly: options.project.maintenance_fee_fixed_monthly,
+            maintenance_calculation_basis: options.project.maintenance_calculation_basis,
             estimated_rental_from: unitType.estimated_rental_from,
             estimated_rental_to: unitType.estimated_rental_to,
           },
@@ -4065,7 +4096,7 @@ export default function ProjectComparisonPage() {
                   ),
                 },
                 {
-                  label: "Size",
+                  label: "Built-Up Size",
                   values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
                 },
                 {
@@ -4252,11 +4283,19 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => formatText(option.project.tenure)),
                 },
                 {
-                  label: "Property Type",
+                  label: "Property Category",
+                  values: comparedOptions.map((option) => formatText(option.project.property_category === "high_rise" ? "High-Rise" : option.project.property_category === "landed" ? "Landed" : null)),
+                },
+                {
+                  label: "Property Subtype",
                   values: comparedOptions.map((option) => formatText(option.project.property_type)),
                 },
                 {
-                  label: "Title Type",
+                  label: "Ownership Title",
+                  values: comparedOptions.map((option) => formatText(option.project.ownership_title_type === "strata" ? "Strata Title" : option.project.ownership_title_type === "individual" ? "Individual Title" : null)),
+                },
+                {
+                  label: "Title Classification",
                   values: comparedOptions.map((option) => formatText(option.project.title_type)),
                 },
                 {
@@ -4290,8 +4329,12 @@ export default function ProjectComparisonPage() {
                   values: comparedOptions.map((option) => formatMoneyRange(option.unitMetrics.finalNetPrice)),
                 },
                 {
-                  label: "Size",
+                  label: "Built-Up Size",
                   values: comparedOptions.map((option) => formatSize(option.unitType.size_sqft)),
+                },
+                {
+                  label: "Land Size",
+                  values: comparedOptions.map((option) => formatSize(option.unitType.land_size_sqft)),
                 },
                 {
                   label: "Bedrooms",

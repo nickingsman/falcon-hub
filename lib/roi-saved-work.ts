@@ -31,6 +31,7 @@ export type RoiSavedWorkFormV1 = {
   unitType: string;
   unitConfiguration: string;
   unitSizeSqft: string;
+  landSizeSqft: string;
   carpark: string;
   calculationDate: string;
   packageValidUntil: string;
@@ -40,6 +41,9 @@ export type RoiSavedWorkFormV1 = {
   loanTenureYears: string;
   expectedMonthlyRental: string;
   maintenanceRatePerSqft: string;
+  maintenanceFeeType: "per_sqft" | "fixed" | "";
+  maintenanceCalculationBasis: "built_up" | "land_size" | "";
+  fixedMonthlyMaintenance: string;
   otherUpfrontCosts: string;
 };
 
@@ -82,6 +86,7 @@ export type RoiSavedUnitPresentationSnapshotV1 = {
   typeName: string | null;
   configuration: string | null;
   sizeSqft: number | null;
+  landSizeSqft: number | null;
   carpark: string;
   layout: RoiSavedLayoutSnapshotV1 | null;
   furnishingPackage: {
@@ -203,6 +208,7 @@ function normalizeUnitPresentationSnapshot(
     typeName: nullableString(value.typeName),
     configuration: nullableString(value.configuration),
     sizeSqft: nullableNumber(value.sizeSqft),
+    landSizeSqft: nullableNumber(value.landSizeSqft),
     carpark: stringValue(value.carpark),
     layout: normalizeLayoutSnapshot(value.layout),
     furnishingPackage,
@@ -259,6 +265,7 @@ export function validateRoiSavedWorkPayload(value: unknown):
     unitType: stringValue(value.form.unitType),
     unitConfiguration: stringValue(value.form.unitConfiguration),
     unitSizeSqft: stringValue(value.form.unitSizeSqft),
+    landSizeSqft: stringValue(value.form.landSizeSqft),
     carpark: stringValue(value.form.carpark),
     calculationDate: stringValue(value.form.calculationDate),
     packageValidUntil: stringValue(value.form.packageValidUntil),
@@ -268,6 +275,15 @@ export function validateRoiSavedWorkPayload(value: unknown):
     loanTenureYears: stringValue(value.form.loanTenureYears),
     expectedMonthlyRental: stringValue(value.form.expectedMonthlyRental),
     maintenanceRatePerSqft: stringValue(value.form.maintenanceRatePerSqft),
+    maintenanceFeeType:
+      value.form.maintenanceFeeType === "fixed" || value.form.maintenanceFeeType === "per_sqft"
+        ? value.form.maintenanceFeeType
+        : value.form.maintenanceRatePerSqft ? "per_sqft" : "",
+    maintenanceCalculationBasis:
+      value.form.maintenanceCalculationBasis === "land_size" || value.form.maintenanceCalculationBasis === "built_up"
+        ? value.form.maintenanceCalculationBasis
+        : value.form.maintenanceRatePerSqft ? "built_up" : "",
+    fixedMonthlyMaintenance: stringValue(value.form.fixedMonthlyMaintenance),
     otherUpfrontCosts: stringValue(value.form.otherUpfrontCosts),
   };
 

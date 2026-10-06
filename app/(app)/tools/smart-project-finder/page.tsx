@@ -125,10 +125,11 @@ function getUnitConfiguration(unitType: SmartFinderUnitTypeFact) {
   return [roomLabel, bathroomLabel].filter(Boolean).join("");
 }
 
-function getPrimaryUnitFacts(unitType: SmartFinderUnitTypeFact) {
+function getPrimaryUnitFacts(unitType: SmartFinderUnitTypeFact, propertyCategory: string | null) {
   return [
     getUnitConfiguration(unitType),
-    typeof unitType.size_sqft === "number" ? `${unitType.size_sqft.toLocaleString("en-MY")} sqft` : null,
+    typeof unitType.size_sqft === "number" ? `${unitType.size_sqft.toLocaleString("en-MY")} sqft Built-Up` : null,
+    propertyCategory === "landed" && typeof unitType.land_size_sqft === "number" ? `${unitType.land_size_sqft.toLocaleString("en-MY")} sqft Land` : null,
   ].filter(Boolean);
 }
 
@@ -1165,7 +1166,7 @@ export default function SmartProjectFinderPage() {
                   <div className="divide-y divide-zinc-100">
                     {projectResult.matchingUnitTypes.map((match) => {
                       const budgetBadge = getBudgetBadge(match.hardFilters.budget.status);
-                      const primaryFacts = getPrimaryUnitFacts(match.unitType);
+                      const primaryFacts = getPrimaryUnitFacts(match.unitType, projectResult.project.property_category);
                       const secondaryFacts = getSecondaryUnitFacts(match.unitType);
                       const unitTypeLabel = getUnitTypeLabel(match.unitType);
                       const projectSelection = getSelectionForProject(projectResult.project.id);

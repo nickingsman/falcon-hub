@@ -49,6 +49,7 @@ export type SmartFinderProjectFact = {
   location: string | null;
   tenure: string | null;
   property_type: string | null;
+  property_category: "high_rise" | "landed" | null;
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
 };
@@ -60,6 +61,7 @@ export type SmartFinderUnitTypeFact = {
   type_name: string | null;
   display_configuration: string | null;
   size_sqft: number | null;
+  land_size_sqft: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
   default_carparks: number | null;

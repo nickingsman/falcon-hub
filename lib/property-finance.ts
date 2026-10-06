@@ -1,3 +1,5 @@
+import { resolveMonthlyMaintenance, type MaintenanceCalculationBasis, type MaintenanceFeeType } from "./project-property";
+
 export type DiscountMethod = "percentage_spa" | "percentage_previous_balance" | "fixed";
 export type CashBenefitTreatment = "immediate_offset" | "refund_later";
 export type PackageItemType = "discount" | "cash_benefit" | "non_cash_benefit";
@@ -39,7 +41,11 @@ export type RoiCalculatorInput = {
   annualInterestRatePercent: number;
   loanTenureYears: number;
   unitSizeSqft: number;
+  landSizeSqft?: number;
   maintenanceRatePerSqft: number;
+  maintenanceFeeType?: MaintenanceFeeType | null;
+  maintenanceCalculationBasis?: MaintenanceCalculationBasis | null;
+  fixedMonthlyMaintenance?: number;
   expectedMonthlyRental: number;
   otherUpfrontCosts: number;
 };
@@ -183,9 +189,15 @@ export function calculateRoi(input: RoiCalculatorInput): RoiCalculatorResult {
     input.annualInterestRatePercent,
     input.loanTenureYears,
   );
-  const monthlyMaintenance = clampMoney(
-    input.unitSizeSqft * input.maintenanceRatePerSqft,
-  );
+  const monthlyMaintenance = clampMoney(resolveMonthlyMaintenance(
+    {
+      maintenance_fee_type: input.maintenanceFeeType,
+      maintenance_fee_per_sqft: input.maintenanceRatePerSqft,
+      maintenance_fee_fixed_monthly: input.fixedMonthlyMaintenance,
+      maintenance_calculation_basis: input.maintenanceCalculationBasis,
+    },
+    { size_sqft: input.unitSizeSqft, land_size_sqft: input.landSizeSqft },
+  ) ?? 0);
   const upfrontCashBeforeOtherCosts = clampMoney(
     nettPrice - loanAmount - immediateOffsetBenefits,
   );

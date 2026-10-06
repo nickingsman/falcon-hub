@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { formatMaintenanceConfiguration } from "@/lib/project-property";
 
 type Project = {
   id: string;
@@ -11,14 +12,19 @@ type Project = {
   developer: string | null;
   location: string | null;
   property_type: string | null;
+  property_category: "high_rise" | "landed" | null;
   tenure: string | null;
   title_type: string | null;
+  ownership_title_type: "strata" | "individual" | null;
   starting_price: number | null;
   total_units: number | null;
   status: string | null;
   launch_date: string | null;
   unit_number_format: string | null;
   maintenance_fee_per_sqft: number | null;
+  maintenance_fee_type: "per_sqft" | "fixed" | null;
+  maintenance_fee_fixed_monthly: number | null;
+  maintenance_calculation_basis: "built_up" | "land_size" | null;
   estimated_vp_year: number | null;
   estimated_vp_quarter: number | null;
   notes: string | null;
@@ -29,7 +35,7 @@ type Project = {
 
 type Media = { id: string; title: string; description: string | null; signed_url: string | null };
 type FurnishingPackage = { id: string; package_name: string; description: string | null; items: Array<{ id: string; item_name: string; quantity: number | null; description: string | null }> };
-type UnitType = { id: string; type_code: string; type_name: string | null; display_configuration: string | null; size_sqft: number | null; bedrooms: number | null; bathrooms: number | null; additional_rooms: number; default_carparks: number | null; carpark_description: string | null; spa_price_from: number | null; spa_price_to: number | null; price_from: number | null; price_to: number | null; estimated_rental_from: number | null; estimated_rental_to: number | null; has_balcony: boolean | null; is_dual_key: boolean | null; layout: Media | null };
+type UnitType = { id: string; type_code: string; type_name: string | null; display_configuration: string | null; size_sqft: number | null; land_size_sqft: number | null; bedrooms: number | null; bathrooms: number | null; additional_rooms: number; default_carparks: number | null; carpark_description: string | null; spa_price_from: number | null; spa_price_to: number | null; price_from: number | null; price_to: number | null; estimated_rental_from: number | null; estimated_rental_to: number | null; has_balcony: boolean | null; is_dual_key: boolean | null; layout: Media | null };
 type Facing = { id: string; name: string; description: string | null; disclaimer: string | null; view_type: string | null; media: Media | null };
 type Stack = { id: string; stack_code: string; x_percent: number; y_percent: number; width_percent: number; height_percent: number; shape_type: "rectangle" | "polygon"; polygon_points: Array<{ xPercent: number; yPercent: number }> | null; unit_type: Pick<UnitType, "id" | "type_code" | "type_name" | "display_configuration"> | null; facing: Facing | null };
 type FloorPlan = { id: string; name: string; tower_code: string | null; floor_from: number; floor_to: number; media: Media | null; stacks: Stack[] };
@@ -352,15 +358,17 @@ export default function ProjectAgentViewPage() {
     { label: "Location", value: project.location },
     { label: "Developer", value: project.developer },
     { label: "Tenure", value: project.tenure },
-    { label: "Property Type", value: project.property_type },
+    ...(project.property_category ? [{ label: "Property Category", value: project.property_category === "high_rise" ? "High-Rise" : "Landed" }] : []),
+    { label: "Property Subtype", value: project.property_type },
     { label: "Price Range", value: formatCurrency(project.starting_price) },
     { label: "Total Units", value: project.total_units },
     { label: "Estimated Completion", value: formatEstimatedCompletion(project) },
-    { label: "Title Type", value: project.title_type },
+    ...(project.ownership_title_type ? [{ label: "Ownership Title", value: project.ownership_title_type === "strata" ? "Strata Title" : "Individual Title" }] : []),
+    { label: "Title Classification", value: project.title_type },
     { label: "Status", value: project.status },
     { label: "Launch Date", value: project.launch_date },
     { label: "Unit Number Format", value: project.unit_number_format },
-    { label: "Maintenance Fee", value: project.maintenance_fee_per_sqft !== null ? `RM${project.maintenance_fee_per_sqft.toFixed(2)} psf` : "—" },
+    { label: "Maintenance Fee", value: formatMaintenanceConfiguration(project) || "—" },
     {
       label: "Person In Charge",
       value: [project.contact_role, project.contact_name].filter(Boolean).join(" · ") || "—",
@@ -449,7 +457,7 @@ export default function ProjectAgentViewPage() {
                   {unitType.layout?.signed_url ? <img src={unitType.layout.signed_url} alt={unitType.layout.title || `Type ${unitType.type_code} layout`} className="max-h-72 w-full bg-white object-contain" /> : null}
                   <div className="p-5">
                     <h3 className="font-semibold text-zinc-900">{unitType.type_name || `Type ${unitType.type_code}`}</h3>
-                    <p className="mt-1 text-sm text-zinc-500">{[unitType.display_configuration, unitType.size_sqft ? `${unitType.size_sqft} sqft` : ""].filter(Boolean).join(" · ") || "Specifications pending"}</p>
+                    <p className="mt-1 text-sm text-zinc-500">{[unitType.display_configuration, unitType.size_sqft ? `${unitType.size_sqft} sqft Built-Up` : "", project.property_category === "landed" && unitType.land_size_sqft ? `${unitType.land_size_sqft} sqft Land` : ""].filter(Boolean).join(" · ") || "Specifications pending"}</p>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                       {[['Bedrooms', unitType.bedrooms], ['Bathrooms', unitType.bathrooms], ['Additional Rooms', unitType.additional_rooms], ['Carparks', unitType.carpark_description || unitType.default_carparks]].map(([label, value]) => <div key={String(label)}><p className="text-xs uppercase text-zinc-400">{label}</p><p className="mt-1 font-medium">{value ?? "—"}</p></div>)}
                       <div><p className="text-xs uppercase text-zinc-400">Balcony</p><p className="mt-1 font-medium">{unitType.has_balcony === null ? "—" : unitType.has_balcony ? "Yes" : "No"}</p></div>
