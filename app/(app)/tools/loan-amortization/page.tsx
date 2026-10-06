@@ -30,7 +30,6 @@ const defaultForm: LoanForm = {
   extraMonthlyPayment: "0",
   flexiOffsetBalance: "0",
 };
-
 const quickExtras = [100, 300, 500, 1000];
 const moneyFormatter = new Intl.NumberFormat("en-MY", {
   style: "currency",
@@ -250,14 +249,15 @@ export default function LoanAmortizationPage() {
     const loanAmount = parseNumericInput(form.loanAmount);
     const annualInterestRatePercent = parseNumericInput(form.annualInterestRatePercent);
     const tenureYears = parseNumericInput(form.tenureYears);
-    const extraMonthlyPayment = parseNumericInput(form.extraMonthlyPayment) ?? 0;
+    const extraMonthlyPayment =
+      loanType === "standard" ? (parseNumericInput(form.extraMonthlyPayment) ?? 0) : 0;
     const flexiOffsetBalance = loanType === "flexi" ? parseNumericInput(form.flexiOffsetBalance) : 0;
     const errors: Partial<Record<keyof LoanForm, string>> = {};
 
     if (loanAmount === null || loanAmount <= 0 || loanAmount > 100_000_000) errors.loanAmount = "Enter a loan amount between RM1 and RM100,000,000.";
     if (annualInterestRatePercent === null || annualInterestRatePercent < 0 || annualInterestRatePercent > 20) errors.annualInterestRatePercent = "Use an annual interest rate from 0% to 20%.";
     if (tenureYears === null || tenureYears <= 0 || tenureYears > 40 || !Number.isInteger(tenureYears * 12)) errors.tenureYears = "Use a tenure from 1 month to 40 years.";
-    if (extraMonthlyPayment < 0 || extraMonthlyPayment > 10_000_000) errors.extraMonthlyPayment = "Use an extra payment from RM0 to RM10,000,000.";
+    if (loanType === "standard" && (extraMonthlyPayment < 0 || extraMonthlyPayment > 10_000_000)) errors.extraMonthlyPayment = "Use an extra payment from RM0 to RM10,000,000.";
     if (loanType === "flexi" && (flexiOffsetBalance === null || flexiOffsetBalance < 0 || flexiOffsetBalance > 100_000_000)) errors.flexiOffsetBalance = "Use a flexi offset from RM0 to RM100,000,000.";
 
     if (Object.keys(errors).length > 0 || loanAmount === null || annualInterestRatePercent === null || tenureYears === null || flexiOffsetBalance === null) {
@@ -267,7 +267,7 @@ export default function LoanAmortizationPage() {
     const normal = generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears });
     const standardSelected = generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears, extraMonthlyPayment });
     const selected = loanType === "flexi"
-      ? generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears, extraMonthlyPayment, flexiOffsetBalance })
+      ? generateAmortizationSchedule({ loanAmount, annualInterestRatePercent, tenureYears, flexiOffsetBalance })
       : standardSelected;
 
     if (!normal || !standardSelected || !selected) return { errors, normal: null, standardSelected: null, selected: null, yearly: [], savings: null, flexiSavings: null, flexiOffsetBalance: 0 };
@@ -308,7 +308,7 @@ export default function LoanAmortizationPage() {
         <PageHeader
           eyebrow="Customer Tools"
           title="Loan Amortization"
-          description="Explain how principal, interest and outstanding loan balance change over time—and how extra repayment can shorten the loan."
+          description="Explain how principal, interest and outstanding loan balance change over time—and how extra repayment can shorten a standard loan."
           actions={<Button type="button" variant="secondary" onClick={reset}>Reset</Button>}
           meta={<StatusBadge variant="accent">Estimate only</StatusBadge>}
         />
@@ -338,23 +338,26 @@ export default function LoanAmortizationPage() {
             <Field label="Loan Amount" prefix="RM" value={form.loanAmount} onChange={(value) => updateField("loanAmount", value)} error={hasLoanAmount ? calculation.errors.loanAmount : undefined} />
             <Field label="Interest Rate" suffix="% p.a." value={form.annualInterestRatePercent} onChange={(value) => updateField("annualInterestRatePercent", value)} error={calculation.errors.annualInterestRatePercent} />
             <Field label="Loan Tenure" suffix="Years" value={form.tenureYears} onChange={(value) => updateField("tenureYears", value)} error={calculation.errors.tenureYears} />
-            <Field label="Extra Monthly Payment" prefix="RM" value={form.extraMonthlyPayment} onChange={(value) => updateField("extraMonthlyPayment", value)} error={calculation.errors.extraMonthlyPayment} />
+            {loanType === "standard" ? (
+              <Field label="Extra Monthly Payment" prefix="RM" value={form.extraMonthlyPayment} onChange={(value) => updateField("extraMonthlyPayment", value)} error={calculation.errors.extraMonthlyPayment} />
+            ) : (
+              <Field label="Flexi Offset Balance" prefix="RM" value={form.flexiOffsetBalance} onChange={(value) => updateField("flexiOffsetBalance", value)} error={calculation.errors.flexiOffsetBalance} />
+            )}
           </div>
           {loanType === "flexi" ? (
-            <div className="mt-4 max-w-md">
-              <Field label="Flexi Offset Balance" prefix="RM" value={form.flexiOffsetBalance} onChange={(value) => updateField("flexiOffsetBalance", value)} error={calculation.errors.flexiOffsetBalance} />
-              <p className="mt-2 text-xs leading-5 text-[var(--falcon-muted-text)]">Cash maintained in the flexi facility to offset the balance used for interest calculation.</p>
+            <p className="mt-2 text-xs leading-5 text-[var(--falcon-muted-text)]">Cash maintained in the flexi facility to offset the balance used for interest calculation.</p>
+          ) : null}
+          {loanType === "standard" ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-xs font-medium text-zinc-500">Quick extra payment</span>
+              {quickExtras.map((amount) => (
+                <button key={amount} type="button" onClick={() => updateField("extraMonthlyPayment", String(amount))} className="min-h-9 rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-[#d8c48e] hover:bg-[#fbf8ef]">
+                  + RM{amount.toLocaleString("en-MY")}
+                </button>
+              ))}
+              <button type="button" onClick={() => updateField("extraMonthlyPayment", "0")} className="min-h-9 rounded-full px-3 text-xs font-semibold text-zinc-500 transition hover:bg-zinc-100">Reset to RM0</button>
             </div>
           ) : null}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-xs font-medium text-zinc-500">Quick extra payment</span>
-            {quickExtras.map((amount) => (
-              <button key={amount} type="button" onClick={() => updateField("extraMonthlyPayment", String(amount))} className="min-h-9 rounded-full border border-[var(--falcon-soft-border)] bg-white px-3 text-xs font-semibold text-zinc-700 transition hover:border-[#d8c48e] hover:bg-[#fbf8ef]">
-                + RM{amount.toLocaleString("en-MY")}
-              </button>
-            ))}
-            <button type="button" onClick={() => updateField("extraMonthlyPayment", "0")} className="min-h-9 rounded-full px-3 text-xs font-semibold text-zinc-500 transition hover:bg-zinc-100">Reset to RM0</button>
-          </div>
         </section>
 
         {!calculation.selected || !calculation.normal ? (
@@ -404,7 +407,7 @@ export default function LoanAmortizationPage() {
               </>
             ) : null}
 
-            {calculation.savings ? (
+            {loanType === "standard" && calculation.savings ? (
               <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Extra Payment Impact</p>
@@ -436,7 +439,7 @@ export default function LoanAmortizationPage() {
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Amortization Schedule</p>
                     <h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">{scheduleView === "yearly" ? "Year-by-Year Summary" : "Month-to-Month Detail"}</h2>
-                    {loanType === "flexi" ? <p className="mt-1 text-sm text-zinc-500">Actual outstanding principal with the selected fixed flexi offset and extra monthly payment.</p> : calculation.savings ? <p className="mt-1 text-sm text-zinc-500">Reflects the selected extra monthly payment.</p> : null}
+                    {loanType === "flexi" ? <p className="mt-1 text-sm text-zinc-500">Actual outstanding principal with the selected fixed flexi offset.</p> : calculation.savings ? <p className="mt-1 text-sm text-zinc-500">Reflects the selected extra monthly payment.</p> : null}
                   </div>
                   <div className="inline-flex w-fit rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-1" aria-label="Amortization schedule view">
                     {(["yearly", "monthly"] as const).map((view) => (
@@ -495,14 +498,14 @@ export default function LoanAmortizationPage() {
                 </div>
               ) : (
                 <div className="overflow-x-auto border-t border-[var(--falcon-soft-border)]">
-                  <table className={`w-full text-left text-sm ${loanType === "flexi" ? "min-w-[1240px]" : "min-w-[1080px]"}`}>
+                  <table className="w-full min-w-[1080px] text-left text-sm">
                     <thead className="bg-[var(--falcon-warm-background)] text-xs uppercase tracking-[0.1em] text-zinc-500">
-                      <tr><th className="sticky left-0 bg-[var(--falcon-warm-background)] px-5 py-3">Month</th><th className="px-5 py-3 text-right">Opening Balance</th>{loanType === "flexi" ? <th className="px-5 py-3 text-right">Interest-Bearing Balance</th> : null}<th className="px-5 py-3 text-right">Payment</th><th className="px-5 py-3 text-right">Principal</th><th className="px-5 py-3 text-right">Interest</th><th className="px-5 py-3 text-right">Extra Payment</th><th className="px-5 py-3 text-right">Closing Balance</th></tr>
+                      <tr><th className="sticky left-0 bg-[var(--falcon-warm-background)] px-5 py-3">Month</th><th className="px-5 py-3 text-right">Opening Balance</th>{loanType === "flexi" ? <th className="px-5 py-3 text-right">Interest-Bearing Balance</th> : null}<th className="px-5 py-3 text-right">Payment</th><th className="px-5 py-3 text-right">Principal</th><th className="px-5 py-3 text-right">Interest</th>{loanType === "standard" ? <th className="px-5 py-3 text-right">Extra Payment</th> : null}<th className="px-5 py-3 text-right">Closing Balance</th></tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--falcon-soft-border)]">
                       {selectedMonthlyRows.map((row) => (
                         <tr key={row.month} className="text-zinc-700">
-                          <td className="sticky left-0 bg-white px-5 py-3 font-semibold text-zinc-950">Month {row.month}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.openingBalance)}</td>{loanType === "flexi" ? <td className="px-5 py-3 text-right font-semibold tabular-nums text-[var(--falcon-gold-dark)]">{formatMoney(row.interestBearingBalance)}</td> : null}<td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.payment)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.interest)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.extraPayment)}</td><td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.closingBalance)}</td>
+                          <td className="sticky left-0 bg-white px-5 py-3 font-semibold text-zinc-950">Month {row.month}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.openingBalance)}</td>{loanType === "flexi" ? <td className="px-5 py-3 text-right font-semibold tabular-nums text-[var(--falcon-gold-dark)]">{formatMoney(row.interestBearingBalance)}</td> : null}<td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.payment)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.principal)}</td><td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.interest)}</td>{loanType === "standard" ? <td className="px-5 py-3 text-right tabular-nums">{formatMoney(row.extraPayment)}</td> : null}<td className="px-5 py-3 text-right font-semibold tabular-nums text-zinc-950">{formatMoney(row.closingBalance)}</td>
                         </tr>
                       ))}
                     </tbody>

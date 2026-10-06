@@ -12,7 +12,6 @@ import {
   type BuyerPaymentScheduleResult,
   type BuyerPaymentScheduleStage,
   type PurchaseMethod,
-  type RebateTreatment,
 } from "@/lib/buyer-payment-schedule";
 import { scheduleHStages, type ScheduleHStageId } from "@/lib/progressive-interest";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
@@ -48,11 +47,6 @@ const timelineStageIds: TimelineStageId[] = [
 ];
 
 const quarterOptions = ["Q1", "Q2", "Q3", "Q4"];
-
-const rebateTreatmentOptions: Array<{ value: RebateTreatment; label: string }> = [
-  { value: "direct_offset", label: "Direct Payment Offset" },
-  { value: "cashback_later", label: "Cashback Later" },
-];
 
 const shortStageLabels: Record<TimelineStageId, { english: string; chinese: string }> = {
   "2a": { english: "Foundation", chinese: "地基" },
@@ -734,7 +728,6 @@ export default function BuyerPaymentSchedulePage() {
   const [purchaseMethod, setPurchaseMethod] = useState<PurchaseMethod>("loan");
   const [loanMarginPercent, setLoanMarginPercent] = useState("90");
   const [developerRebatePercent, setDeveloperRebatePercent] = useState("0");
-  const [rebateTreatment, setRebateTreatment] = useState<RebateTreatment>("direct_offset");
   const [rebateStageId, setRebateStageId] = useState<ScheduleHStageId>("spa");
   const [stageTimings, setStageTimings] = useState(createInitialStageTimings);
   const [currentStageId, setCurrentStageId] = useState<TimelineStageId | "">("");
@@ -777,10 +770,10 @@ export default function BuyerPaymentSchedulePage() {
         purchaseMethod,
         loanMarginPercent: numericInput.loanMarginPercent,
         developerRebatePercent: numericInput.developerRebatePercent,
-        rebateTreatment,
+        rebateTreatment: "direct_offset",
         rebateStageId,
       }),
-    [numericInput, purchaseMethod, rebateStageId, rebateTreatment],
+    [numericInput, purchaseMethod, rebateStageId],
   );
 
   const invalidSpaPrice =
@@ -1034,7 +1027,7 @@ export default function BuyerPaymentSchedulePage() {
                   </div>
                   {paymentSchedule.isValid && !invalidDeveloperRebate ? (
                     <span className="mt-1 block text-xs text-zinc-500">
-                      {rebateTreatment === "cashback_later" ? "Cashback" : "Offset"}: {formatCurrency(paymentSchedule.effectiveDeveloperRebate)}
+                      Offset: {formatCurrency(paymentSchedule.effectiveDeveloperRebate)}
                       {paymentSchedule.developerRebateAmount >
                       paymentSchedule.effectiveDeveloperRebate
                         ? isCashPurchase
@@ -1047,26 +1040,7 @@ export default function BuyerPaymentSchedulePage() {
 
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
-                    Rebate Treatment
-                  </span>
-                  <select
-                    value={rebateTreatment}
-                    onChange={(event) => setRebateTreatment(event.target.value as RebateTreatment)}
-                    className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none focus:border-zinc-400"
-                  >
-                    {rebateTreatmentOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block text-sm text-zinc-600">
-                  <span className="mb-1 block font-medium text-zinc-900">
-                    {rebateTreatment === "cashback_later"
-                      ? "Cashback Release Stage"
-                      : "Application Stage"}
+                    Application Stage
                   </span>
                   <select
                     value={rebateStageId}

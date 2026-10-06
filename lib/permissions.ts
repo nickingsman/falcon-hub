@@ -1,6 +1,7 @@
 import type { UserProfile, UserRole } from "@/lib/auth";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { isWhatsAppFlowRoleAllowed } from "@/lib/whatsapp-flow";
 
 const roleRank: Record<UserRole, number> = {
   agent: 1,
@@ -51,6 +52,23 @@ export function canViewSales(profile: UserProfile | null) {
 
 export function canManageSales(profile: UserProfile | null) {
   return hasRole(profile, ["super_admin", "admin"]);
+}
+
+export function canAccessWhatsAppFlow(profile: UserProfile | null) {
+  return Boolean(
+    profile &&
+      profile.status === "active" &&
+      isWhatsAppFlowRoleAllowed(profile.role),
+  );
+}
+
+export async function requireWhatsAppFlowAccess() {
+  const authContext = await getAuthenticatedUserProfile();
+  if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
+  if (!canAccessWhatsAppFlow(authContext.profile)) {
+    return { authorized: false, response: forbiddenJson("Super Admin access is required") } as const;
+  }
+  return { authorized: true, ...authContext } as const;
 }
 
 export async function requireSalesApiAccess(write = false) {

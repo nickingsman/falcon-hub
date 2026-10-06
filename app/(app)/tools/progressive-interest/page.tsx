@@ -11,6 +11,7 @@ import { calculateMonthlyInstalment } from "@/lib/property-finance";
 import {
   calculateProgressiveInterest,
   scheduleHStages,
+  type ProgressiveInterestMode,
   type ProgressiveInterestStageResult,
   type ProgressiveInterestResult,
   type ScheduleHStageId,
@@ -643,7 +644,7 @@ function buildProgressiveInterestProposalHtml({
         <div>
           <p class="eyebrow">Progressive Interest Estimate</p>
           <h1>Progressive Interest Estimate</h1>
-          <p class="subtitle">Schedule H · Under Construction Property</p>
+          <p class="subtitle">Schedule H · Under Construction Property · ${result.mode === "stage_only" ? "Stage Only" : "Cumulative"}</p>
           ${
             projectName || unitNo
               ? `<p class="project-line">${escapeHtml(
@@ -659,6 +660,7 @@ function buildProgressiveInterestProposalHtml({
         ${compactField("Loan Margin", formatPercent(result.loanMarginPercent))}
         ${compactField("Loan Amount", formatCurrency(result.loanAmount))}
         ${compactField("Interest Rate", formatPercent(result.annualInterestRatePercent))}
+        ${compactField("Interest Mode", result.mode === "stage_only" ? "Stage Only" : "Cumulative")}
         ${compactField("Estimated VP", estimatedVp)}
         ${compactField("Est. Full Instalment", `${formatCurrencyDetailed(fullMonthlyInstalment)}/mo`)}
       </section>
@@ -702,8 +704,9 @@ function buildProgressiveInterestProposalHtml({
 
       <p class="disclaimer">
         <strong>Estimate only / 仅供估算.</strong>
-        Estimated bank releases assume the buyer's required equity is used first, followed by
-        progressive bank financing. 预计银行放款以买家先支付所需自付部分，之后才由银行逐步放款为估算基础。
+        ${result.mode === "stage_only"
+          ? "Stage Only estimates each stage independently using the selected loan margin and does not include prior-stage releases. Stage Only 模式按所选贷款比例独立估算每个阶段，不累加之前阶段的放款。"
+          : "Estimated bank releases assume the buyer's required equity is used first, followed by progressive bank financing. 预计银行放款以买家先支付所需自付部分，之后才由银行逐步放款为估算基础。"}
         Actual progressive interest depends on the actual timing and amount of loan disbursement by
         the bank, construction progress, applicable interest rate and financing terms.
         实际 Progressive Interest 将根据银行实际放款时间与金额、建筑进度、适用利率及贷款条件而有所不同。
@@ -726,6 +729,7 @@ export default function ProgressiveInterestPage() {
   const [loanMarginPercent, setLoanMarginPercent] = useState("90");
   const [annualInterestRatePercent, setAnnualInterestRatePercent] = useState("4.00");
   const [loanTenureYears, setLoanTenureYears] = useState("35");
+  const [interestMode, setInterestMode] = useState<ProgressiveInterestMode>("cumulative");
   const [stageTimings, setStageTimings] = useState(createInitialStageTimings);
   const [currentStageId, setCurrentStageId] = useState<TimelineStageId | "">("");
   const [expandedStageIds, setExpandedStageIds] = useState<Set<ScheduleHStageId>>(
@@ -780,11 +784,13 @@ export default function ProgressiveInterestPage() {
         spaPrice: numericInput.spaPrice,
         loanMarginPercent: numericInput.loanMarginPercent,
         annualInterestRatePercent: numericInput.annualInterestRatePercent,
+        mode: interestMode,
       }),
     [
       numericInput.annualInterestRatePercent,
       numericInput.loanMarginPercent,
       numericInput.spaPrice,
+      interestMode,
     ],
   );
 
@@ -1266,12 +1272,40 @@ export default function ProgressiveInterestPage() {
                 </div>
               </label>
             </div>
+            <div className="mt-5">
+              <p className="text-sm font-medium text-zinc-900">Interest Calculation Mode</p>
+              <div className="mt-2 inline-flex rounded-full border border-zinc-200 bg-zinc-50 p-1" aria-label="Progressive interest calculation mode">
+                {(["cumulative", "stage_only"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setInterestMode(mode)}
+                    aria-pressed={interestMode === mode}
+                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${interestMode === mode ? "bg-zinc-900 text-white shadow-sm" : "text-zinc-600 hover:bg-white"}`}
+                  >
+                    {mode === "cumulative" ? "Cumulative" : "Stage Only"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm leading-6 text-zinc-600">
-              Estimated bank releases assume the buyer&apos;s required equity is used first,
-              followed by progressive bank financing.
-              <span className="mt-1 block">
-                预计银行放款以买家先支付所需自付部分，之后才由银行逐步放款为估算基础。
-              </span>
+              {interestMode === "cumulative" ? (
+                <>
+                  Estimated bank releases assume the buyer&apos;s required equity is used first,
+                  followed by progressive bank financing.
+                  <span className="mt-1 block">
+                    预计银行放款以买家先支付所需自付部分，之后才由银行逐步放款为估算基础。
+                  </span>
+                </>
+              ) : (
+                <>
+                  Each stage is estimated independently using the selected loan margin. Prior-stage
+                  bank releases are not included.
+                  <span className="mt-1 block">
+                    每个阶段按所选贷款比例独立估算，不累加之前阶段的银行放款。
+                  </span>
+                </>
+              )}
             </div>
           </section>
 
@@ -1415,9 +1449,12 @@ export default function ProgressiveInterestPage() {
 
         <section className="rounded-[28px] border border-zinc-200 bg-white p-6 shadow-[0_10px_30px_rgba(15,23,42,0.04)] xl:col-span-2">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-950">
-              Progressive Payment Schedule
-            </h2>
+              <h2 className="text-lg font-semibold text-zinc-950">
+                Progressive Payment Schedule
+              </h2>
+              <p className="mt-1 text-sm font-semibold text-[#087F6B]">
+                {interestMode === "cumulative" ? "Cumulative Mode" : "Stage Only Mode"}
+              </p>
             <p className="mt-1 text-sm text-zinc-500">
               Schedule H stage details with bilingual explanations.
             </p>

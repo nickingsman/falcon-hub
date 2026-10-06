@@ -13,6 +13,7 @@ type AppPermissions = {
   canManageProjects: boolean;
   canManageUserApprovals: boolean;
   canManageUsers: boolean;
+  canAccessWhatsAppFlow: boolean;
 };
 
 const readOnlyPermissions: AppPermissions = {
@@ -25,6 +26,7 @@ const readOnlyPermissions: AppPermissions = {
   canManageProjects: false,
   canManageUserApprovals: false,
   canManageUsers: false,
+  canAccessWhatsAppFlow: false,
 };
 
 const AppPermissionContext = createContext<AppPermissions>(readOnlyPermissions);

@@ -60,6 +60,16 @@ test("Case A: base investment uses canonical loan and explicit growth convention
     assert.ok(Math.abs(year.netSaleProceedsBeforeTax - (year.propertyValue - year.estimatedSellingCost - year.outstandingLoan)) < 0.000001);
     assert.ok(Math.abs(year.estimatedInvestmentProfit - (year.netSaleProceedsBeforeTax + year.cumulativePositiveOperatingCashFlow - year.totalCashInvested)) < 0.000001);
   }
+
+  result.years.forEach((year, index) => {
+    const previousCumulative = result.years[index - 1]?.cumulativeOperatingCashFlow ?? 0;
+    assert.ok(
+      Math.abs(
+        year.annualOperatingCashFlow -
+          (year.cumulativeOperatingCashFlow - previousCumulative),
+      ) < 0.000001,
+    );
+  });
 });
 
 test("Case B: zero capital appreciation keeps property value constant", () => {

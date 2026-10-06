@@ -25,6 +25,8 @@ export type ProgressiveInterestCalculationStatus =
   | "not_progressive_interest_stage"
   | "invalid_input";
 
+export type ProgressiveInterestMode = "cumulative" | "stage_only";
+
 export type ScheduleHStageDefinition = {
   id: ScheduleHStageId;
   code: string;
@@ -40,6 +42,7 @@ export type ProgressiveInterestInput = {
   spaPrice: number;
   loanMarginPercent: number;
   annualInterestRatePercent: number;
+  mode?: ProgressiveInterestMode;
 };
 
 export type ProgressiveInterestStageResult = {
@@ -56,6 +59,7 @@ export type ProgressiveInterestStageResult = {
 };
 
 export type ProgressiveInterestResult = {
+  mode: ProgressiveInterestMode;
   spaPrice: number;
   loanMarginPercent: number;
   annualInterestRatePercent: number;
@@ -254,6 +258,7 @@ export function calculateProgressiveInterest(
     : 0;
   const loanAmount = isValid ? spaPrice * (loanMarginPercent / 100) : 0;
   const buyerEquity = isValid ? Math.max(spaPrice - loanAmount, 0) : 0;
+  const mode = input.mode ?? "cumulative";
   let cumulativeSchedulePercentage = 0;
   let cumulativeBuyerFunded = 0;
   let cumulativeBankDisbursement = 0;
@@ -278,21 +283,31 @@ export function calculateProgressiveInterest(
     }
 
     const remainingBuyerEquityBeforeStage = Math.max(buyerEquity - cumulativeBuyerFunded, 0);
-    const buyerFundedForStage = Math.min(stageAmount, remainingBuyerEquityBeforeStage);
+    const buyerFundedForStage =
+      mode === "stage_only"
+        ? stageAmount * (1 - loanMarginPercent / 100)
+        : Math.min(stageAmount, remainingBuyerEquityBeforeStage);
     const remainingLoanAmount = Math.max(loanAmount - cumulativeBankDisbursement, 0);
-    const estimatedBankReleaseForStage = Math.min(
-      Math.max(stageAmount - buyerFundedForStage, 0),
-      remainingLoanAmount,
-    );
+    const estimatedBankReleaseForStage =
+      mode === "stage_only"
+        ? stageAmount * (loanMarginPercent / 100)
+        : Math.min(
+            Math.max(stageAmount - buyerFundedForStage, 0),
+            remainingLoanAmount,
+          );
 
     cumulativeBuyerFunded += buyerFundedForStage;
     cumulativeBankDisbursement += estimatedBankReleaseForStage;
 
     const cumulativeEstimatedBankDisbursement = Math.min(cumulativeBankDisbursement, loanAmount);
+    const interestBearingBankDisbursement =
+      mode === "stage_only"
+        ? estimatedBankReleaseForStage
+        : cumulativeEstimatedBankDisbursement;
     const estimatedMonthlyProgressiveInterest =
-      cumulativeEstimatedBankDisbursement <= 0 || stage.category !== "construction"
+      interestBearingBankDisbursement <= 0 || stage.category !== "construction"
         ? null
-        : cumulativeEstimatedBankDisbursement * (annualInterestRatePercent / 100) / 12;
+        : interestBearingBankDisbursement * (annualInterestRatePercent / 100) / 12;
     const calculationStatus =
       stage.category === "construction" && estimatedBankReleaseForStage > 0
         ? "system_estimate"
@@ -301,7 +316,9 @@ export function calculateProgressiveInterest(
           : "not_progressive_interest_stage";
     const assumption =
       calculationStatus === "system_estimate"
-        ? "Automatic estimate using buyer-equity-first funding followed by progressive bank financing."
+        ? mode === "stage_only"
+          ? "Independent stage estimate using the selected loan margin without prior-stage bank releases."
+          : "Automatic estimate using buyer-equity-first funding followed by progressive bank financing."
         : calculationStatus === "buyer_equity_stage"
           ? "This stage is funded by the buyer's required equity before progressive bank financing begins."
           : "This Schedule H stage is shown for payment-stage context only.";
@@ -321,6 +338,7 @@ export function calculateProgressiveInterest(
   });
 
   return {
+    mode,
     spaPrice,
     loanMarginPercent,
     annualInterestRatePercent,

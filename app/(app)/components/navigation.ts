@@ -6,12 +6,13 @@ export type NavigationPermissions = {
   role: UserRole | null;
   canManageUserApprovals: boolean;
   canManageUsers: boolean;
+  canAccessWhatsAppFlow: boolean;
 };
 
 export type AppNavItem = {
   label: string;
   href: string;
-  permission?: "canManageUsers";
+  permission?: "canManageUsers" | "canAccessWhatsAppFlow";
   minRole?: "leader";
   children?: AppNavItem[];
 };
@@ -34,7 +35,7 @@ export const desktopNavItems: AppNavItem[] = [
   { label: "DSR Calculator", href: "/tools/dsr-calculator" },
   { label: "Check In", href: "/check-in" },
   { label: "Calendar", href: "/calendar" },
-  { label: "Customer Birthdays", href: "/customer-birthdays" },
+  { label: "WhatsApp Flow", href: "/customer-birthdays", permission: "canAccessWhatsAppFlow" },
   { label: "Saved Work", href: "/saved-work" },
   { label: "DSI", href: "/dsi" },
   {
@@ -72,13 +73,14 @@ function canViewAttendance(permissions: NavigationPermissions) {
 
 function isVisibleItem(item: AppNavItem, permissions: NavigationPermissions) {
   if (item.permission === "canManageUsers") return permissions.canManageUsers;
+  if (item.permission === "canAccessWhatsAppFlow") return permissions.canAccessWhatsAppFlow;
   if (item.minRole === "leader") return canViewAttendance(permissions);
 
   return true;
 }
 
 export function getVisibleDesktopNavItems(permissions: NavigationPermissions) {
-  return desktopNavItems.map((item) => {
+  return desktopNavItems.filter((item) => isVisibleItem(item, permissions)).map((item) => {
     if (item.label !== "Team") return item;
 
     return {
@@ -120,7 +122,9 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
       items: [
         { label: "Sales", href: "/sales" },
         { label: "Saved Work", href: "/saved-work" },
-        { label: "Customer Birthdays", href: "/customer-birthdays" },
+        ...(permissions.canAccessWhatsAppFlow
+          ? [{ label: "WhatsApp Flow", href: "/customer-birthdays" }]
+          : []),
       ],
     },
     {

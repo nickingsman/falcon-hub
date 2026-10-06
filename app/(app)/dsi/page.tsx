@@ -705,7 +705,7 @@ export default function DsiPage() {
                         inputMode="numeric"
                         min={0}
                         step={1}
-                        value={counts[field]}
+                        value={counts[field] === 0 ? "" : counts[field]}
                         onChange={(event) => handleInputChange(field, event.target.value)}
                         disabled={status === "loading"}
                         className="h-10 w-20 rounded-2xl border border-zinc-200 bg-zinc-50 px-2 text-center text-base font-semibold text-zinc-950 outline-none transition focus:border-zinc-400 disabled:opacity-60"

@@ -669,14 +669,14 @@ function CustomerBirthdaysPreview({
     <article className={dashboardCardClass}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-zinc-900">Customer Birthdays</p>
-          <p className="mt-1 text-sm text-zinc-500">Private customer reminders</p>
+          <p className="text-sm font-semibold text-zinc-900">WhatsApp Flow</p>
+          <p className="mt-1 text-sm text-zinc-500">Customer birthday reminders</p>
         </div>
         <Link
           href="/customer-birthdays"
           className="shrink-0 rounded-full border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
         >
-          View Birthday Book
+          View Customers
         </Link>
       </div>
 
@@ -827,11 +827,13 @@ function MemberBirthdaysPreview({
 }
 
 function BirthdaySection({
+  showCustomerBirthdays,
   customerBirthdays,
   customerStatus,
   memberBirthdays,
   memberStatus,
 }: {
+  showCustomerBirthdays: boolean;
   customerBirthdays: BirthdayReminderResponse<CustomerDashboardBirthday>;
   customerStatus: LoadStatus;
   memberBirthdays: BirthdayReminderResponse<MemberDashboardBirthday>;
@@ -843,8 +845,10 @@ function BirthdaySection({
         <p className="text-sm font-semibold text-zinc-900">Birthdays</p>
         <p className="text-sm text-zinc-500">People worth remembering</p>
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <CustomerBirthdaysPreview birthdays={customerBirthdays} status={customerStatus} />
+      <div className={`grid items-start gap-4 ${showCustomerBirthdays ? "lg:grid-cols-2" : ""}`}>
+        {showCustomerBirthdays ? (
+          <CustomerBirthdaysPreview birthdays={customerBirthdays} status={customerStatus} />
+        ) : null}
         <MemberBirthdaysPreview birthdays={memberBirthdays} status={memberStatus} />
       </div>
     </section>
@@ -1217,7 +1221,7 @@ function LoadingDashboard() {
 }
 
 export default function Home() {
-  const { role } = useAppPermissions();
+  const { role, canAccessWhatsAppFlow } = useAppPermissions();
   const [dashboard, setDashboard] = useState<AgentDashboardResponse | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
@@ -1517,7 +1521,7 @@ export default function Home() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadDashboard();
-      void loadCustomerBirthdays();
+      if (canAccessWhatsAppFlow) void loadCustomerBirthdays();
       void loadMemberBirthdays();
       void loadUpcomingEvents();
       void loadPersonalTodos();
@@ -1526,6 +1530,7 @@ export default function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [
     loadCustomerBirthdays,
+    canAccessWhatsAppFlow,
     loadDashboard,
     loadMemberBirthdays,
     loadPersonalTodos,
@@ -1820,6 +1825,7 @@ export default function Home() {
         />
 
         <BirthdaySection
+          showCustomerBirthdays={canAccessWhatsAppFlow}
           customerBirthdays={customerBirthdays}
           customerStatus={customerBirthdayStatus}
           memberBirthdays={memberBirthdays}
