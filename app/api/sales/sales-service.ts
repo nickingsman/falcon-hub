@@ -7,10 +7,10 @@ import { getMemberDisplayName } from "@/lib/member-display";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const salesCaseSelect = `
-  id, project_id, unit_no, booking_date, nett_price, falcon_portion, status,
+  id, project_id, source_type, source_project_name, unit_no, booking_date, nett_price, falcon_portion, status,
   spa_signed_date, cancel_date, remark, created_at, updated_at,
   project:projects!sales_cases_project_id_fkey(project_name),
-  contributors:sales_case_contributors(member_id, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name, position)),
+  contributors:sales_case_contributors(id, member_id, source_member_name, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name, position)),
   status_history:sales_case_status_history(status, effective_date, created_at, event_type, note),
   unit_history:sales_unit_history(previous_unit_no, new_unit_no, changed_at)
 `;
@@ -22,10 +22,10 @@ type SalesInput = {
   cancelDate: string | null; remark: string | null; contributors: InputContributor[];
 };
 type SalesCaseDbRow = {
-  id: string; project_id: string; unit_no: string; booking_date: string; nett_price: number | string;
+  id: string; project_id: string | null; source_type: "manual" | "historical_2026_case_report"; source_project_name: string | null; unit_no: string; booking_date: string; nett_price: number | string;
   falcon_portion: number | string; status: SalesStatus; spa_signed_date: string | null; cancel_date: string | null;
   remark: string | null; project: { project_name: string | null } | null;
-  contributors: Array<{ member_id: string; portion: number | string; member: { full_name: string | null; display_name: string | null; position: string | null } | null }> | null;
+  contributors: Array<{ id: string; member_id: string | null; source_member_name: string | null; portion: number | string; member: { full_name: string | null; display_name: string | null; position: string | null } | null }> | null;
   status_history: Array<{ status: SalesStatus; effective_date: string | null; created_at: string; event_type: "lifecycle" | "spa_correction"; note: string | null }> | null;
   unit_history: Array<{ previous_unit_no: string; new_unit_no: string; changed_at: string }> | null;
 };
@@ -82,11 +82,11 @@ async function parseInput(request: Request) {
 
 function toSalesCase(row: SalesCaseDbRow): SalesCase {
   return {
-    id: row.id, projectId: row.project_id, projectName: row.project?.project_name ?? "Unknown project",
+    id: row.id, projectId: row.project_id ?? `historical-project:${row.id}`, projectName: row.project?.project_name ?? row.source_project_name ?? "Unknown project",
     unitNo: row.unit_no, bookingDate: row.booking_date, nettPrice: Number(row.nett_price),
     falconPortion: Number(row.falcon_portion), status: row.status, spaSignedDate: row.spa_signed_date,
     cancelDate: row.cancel_date, remark: row.remark,
-    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id, memberName: item.member ? getMemberDisplayName(item.member) : "Unknown member", position: item.member?.position ?? null, portion: Number(item.portion) })),
+    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id ?? `historical-member:${item.id}`, memberName: item.member ? getMemberDisplayName(item.member) : item.source_member_name ?? "Unknown member", position: item.member?.position ?? null, portion: Number(item.portion) })),
     statusHistory: (row.status_history ?? []).map((item) => ({ status: item.status, effectiveDate: item.effective_date, createdAt: item.created_at, eventType: item.event_type, note: item.note })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     unitHistory: (row.unit_history ?? []).map((item) => ({ previousUnitNo: item.previous_unit_no, newUnitNo: item.new_unit_no, changedAt: item.changed_at })).sort((a, b) => b.changedAt.localeCompare(a.changedAt)),
   };

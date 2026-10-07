@@ -33,14 +33,15 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return NextResponse.json({ error: "Choose a 2026 Case Report workbook" }, { status: 400 });
 
     const supabase = createSupabaseAdminClient();
-    const [projects, members, activeCases] = await Promise.all([
+    const [projects, members, existingCases, fingerprints] = await Promise.all([
       fetchAll((from, to) => supabase.from("projects").select("id, project_name").eq("is_deleted", false).range(from, to)),
-      fetchAll((from, to) => supabase.from("users").select("id, full_name, position").eq("is_deleted", false).range(from, to)),
-      fetchAll((from, to) => supabase.from("sales_cases").select("id, project_id, unit_no, status").eq("is_deleted", false).neq("status", "cancelled").range(from, to)),
+      fetchAll((from, to) => supabase.from("users").select("id, full_name, display_name, member_code, position").eq("is_deleted", false).range(from, to)),
+      fetchAll((from, to) => supabase.from("sales_cases").select("id, project_id, source_project_name, unit_no, status").eq("is_deleted", false).range(from, to)),
+      fetchAll((from, to) => supabase.from("sales_cases").select("source_fingerprint").eq("is_deleted", false).eq("source_type", "historical_2026_case_report").range(from, to)),
     ]);
 
     const preview = await buildHistoricalSalesPreview(file, {
-      projects, members, activeCases, fingerprints: [],
+      projects, members, existingCases, fingerprints,
     });
     return NextResponse.json({ preview });
   } catch (error) {

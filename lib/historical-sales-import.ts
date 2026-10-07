@@ -1,15 +1,26 @@
 import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
 import { normalizeSalesUnit, parseSalesPercentage, type SalesStatus } from "@/lib/sales";
+import {
+  getFirstUnusedHistoricalUnit,
+  getHistoricalCorrectedDate,
+  getHistoricalCorrectedUnit,
+  getHistoricalContributorAllocationCorrection,
+  getHistoricalMemberLookupName,
+  getHistoricalProjectLookupName,
+  getHistoricalStatusCorrection,
+  normalizeHistoricalName,
+} from "./historical-sales-import-rules";
+export * from "./historical-sales-import-rules";
 
 export type HistoricalValidationState = "ready" | "needs_review" | "blocked" | "ignored";
 export class HistoricalWorkbookError extends Error {
   override name = "HistoricalWorkbookError";
 }
-type SheetCell = { value: unknown; text: string; percent: boolean; fillKey: string };
+type SheetCell = { value: unknown; text: string; numFmt: string; percent: boolean; fillKey: string };
 type ProjectOption = { id: string; project_name: string | null };
-type MemberOption = { id: string; full_name: string | null; position: string | null };
-type ExistingCase = { id: string; project_id: string; unit_no: string; status: string };
+type MemberOption = { id: string; full_name: string | null; display_name: string | null; member_code: number | string | null; position: string | null };
+type ExistingCase = { id: string; project_id: string | null; source_project_name?: string | null; unit_no: string; status: string };
 type ExistingFingerprint = { source_fingerprint: string | null };
 
 export type HistoricalPreviewContributor = {
@@ -29,6 +40,7 @@ export type HistoricalPreviewRow = {
   projectId: string | null;
   projectName: string | null;
   unitNo: string;
+  originalUnitNo: string;
   bookingDate: string | null;
   nettPrice: number | null;
   falconPortion: number | null;
@@ -40,6 +52,8 @@ export type HistoricalPreviewRow = {
   fingerprint: string | null;
   validation: HistoricalValidationState;
   issues: string[];
+  warningReasons: string[];
+  plannedRemark: string | null;
 };
 
 export type HistoricalPreview = {
@@ -60,20 +74,8 @@ const legacyStatuses: Record<string, SalesStatus> = {
   "loan approved": "loan_approved", "sign spa": "sign_spa", "signed spa": "sign_spa",
   cancel: "cancelled", cancelled: "cancelled", canceled: "cancelled",
 };
-const confirmedDateCorrections = new Map([
-  ["emerald 9|d-43-03a|2025-01-23", "2026-01-23"],
-  ["arra residence|a-26-05|2025-01-29", "2026-01-29"],
-  ["d'parc residence|b-27-03a|2025-02-02", "2026-02-02"],
-  ["ren residence|b-37-13a|2025-03-21", "2026-03-21"],
-]);
-const confirmedAllocations = new Map<string, Array<{ name: string; portion: number }>>([
-  ["the shang|13a-11", [{ name: "Nicholas Yap", portion: 50 }, { name: "Peiling", portion: 25 }, { name: "Sim Yap", portion: 25 }]],
-  ["arra residence|b-12-2", [{ name: "Nicholas Yap", portion: 16.67 }, { name: "Ah Seng", portion: 16.67 }, { name: "Hermes", portion: 16.66 }, { name: "Eric", portion: 50 }]],
-]);
-
-export function normalizeHistoricalName(value: string) {
-  return value.trim().replace(/\s+/g, " ").toLowerCase();
-}
+const importMonths = new Set(["January", "February", "March", "April", "May", "June", "July"]);
+const importMonthNumbers = new Map([...importMonths].map((month, index) => [month, index + 1]));
 
 function headerKey(value: string) {
   return normalizeHistoricalName(value).replace(/[^a-z0-9%]+/g, " ").trim();
@@ -97,7 +99,7 @@ function fillKey(fill: ExcelJS.Fill | undefined) {
 }
 
 function makeCell(value: unknown, text = cellText(value), numFmt = "", fill?: ExcelJS.Fill): SheetCell {
-  return { value, text: text.trim(), percent: numFmt.includes("%"), fillKey: fillKey(fill) };
+  return { value, text: text.trim(), numFmt, percent: numFmt.includes("%"), fillKey: fillKey(fill) };
 }
 
 function parseCsv(text: string) {
@@ -159,22 +161,34 @@ function parsePortion(cell: SheetCell | undefined) {
   return parsed ? parsed.scaled / 10_000 : null;
 }
 
-function parseDate(cell: SheetCell | undefined) {
+function validIsoDate(year: number, month: number, day: number) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function parseDate(cell: SheetCell | undefined, expectedMonth: string | null) {
   if (!cell || !cell.text) return null;
-  if (cell.value instanceof Date && !Number.isNaN(cell.value.getTime())) return cell.value.toISOString().slice(0, 10);
+  if (cell.value instanceof Date && !Number.isNaN(cell.value.getTime())) {
+    const year = cell.value.getUTCFullYear();
+    const excelMonth = cell.value.getUTCMonth() + 1;
+    const excelDay = cell.value.getUTCDate();
+    if (/^m{1,2}\/d{1,2}\/yyyy$/i.test(cell.numFmt)) return validIsoDate(year, excelDay, excelMonth);
+    const direct = validIsoDate(year, excelMonth, excelDay);
+    if (!expectedMonth || direct?.startsWith(`2026-${String(importMonthNumbers.get(expectedMonth) ?? 0).padStart(2, "0")}-`)) return direct;
+    return validIsoDate(year, excelDay, excelMonth);
+  }
   if (typeof cell.value === "number" && cell.value > 20_000 && cell.value < 80_000) {
     const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(cell.value) * 86_400_000);
     return date.toISOString().slice(0, 10);
   }
   const text = cell.text.trim();
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
-  const local = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/.exec(text);
-  const parts = iso ? [Number(iso[1]), Number(iso[2]), Number(iso[3])] : local ? [Number(local[3]), Number(local[2]), Number(local[1])] : null;
-  if (!parts) return null;
-  const [year, month, day] = parts;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null;
-  return date.toISOString().slice(0, 10);
+  const local = /^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/.exec(text);
+  if (iso) return validIsoDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  if (!local) return null;
+  const year = Number(local[3]) + (local[3].length === 2 ? 2000 : 0);
+  return validIsoDate(year, Number(local[2]), Number(local[1]));
 }
 
 const monthNames = new Map([
@@ -254,7 +268,7 @@ function currencyMatches(actual: number | null, expected: number | null) {
   return actual === null || expected === null || Math.abs(actual - expected) <= 0.02;
 }
 
-export async function buildHistoricalSalesPreview(file: File, context: { projects: ProjectOption[]; members: MemberOption[]; activeCases: ExistingCase[]; fingerprints: ExistingFingerprint[] }): Promise<HistoricalPreview> {
+export async function buildHistoricalSalesPreview(file: File, context: { projects: ProjectOption[]; members: MemberOption[]; existingCases: ExistingCase[]; fingerprints: ExistingFingerprint[] }): Promise<HistoricalPreview> {
   const { sheetName, rows } = await readWorkbook(file);
   if (!rows.length) throw new HistoricalWorkbookError("Workbook is empty");
   let headerRow = sheetName === "2026 Case Report" ? 1 : -1;
@@ -294,9 +308,13 @@ export async function buildHistoricalSalesPreview(file: File, context: { project
   }
   const memberMap = new Map<string, MemberOption[]>();
   for (const member of context.members) {
-    if (!member.full_name) continue;
-    const key = normalizeHistoricalName(member.full_name);
-    memberMap.set(key, [...(memberMap.get(key) ?? []), member]);
+    for (const value of [member.full_name, member.display_name, member.member_code === null ? null : String(member.member_code), member.member_code === null ? null : String(member.member_code).padStart(3, "0")]) {
+      if (!value) continue;
+      const key = normalizeHistoricalName(value);
+      const matches = memberMap.get(key) ?? [];
+      if (!matches.some((item) => item.id === member.id)) matches.push(member);
+      memberMap.set(key, matches);
+    }
   }
   const existingFingerprints = new Set(context.fingerprints.map((item) => item.source_fingerprint).filter(Boolean));
   const previewRows: HistoricalPreviewRow[] = [];
@@ -311,8 +329,11 @@ export async function buildHistoricalSalesPreview(file: File, context: { project
     }
     const rowMonth = reportMonth(row[columns.month]);
     if (rowMonth) currentMonth = rowMonth;
+    if (structuredReport && (!currentMonth || !importMonths.has(currentMonth))) continue;
     const sourceProject = row[columns.project]?.text.trim() ?? "";
-    const unitNo = row[columns.unit]?.text.trim() ?? "";
+    const sourceRow = rowIndex + 1;
+    const originalUnitNo = row[columns.unit]?.text.trim() ?? "";
+    const unitNo = getHistoricalCorrectedUnit(sourceRow, originalUnitNo);
     const hasBookingOrPrice = Boolean(row[columns.bookingDate]?.text || row[columns.nettPrice]?.text);
     const caseNumber = reportCaseNumber(row[columns.no]);
     if (structuredReport && sourceProject && unitNo && hasBookingOrPrice && (!caseNumber || !currentMonth)) {
@@ -331,56 +352,61 @@ export async function buildHistoricalSalesPreview(file: File, context: { project
     try {
     const normalizedProject = normalizeHistoricalName(sourceProject);
     const normalizedUnit = normalizeSalesUnit(unitNo);
-    let bookingDate = parseDate(row[columns.bookingDate]);
-    if (bookingDate) bookingDate = confirmedDateCorrections.get(`${normalizedProject}|${normalizedUnit}|${bookingDate}`) ?? bookingDate;
+    let bookingDate = parseDate(row[columns.bookingDate], currentMonth);
+    bookingDate = getHistoricalCorrectedDate(sourceRow, bookingDate);
     const nettPrice = parseMoney(row[columns.nettPrice]);
     const falconPortion = parsePortion(row[columns.falconPortion]);
     const sourceFalconGdv = columns.gdv >= 0 ? parseMoney(row[columns.gdv]) : null;
     const statusResult = statusFromRow(row, headers, columns.status, statusFills);
-    const status = statusResult.status;
-    const projectMatches = projectMap.get(normalizedProject) ?? [];
+    const status = getHistoricalStatusCorrection(sourceRow) ?? statusResult.status;
+    const canonicalProjectName = getHistoricalProjectLookupName(sourceProject);
+    const projectMatches = projectMap.get(canonicalProjectName) ?? [];
     const project = projectMatches.length === 1 ? projectMatches[0] : null;
-    const allocationOverride = confirmedAllocations.get(`${normalizedProject}|${normalizedUnit}`);
-    const rawContributors = allocationOverride ?? contributorGroups.flatMap((group) => {
+    const contributorCorrection = getHistoricalContributorAllocationCorrection(sourceRow);
+    const rawContributors = contributorGroups.flatMap((group) => {
       const name = row[group.agent]?.text.trim() ?? "";
-      return name ? [{ name, portion: parsePortion(row[group.portion]), sourceNetGdv: group.gdv >= 0 ? parseMoney(row[group.gdv]) : null }] : [];
+      if (!name) return [];
+      const correctedPortion = contributorCorrection?.get(normalizeHistoricalName(name));
+      const portion = correctedPortion ?? parsePortion(row[group.portion]);
+      const sourceNetGdv = correctedPortion !== undefined && nettPrice !== null
+        ? nettPrice * correctedPortion / 100
+        : group.gdv >= 0 ? parseMoney(row[group.gdv]) : null;
+      return [{ name, portion, sourceNetGdv }];
     });
     const contributors = rawContributors.map((source) => {
-      const matches = memberMap.get(normalizeHistoricalName(source.name)) ?? [];
+      const canonicalMemberName = getHistoricalMemberLookupName(source.name);
+      const matches = memberMap.get(canonicalMemberName) ?? [];
       const portion = typeof source.portion === "number" ? source.portion : null;
-      return { sourceName: source.name, portion, sourceNetGdv: "sourceNetGdv" in source ? source.sourceNetGdv : null, calculatedGdv: nettPrice !== null && portion !== null ? nettPrice * portion / 100 : null, memberId: matches.length === 1 ? matches[0].id : null, memberName: matches.length === 1 ? matches[0].full_name : null, matchState: matches.length === 1 ? "matched" as const : matches.length === 0 ? "missing" as const : "ambiguous" as const };
+      const matchedMember = matches.length === 1 ? matches[0] : null;
+      return { sourceName: source.name, portion, sourceNetGdv: source.sourceNetGdv, calculatedGdv: nettPrice !== null && portion !== null ? nettPrice * portion / 100 : null, memberId: matchedMember?.id ?? null, memberName: matchedMember?.display_name || matchedMember?.full_name || null, matchState: matches.length === 1 ? "matched" as const : matches.length === 0 ? "missing" as const : "ambiguous" as const };
     });
     const calculatedFalconGdv = nettPrice !== null && falconPortion !== null ? nettPrice * falconPortion / 100 : null;
-    const fingerprintPayload = bookingDate && nettPrice !== null && falconPortion !== null && status ? ["2026_case_report", normalizedProject, normalizedUnit, bookingDate, nettPrice.toFixed(2), falconPortion.toFixed(4), status, contributors.map((item) => `${normalizeHistoricalName(item.sourceName)}:${item.portion?.toFixed(4) ?? "?"}`).sort().join("|")].join("|") : null;
+    const fingerprintPayload = bookingDate && nettPrice !== null && falconPortion !== null && status ? ["2026_case_report", sourceRow, normalizedProject, normalizedUnit, bookingDate, nettPrice.toFixed(2), falconPortion.toFixed(4), status, contributors.map((item) => `${normalizeHistoricalName(item.sourceName)}:${item.portion?.toFixed(4) ?? "?"}`).sort().join("|")].join("|") : null;
     const fingerprint = fingerprintPayload ? createHash("sha256").update(fingerprintPayload).digest("hex") : null;
     const issues: string[] = [];
+    const warningReasons: string[] = [];
     let validation: HistoricalValidationState = "ready";
-    const ignored = normalizedProject === "ren residence" && normalizedUnit === "b-43a-10" && bookingDate === "2026-05-03" && nettPrice === 640800;
-    if (ignored) { validation = "ignored"; issues.push("Confirmed source error: 3 May 2026 duplicate entry must not be imported"); }
-    if (!ignored) {
-      if (!project) { validation = "needs_review"; issues.push(projectMatches.length ? "Multiple normalized project matches" : "No matching Falcon project"); }
+      if (!project) { validation = "needs_review"; issues.push(projectMatches.length ? "Multiple canonical project matches" : "No matching Falcon project; source name will be preserved"); warningReasons.push("Project not found"); }
       if (!unitNo) { validation = "blocked"; issues.push("Unit No is required"); }
       if (!bookingDate) { validation = "blocked"; issues.push("Booking Date is invalid"); }
-      else if (!bookingDate.startsWith("2026-")) { validation = "blocked"; issues.push("Booking Date is outside the 2026 report year"); }
+      else if (!bookingDate.startsWith("2026-") || (currentMonth && Number(bookingDate.slice(5, 7)) !== importMonthNumbers.get(currentMonth))) { validation = "blocked"; issues.push("Booking Date does not match the 2026 source month"); }
       if (nettPrice === null || nettPrice <= 0) { validation = "blocked"; issues.push("Nett Price must be greater than 0"); }
       if (falconPortion === null) { validation = "blocked"; issues.push("Falcon Portion is invalid or exceeds four decimals"); }
-      if (!status) { if (validation !== "blocked") validation = "needs_review"; issues.push(statusResult.issue ?? "Legacy status requires review"); }
+      if (!status) { validation = "blocked"; issues.push(statusResult.issue ?? "Legacy status requires review"); warningReasons.push("Status unresolved"); }
       if (!contributors.length) { validation = "blocked"; issues.push("At least one contributor is required"); }
-      if (contributors.some((item) => item.portion === null)) { validation = "blocked"; issues.push("Contributor percentage is invalid or exceeds four decimals"); }
+      if (contributors.some((item) => item.portion === null)) { validation = "blocked"; issues.push("Contributor percentage is invalid or exceeds four decimals"); warningReasons.push("Contributor allocation requires review"); }
       const matchedMemberIds = contributors.flatMap((item) => item.memberId ? [item.memberId] : []);
       if (new Set(matchedMemberIds).size !== matchedMemberIds.length) { validation = "blocked"; issues.push("The same Falcon member appears more than once"); }
-      if (falconPortion !== null && contributors.every((item) => item.portion !== null) && Math.round(contributors.reduce((sum, item) => sum + (item.portion ?? 0), 0) * 10_000) !== Math.round(falconPortion * 10_000)) { validation = "blocked"; issues.push("Contributor portions do not exactly equal Falcon Portion"); }
-      if (contributors.some((item) => item.matchState !== "matched") && validation !== "blocked") { validation = "needs_review"; issues.push("One or more contributor names need member review"); }
+      if (falconPortion !== null && contributors.every((item) => item.portion !== null) && Math.round(contributors.reduce((sum, item) => sum + (item.portion ?? 0), 0) * 10_000) !== Math.round(falconPortion * 10_000)) { validation = "blocked"; issues.push("Contributor portions do not exactly equal Falcon Portion"); warningReasons.push("Contributor allocation requires review"); }
+      if (contributors.some((item) => item.matchState !== "matched")) { if (validation !== "blocked") validation = "needs_review"; issues.push("Unmatched contributor names will be preserved as historical identities"); warningReasons.push("Member not found"); }
       if (sourceFalconGdv === null) { validation = "blocked"; issues.push("Source Falcon GDV is required"); }
       if (!currencyMatches(sourceFalconGdv, calculatedFalconGdv)) { validation = "blocked"; issues.push("Source GDV materially differs from calculated Falcon GDV"); }
-      if (!allocationOverride && contributors.some((item) => item.sourceNetGdv === null)) { validation = "blocked"; issues.push("Source contributor Net GDV is required"); }
-      if (!allocationOverride && contributors.some((item) => !currencyMatches(item.sourceNetGdv, item.calculatedGdv))) { validation = "blocked"; issues.push("Source contributor Net GDV materially differs from calculated GDV"); }
-      if (project && context.activeCases.some((item) => item.project_id === project.id && item.status !== "cancelled" && normalizeSalesUnit(item.unit_no) === normalizedUnit)) { validation = "blocked"; issues.push("This unit already has an active Sales Case"); }
+      if (contributors.some((item) => item.sourceNetGdv === null)) { validation = "blocked"; issues.push("Source contributor Net GDV is required"); }
+      if (contributors.some((item) => !currencyMatches(item.sourceNetGdv, item.calculatedGdv))) { validation = "blocked"; issues.push("Source contributor Net GDV materially differs from calculated GDV"); }
       if (fingerprint && existingFingerprints.has(fingerprint)) { validation = "blocked"; issues.push("This historical source row was already imported"); }
-      if (status === "sign_spa") issues.push("Exact SPA Signed Date is unavailable; no date will be invented");
-      if (status === "cancelled") issues.push("Exact Cancel Date is unavailable; no date will be invented");
-    }
-    previewRows.push({ sourceRow: rowIndex + 1, month: currentMonth ?? (columns.month >= 0 ? row[columns.month]?.text.trim() ?? "" : ""), sourceProject, projectId: project?.id ?? null, projectName: project?.project_name ?? null, unitNo, bookingDate, nettPrice, falconPortion, sourceFalconGdv, calculatedFalconGdv, status, statusLabel: status ? statusLabels[status] : "Unknown", contributors, fingerprint, validation, issues });
+      if (status === "sign_spa") issues.push("Historical Sign SPA: exact SPA Signed Date will remain blank");
+      if (status === "cancelled") issues.push("Historical Cancelled: exact Cancel Date will remain blank");
+    previewRows.push({ sourceRow, month: currentMonth ?? (columns.month >= 0 ? row[columns.month]?.text.trim() ?? "" : ""), sourceProject, projectId: project?.id ?? null, projectName: project?.project_name ?? null, unitNo, originalUnitNo, bookingDate, nettPrice, falconPortion, sourceFalconGdv, calculatedFalconGdv, status, statusLabel: status ? statusLabels[status] : "Unknown", contributors, fingerprint, validation, issues, warningReasons, plannedRemark: null });
     if (process.env.NODE_ENV === "development") console.info("[historical-sales-preview] accepted case row", {
       worksheetRow: rowIndex + 1, caseNumber, month: currentMonth, project: sourceProject, unit: unitNo,
       bookingDate, nettPrice, detectedStatus: status ? statusLabels[status] : "Unknown", acceptedReason,
@@ -388,17 +414,38 @@ export async function buildHistoricalSalesPreview(file: File, context: { project
     } catch (error) {
       previewRows.push({
         sourceRow: rowIndex + 1, month: columns.month >= 0 ? row[columns.month]?.text.trim() ?? "" : "",
-        sourceProject, projectId: null, projectName: null, unitNo, bookingDate: null, nettPrice: null,
+        sourceProject, projectId: null, projectName: null, unitNo, originalUnitNo, bookingDate: null, nettPrice: null,
         falconPortion: null, sourceFalconGdv: null, calculatedFalconGdv: null, status: null,
         statusLabel: "Unknown", contributors: [], fingerprint: null, validation: "blocked",
-        issues: [`Row could not be parsed: ${error instanceof Error ? error.message : "Unknown cell value"}`],
+        issues: [`Row could not be parsed: ${error instanceof Error ? error.message : "Unknown cell value"}`], warningReasons: ["Row parsing failed"], plannedRemark: "Historical Import Review — Row parsing failed",
       });
     }
   }
 
-  const batchCounts = new Map<string, number>();
-  for (const row of previewRows) if (row.fingerprint && row.validation !== "ignored") batchCounts.set(row.fingerprint, (batchCounts.get(row.fingerprint) ?? 0) + 1);
-  for (const row of previewRows) if (row.fingerprint && (batchCounts.get(row.fingerprint) ?? 0) > 1 && row.validation !== "ignored") { row.validation = "blocked"; row.issues.push("Duplicate source row within this workbook"); }
+  const occupiedUnits = new Map<string, Set<string>>();
+  for (const item of context.existingCases) {
+    const projectIdentity = item.project_id ? `id:${item.project_id}` : item.source_project_name ? `source:${normalizeHistoricalName(item.source_project_name)}` : null;
+    if (!projectIdentity) continue;
+    const units = occupiedUnits.get(projectIdentity) ?? new Set<string>();
+    units.add(normalizeSalesUnit(item.unit_no));
+    occupiedUnits.set(projectIdentity, units);
+  }
+  for (const row of previewRows) {
+    const projectIdentity = row.projectId ? `id:${row.projectId}` : `source:${normalizeHistoricalName(row.sourceProject)}`;
+    const units = occupiedUnits.get(projectIdentity) ?? new Set<string>();
+    const plannedUnit = getFirstUnusedHistoricalUnit(row.unitNo, units);
+    if (plannedUnit !== row.unitNo) {
+      row.unitNo = plannedUnit;
+      row.warningReasons.push("Duplicate Project + Unit");
+      row.issues.push(`Project + Unit collision; planned historical Unit is ${plannedUnit}`);
+      if (row.validation === "ready") row.validation = "needs_review";
+    }
+    units.add(normalizeSalesUnit(plannedUnit));
+    occupiedUnits.set(projectIdentity, units);
+    const uniqueWarningReasons = [...new Set(row.warningReasons)];
+    row.warningReasons = uniqueWarningReasons;
+    row.plannedRemark = uniqueWarningReasons.length ? `Historical Import Review — ${uniqueWarningReasons.join("; ")}` : null;
+  }
   const summary = { total: previewRows.length, ready: 0, needs_review: 0, blocked: 0, ignored: 0 };
   const statusDistribution = { booking: 0, submitted: 0, loan_approved: 0, sign_spa: 0, cancelled: 0 };
   for (const row of previewRows) { summary[row.validation] += 1; if (row.status) statusDistribution[row.status] += 1; }
