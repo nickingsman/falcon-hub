@@ -84,6 +84,7 @@ type PresenceSessionRow = {
 type AttendanceHistoryMemberRow = HierarchyMember & {
   full_name: string | null;
   display_name: string | null;
+  member_code: number | null;
   position: string | null;
 };
 
@@ -388,7 +389,7 @@ async function getAuthorizedAttendanceMembers(
 ) {
   const { data, error } = await supabase
     .from("users")
-    .select("id, full_name, display_name, position, leader_id, status")
+    .select("id, full_name, display_name, member_code, position, leader_id, status")
     .eq("is_deleted", false)
     .eq("status", "Active")
     .order("full_name", { ascending: true });
@@ -410,6 +411,9 @@ function toAuthorizedMemberResponse(member: AttendanceHistoryMemberRow) {
   return {
     memberId: member.id,
     memberName: getMemberDisplayName(member),
+    displayName: member.display_name,
+    fullName: member.full_name,
+    memberCode: member.member_code,
     position: member.position,
   };
 }

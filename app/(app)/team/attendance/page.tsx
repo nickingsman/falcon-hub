@@ -9,6 +9,8 @@ import {
   getMalaysiaTodayDateString,
   getMalaysiaYesterdayDateString,
 } from "@/lib/malaysia-date";
+import { formatMemberCode } from "@/lib/member-display";
+import { SearchCombobox } from "../../components/SearchCombobox";
 
 type Preset = "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "custom";
 type LoadStatus = "loading" | "ready" | "error";
@@ -16,6 +18,9 @@ type LoadStatus = "loading" | "ready" | "error";
 type AttendanceMember = {
   memberId: string;
   memberName: string;
+  displayName: string | null;
+  fullName: string | null;
+  memberCode: number | null;
   position: string | null;
 };
 
@@ -229,6 +234,27 @@ export default function TeamAttendancePage() {
       currentlyCheckedIn: visibleSessions.filter((session) => session.status === "checked_in").length,
     };
   }, [history?.authorizedMembers.length, members.length, visibleSessions]);
+  const memberOptions = useMemo(
+    () => [
+      { id: "", label: "All Team Members" },
+      ...members.map((member) => ({
+        id: member.memberId,
+        label: `${member.memberName}${member.position ? ` — ${member.position}` : ""}`,
+        description: formatMemberCode(member.memberCode)
+          ? `Member ${formatMemberCode(member.memberCode)}`
+          : undefined,
+        searchText: [
+          member.displayName,
+          member.fullName,
+          formatMemberCode(member.memberCode),
+          member.memberCode,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      })),
+    ],
+    [members],
+  );
 
   const loadHistory = useCallback(async () => {
     if (isRangeInvalid) {
@@ -384,19 +410,13 @@ export default function TeamAttendancePage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="text-sm font-medium text-zinc-700">
               Member
-              <select
+              <SearchCombobox
                 value={memberFilter}
-                onChange={(event) => setMemberFilter(event.target.value)}
-                className="mt-1 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400"
-              >
-                <option value="">All Team Members</option>
-                {members.map((member) => (
-                  <option key={member.memberId} value={member.memberId}>
-                    {member.memberName}
-                    {member.position ? ` - ${member.position}` : ""}
-                  </option>
-                ))}
-              </select>
+                options={memberOptions}
+                placeholder="Search member..."
+                emptyLabel="No members found."
+                onChange={setMemberFilter}
+              />
             </label>
             <button
               type="button"
