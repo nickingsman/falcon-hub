@@ -5,6 +5,8 @@ import {
   canManageProjects,
   canManageUserApprovals,
   canManageUsers,
+  canAccessLeaderMeetings,
+  canManageLeaderMeetingsAccess,
 } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
@@ -89,6 +91,8 @@ export async function GET() {
       canManageProjects: canManageProjects(userProfile),
       canManageUserApprovals: canManageUserApprovals(userProfile),
       canManageUsers: canManageUsers(userProfile),
+      canAccessLeaderMeetings: await canAccessLeaderMeetings(userData.user.id, userProfile),
+      canManageLeaderMeetingsAccess: canManageLeaderMeetingsAccess(userProfile),
     });
   } catch (error) {
     console.error("GET /api/auth/me error:", error);
@@ -105,6 +109,8 @@ export async function GET() {
       canManageProjects: false,
       canManageUserApprovals: false,
       canManageUsers: false,
+      canAccessLeaderMeetings: false,
+      canManageLeaderMeetingsAccess: false,
     });
   }
 }

@@ -38,7 +38,9 @@ type ManagedAccount = {
     canEditMemberProfile: boolean;
     canDeactivateAccess: boolean;
     canReactivateAccess: boolean;
+    canManageFeatureAccess: boolean;
   };
+  featureAccess: { leaderMeetings: boolean };
 };
 
 type MemberWithoutAccount = {
@@ -102,7 +104,7 @@ function getMemberName(member: ManagedMember | null) {
 }
 
 export default function UserManagementPage() {
-  const { canManageUsers } = useAppPermissions();
+  const { canManageUsers, canManageLeaderMeetingsAccess } = useAppPermissions();
   const [accounts, setAccounts] = useState<ManagedAccount[]>([]);
   const [membersWithoutAccounts, setMembersWithoutAccounts] = useState<MemberWithoutAccount[]>([]);
   const [assignableRoles, setAssignableRoles] = useState<UserRole[]>([]);
@@ -112,6 +114,7 @@ export default function UserManagementPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [featureSaving, setFeatureSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const leaderMap = useMemo(() => {
@@ -234,6 +237,27 @@ export default function UserManagementPage() {
           }
         : current,
     );
+  }
+
+  async function updateLeaderMeetingsAccess(isEnabled: boolean) {
+    if (!selectedAccount || !canManageLeaderMeetingsAccess) return;
+    try {
+      setFeatureSaving(true);
+      setErrorMessage("");
+      const response = await fetch("/api/admin/feature-access/leader-meetings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authUserId: selectedAccount.authUserId, isEnabled }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to update feature access");
+      setSelectedAccount((current) => current ? { ...current, featureAccess: { ...current.featureAccess, leaderMeetings: isEnabled } } : current);
+      setAccounts((current) => current.map((account) => account.authUserId === selectedAccount.authUserId ? { ...account, featureAccess: { ...account.featureAccess, leaderMeetings: isEnabled } } : account));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update feature access");
+    } finally {
+      setFeatureSaving(false);
+    }
   }
 
   async function handleSave(event: FormEvent<HTMLFormElement>) {
@@ -721,6 +745,26 @@ export default function UserManagementPage() {
                     Member profile fields become editable after this account completes profile setup.
                   </div>
                 )}
+
+                {canManageLeaderMeetingsAccess && selectedAccount.actionPermissions.canManageFeatureAccess ? (
+                  <div className="rounded-2xl border border-[#e4d7b7] bg-[#fbf8ef] p-4">
+                    <p className="text-sm font-semibold text-zinc-900">Feature Access</p>
+                    <p className="mt-1 text-xs leading-5 text-zinc-500">Feature access is account-specific and independent of role.</p>
+                    <label className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-[#e4d7b7] bg-white px-4 py-3">
+                      <span>
+                        <span className="block text-sm font-medium text-zinc-900">Leader Meetings</span>
+                        <span className="mt-0.5 block text-xs text-zinc-500">Private management workspace</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={selectedAccount.featureAccess.leaderMeetings}
+                        disabled={featureSaving || selectedAccount.accountStatus !== "active"}
+                        onChange={(event) => void updateLeaderMeetingsAccess(event.target.checked)}
+                        className="h-5 w-5 accent-[#8f6e35]"
+                      />
+                    </label>
+                  </div>
+                ) : null}
 
                 {errorMessage ? (
                   <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">

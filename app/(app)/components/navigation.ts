@@ -7,12 +7,13 @@ export type NavigationPermissions = {
   canManageUserApprovals: boolean;
   canManageUsers: boolean;
   canAccessWhatsAppFlow: boolean;
+  canAccessLeaderMeetings: boolean;
 };
 
 export type AppNavItem = {
   label: string;
   href: string;
-  permission?: "canManageUsers" | "canAccessWhatsAppFlow";
+  permission?: "canManageUsers" | "canAccessWhatsAppFlow" | "canAccessLeaderMeetings";
   minRole?: "leader";
   children?: AppNavItem[];
 };
@@ -45,6 +46,7 @@ export const desktopNavItems: AppNavItem[] = [
     children: [
       { label: "Members", href: "/team/members" },
       { label: "User Management", href: "/team/user-management", permission: "canManageUsers" },
+      { label: "Leader Meetings", href: "/team/leader-meetings", permission: "canAccessLeaderMeetings" },
     ],
   },
   {
@@ -75,6 +77,7 @@ function canViewAttendance(permissions: NavigationPermissions) {
 function isVisibleItem(item: AppNavItem, permissions: NavigationPermissions) {
   if (item.permission === "canManageUsers") return permissions.canManageUsers;
   if (item.permission === "canAccessWhatsAppFlow") return permissions.canAccessWhatsAppFlow;
+  if (item.permission === "canAccessLeaderMeetings") return permissions.canAccessLeaderMeetings;
   if (item.minRole === "leader") return canViewAttendance(permissions);
 
   return true;

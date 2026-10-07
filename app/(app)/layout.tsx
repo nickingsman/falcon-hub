@@ -8,6 +8,8 @@ import {
   canManageUserApprovals,
   canManageUsers,
   canAccessWhatsAppFlow,
+  canAccessLeaderMeetings,
+  canManageLeaderMeetingsAccess,
 } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
@@ -87,6 +89,8 @@ export default async function AppLayout({
     canManageUserApprovals: canManageUserApprovals(profile),
     canManageUsers: canManageUsers(profile),
     canAccessWhatsAppFlow: canAccessWhatsAppFlow(profile),
+    canAccessLeaderMeetings: await canAccessLeaderMeetings(authContext.user.id, profile),
+    canManageLeaderMeetingsAccess: canManageLeaderMeetingsAccess(profile),
   };
 
   return (

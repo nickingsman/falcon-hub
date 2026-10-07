@@ -2,6 +2,12 @@ import type { UserProfile, UserRole } from "@/lib/auth";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { isWhatsAppFlowRoleAllowed } from "@/lib/whatsapp-flow";
+import {
+  canManageFeatureAccess,
+  isFeatureGrantActive,
+  leaderMeetingsFeatureKey,
+} from "@/lib/feature-access";
+import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 const roleRank: Record<UserRole, number> = {
   agent: 1,
@@ -60,6 +66,46 @@ export function canAccessWhatsAppFlow(profile: UserProfile | null) {
       profile.status === "active" &&
       isWhatsAppFlowRoleAllowed(profile.role),
   );
+}
+
+export function canManageLeaderMeetingsAccess(profile: UserProfile | null) {
+  return canManageFeatureAccess(profile);
+}
+
+export async function canAccessLeaderMeetings(
+  authUserId: string | null | undefined,
+  profile: UserProfile | null,
+) {
+  if (!authUserId || profile?.status !== "active") return false;
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("user_feature_access")
+    .select("is_enabled")
+    .eq("auth_user_id", authUserId)
+    .eq("feature_key", leaderMeetingsFeatureKey)
+    .maybeSingle();
+
+  if (error) return false;
+  return isFeatureGrantActive(profile, data);
+}
+
+export async function requireLeaderMeetingsAccess() {
+  const authContext = await getAuthenticatedUserProfile();
+  if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
+  if (!(await canAccessLeaderMeetings(authContext.user.id, authContext.profile))) {
+    return { authorized: false, response: forbiddenJson("Leader Meetings access is required") } as const;
+  }
+  return { authorized: true, ...authContext } as const;
+}
+
+export async function requireLeaderMeetingsAccessManagement() {
+  const authContext = await getAuthenticatedUserProfile();
+  if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
+  if (!canManageLeaderMeetingsAccess(authContext.profile)) {
+    return { authorized: false, response: forbiddenJson("Super Admin access is required") } as const;
+  }
+  return { authorized: true, ...authContext } as const;
 }
 
 export async function requireWhatsAppFlowAccess() {

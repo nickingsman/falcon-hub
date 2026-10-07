@@ -6,6 +6,8 @@ import {
   type AdminManagedProfile,
 } from "@/lib/admin-user-management";
 import { getAssignableUserRoles, requireAdminUserManagementAccess } from "@/lib/permissions";
+import { canManageLeaderMeetingsAccess } from "@/lib/permissions";
+import { leaderMeetingsFeatureKey } from "@/lib/feature-access";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +57,12 @@ export async function GET() {
     }
 
     const profiles = (profileRows ?? []) as AdminManagedProfile[];
+    const actorCanManageFeatureAccess = canManageLeaderMeetingsAccess(authorization.profile);
+    const { data: featureRows, error: featureError } = actorCanManageFeatureAccess
+      ? await supabase.from("user_feature_access").select("auth_user_id, is_enabled").eq("feature_key", leaderMeetingsFeatureKey)
+      : { data: [], error: null };
+    if (featureError) throw featureError;
+    const leaderMeetingsAccessByUser = new Map((featureRows ?? []).map((row) => [row.auth_user_id, row.is_enabled]));
     const members = (memberRows ?? []) as AdminManagedMember[];
     const membersById = new Map(members.map((member) => [member.id, member]));
     const linkedMemberIds = new Set(
@@ -95,6 +103,10 @@ export async function GET() {
           canEditMemberProfile,
           canDeactivateAccess,
           canReactivateAccess,
+          canManageFeatureAccess: actorCanManageFeatureAccess,
+        },
+        featureAccess: {
+          leaderMeetings: leaderMeetingsAccessByUser.get(profile.auth_user_id) === true,
         },
       };
     });
