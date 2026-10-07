@@ -1,5 +1,7 @@
 import {
+  getMalaysiaLastMonthRange,
   getMalaysiaLastWeekRange,
+  getMalaysiaLastYearRange,
   getMalaysiaThisMonthRange,
   getMalaysiaThisWeekRange,
   getMalaysiaTodayDateString,
@@ -8,7 +10,7 @@ import {
 
 export const salesStatuses = ["booking", "submitted", "loan_approved", "sign_spa", "cancelled"] as const;
 export type SalesStatus = (typeof salesStatuses)[number];
-export type SalesPeriod = "this_week" | "last_week" | "this_month" | "this_year" | "custom";
+export type SalesPeriod = "this_week" | "last_week" | "this_month" | "last_month" | "this_year" | "last_year" | "custom";
 
 export const salesStatusLabels: Record<SalesStatus, string> = {
   booking: "Booking",
@@ -68,10 +70,12 @@ export type SalesTopCloser = {
 export function getSalesDateRange(period: string | null, from?: string | null, to?: string | null) {
   if (period === "last_week") return getMalaysiaLastWeekRange();
   if (period === "this_month") return getMalaysiaThisMonthRange();
+  if (period === "last_month") return getMalaysiaLastMonthRange();
   if (period === "this_year") {
     const today = getMalaysiaTodayDateString();
     return { from: `${today.slice(0, 4)}-01-01`, to: today };
   }
+  if (period === "last_year") return getMalaysiaLastYearRange();
   if (period === "custom" && from && to && isValidDateString(from) && isValidDateString(to) && from <= to) {
     return { from, to };
   }

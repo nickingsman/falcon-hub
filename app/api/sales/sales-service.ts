@@ -123,7 +123,7 @@ export async function listSales(request: Request) {
 
     const [{ data: projects, error: projectsError }, { data: members, error: membersError }] = await Promise.all([
       supabase.from("projects").select("id, project_name").eq("is_deleted", false).order("project_name"),
-      supabase.from("users").select("id, full_name, display_name, position").eq("is_deleted", false).eq("status", "Active").order("full_name"),
+      supabase.from("users").select("id, full_name, display_name, member_code, position").eq("is_deleted", false).eq("status", "Active").order("full_name"),
     ]);
     if (projectsError) throw projectsError;
     if (membersError) throw membersError;

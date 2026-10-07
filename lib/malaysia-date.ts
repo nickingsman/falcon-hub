@@ -110,3 +110,26 @@ export function getMalaysiaThisMonthRange() {
     to: today,
   };
 }
+
+export function getMalaysiaLastMonthRange(date = new Date()) {
+  const { year, month } = getMalaysiaDateParts(date);
+  const previousMonth = new Date(Date.UTC(year, month - 2, 1));
+  const previousMonthYear = previousMonth.getUTCFullYear();
+  const previousMonthNumber = previousMonth.getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(year, month - 1, 0)).getUTCDate();
+
+  return {
+    from: formatDateParts(previousMonthYear, previousMonthNumber, 1),
+    to: formatDateParts(previousMonthYear, previousMonthNumber, lastDay),
+  };
+}
+
+export function getMalaysiaLastYearRange(date = new Date()) {
+  const { year } = getMalaysiaDateParts(date);
+  const previousYear = year - 1;
+
+  return {
+    from: formatDateParts(previousYear, 1, 1),
+    to: formatDateParts(previousYear, 12, 31),
+  };
+}
