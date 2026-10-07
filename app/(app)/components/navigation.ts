@@ -6,14 +6,14 @@ export type NavigationPermissions = {
   role: UserRole | null;
   canManageUserApprovals: boolean;
   canManageUsers: boolean;
-  canAccessWhatsAppFlow: boolean;
+  canAccessCustomerBirthdays: boolean;
   canAccessLeaderMeetings: boolean;
 };
 
 export type AppNavItem = {
   label: string;
   href: string;
-  permission?: "canManageUsers" | "canAccessWhatsAppFlow" | "canAccessLeaderMeetings";
+  permission?: "canManageUsers" | "canAccessCustomerBirthdays" | "canAccessLeaderMeetings";
   minRole?: "leader";
   children?: AppNavItem[];
 };
@@ -37,7 +37,7 @@ export const desktopNavItems: AppNavItem[] = [
   { label: "DSR Calculator", href: "/tools/dsr-calculator" },
   { label: "Check In", href: "/check-in" },
   { label: "Calendar", href: "/calendar" },
-  { label: "WhatsApp Flow", href: "/customer-birthdays", permission: "canAccessWhatsAppFlow" },
+  { label: "Customer Birthdays", href: "/customer-birthdays", permission: "canAccessCustomerBirthdays" },
   { label: "Saved Work", href: "/saved-work" },
   { label: "DSI", href: "/dsi" },
   {
@@ -76,7 +76,7 @@ function canViewAttendance(permissions: NavigationPermissions) {
 
 function isVisibleItem(item: AppNavItem, permissions: NavigationPermissions) {
   if (item.permission === "canManageUsers") return permissions.canManageUsers;
-  if (item.permission === "canAccessWhatsAppFlow") return permissions.canAccessWhatsAppFlow;
+  if (item.permission === "canAccessCustomerBirthdays") return permissions.canAccessCustomerBirthdays;
   if (item.permission === "canAccessLeaderMeetings") return permissions.canAccessLeaderMeetings;
   if (item.minRole === "leader") return canViewAttendance(permissions);
 
@@ -129,8 +129,8 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
       items: [
         { label: "Sales", href: "/sales" },
         { label: "Saved Work", href: "/saved-work" },
-        ...(permissions.canAccessWhatsAppFlow
-          ? [{ label: "WhatsApp Flow", href: "/customer-birthdays" }]
+        ...(permissions.canAccessCustomerBirthdays
+          ? [{ label: "Customer Birthdays", href: "/customer-birthdays" }]
           : []),
       ],
     },

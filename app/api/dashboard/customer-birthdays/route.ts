@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireWhatsAppFlowAccess } from "@/lib/permissions";
+import { requireCustomerBirthdaysAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
-import { getDaysUntilBirthday, parseBirthday } from "@/lib/whatsapp-flow";
+import { getDaysUntilBirthday, parseBirthday } from "@/lib/customer-birthdays";
 
 type CustomerBirthdayRow = {
   customer_name: string;
@@ -13,7 +13,7 @@ type CustomerBirthdayRow = {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const authorization = await requireWhatsAppFlowAccess();
+  const authorization = await requireCustomerBirthdaysAccess();
   if (!authorization.authorized) return authorization.response;
 
   try {

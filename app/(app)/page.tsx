@@ -669,7 +669,7 @@ function CustomerBirthdaysPreview({
     <article className={dashboardCardClass}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-zinc-900">WhatsApp Flow</p>
+          <p className="text-sm font-semibold text-zinc-900">Customer Birthdays</p>
           <p className="mt-1 text-sm text-zinc-500">Customer birthday reminders</p>
         </div>
         <Link
@@ -1221,7 +1221,7 @@ function LoadingDashboard() {
 }
 
 export default function Home() {
-  const { role, canAccessWhatsAppFlow } = useAppPermissions();
+  const { role, canAccessCustomerBirthdays } = useAppPermissions();
   const [dashboard, setDashboard] = useState<AgentDashboardResponse | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
@@ -1521,7 +1521,7 @@ export default function Home() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadDashboard();
-      if (canAccessWhatsAppFlow) void loadCustomerBirthdays();
+      if (canAccessCustomerBirthdays) void loadCustomerBirthdays();
       void loadMemberBirthdays();
       void loadUpcomingEvents();
       void loadPersonalTodos();
@@ -1530,7 +1530,7 @@ export default function Home() {
     return () => window.clearTimeout(timeoutId);
   }, [
     loadCustomerBirthdays,
-    canAccessWhatsAppFlow,
+    canAccessCustomerBirthdays,
     loadDashboard,
     loadMemberBirthdays,
     loadPersonalTodos,
@@ -1825,7 +1825,7 @@ export default function Home() {
         />
 
         <BirthdaySection
-          showCustomerBirthdays={canAccessWhatsAppFlow}
+          showCustomerBirthdays={canAccessCustomerBirthdays}
           customerBirthdays={customerBirthdays}
           customerStatus={customerBirthdayStatus}
           memberBirthdays={memberBirthdays}

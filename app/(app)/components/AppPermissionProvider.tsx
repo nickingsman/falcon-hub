@@ -13,7 +13,7 @@ type AppPermissions = {
   canManageProjects: boolean;
   canManageUserApprovals: boolean;
   canManageUsers: boolean;
-  canAccessWhatsAppFlow: boolean;
+  canAccessCustomerBirthdays: boolean;
   canAccessLeaderMeetings: boolean;
   canManageLeaderMeetingsAccess: boolean;
 };
@@ -28,7 +28,7 @@ const readOnlyPermissions: AppPermissions = {
   canManageProjects: false,
   canManageUserApprovals: false,
   canManageUsers: false,
-  canAccessWhatsAppFlow: false,
+  canAccessCustomerBirthdays: false,
   canAccessLeaderMeetings: false,
   canManageLeaderMeetingsAccess: false,
 };

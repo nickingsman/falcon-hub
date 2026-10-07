@@ -1,7 +1,7 @@
 import type { UserProfile, UserRole } from "@/lib/auth";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { isWhatsAppFlowRoleAllowed } from "@/lib/whatsapp-flow";
+import { isCustomerBirthdaysRoleAllowed } from "@/lib/customer-birthdays";
 import {
   canManageFeatureAccess,
   isFeatureGrantActive,
@@ -60,11 +60,11 @@ export function canManageSales(profile: UserProfile | null) {
   return hasRole(profile, ["super_admin", "admin"]);
 }
 
-export function canAccessWhatsAppFlow(profile: UserProfile | null) {
+export function canAccessCustomerBirthdays(profile: UserProfile | null) {
   return Boolean(
     profile &&
       profile.status === "active" &&
-      isWhatsAppFlowRoleAllowed(profile.role),
+      isCustomerBirthdaysRoleAllowed(profile.role),
   );
 }
 
@@ -108,10 +108,10 @@ export async function requireLeaderMeetingsAccessManagement() {
   return { authorized: true, ...authContext } as const;
 }
 
-export async function requireWhatsAppFlowAccess() {
+export async function requireCustomerBirthdaysAccess() {
   const authContext = await getAuthenticatedUserProfile();
   if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
-  if (!canAccessWhatsAppFlow(authContext.profile)) {
+  if (!canAccessCustomerBirthdays(authContext.profile)) {
     return { authorized: false, response: forbiddenJson("Super Admin access is required") } as const;
   }
   return { authorized: true, ...authContext } as const;

@@ -3,13 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SearchCombobox } from "@/app/(app)/components/SearchCombobox";
 import {
-  buildWhatsAppUrl,
   getDaysUntilBirthday,
   parseBirthday,
-  renderWhatsAppTemplate,
-  whatsappMessageTemplates,
-  type WhatsAppTemplateId,
-} from "@/lib/whatsapp-flow";
+} from "@/lib/customer-birthdays";
 
 type Customer = {
   id: string;
@@ -63,7 +59,7 @@ function timingLabel(daysUntil: number) {
   return `In ${daysUntil} days`;
 }
 
-export default function WhatsAppFlowPage() {
+export default function CustomerBirthdaysPage() {
   const [view, setView] = useState<View>("overview");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -75,10 +71,6 @@ export default function WhatsAppFlowPage() {
   const [form, setForm] = useState<CustomerForm>(emptyForm);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [composeCustomer, setComposeCustomer] = useState<Customer | null>(null);
-  const [composeTemplate, setComposeTemplate] = useState<WhatsAppTemplateId>("birthday");
-  const [composeMessage, setComposeMessage] = useState("");
-  const [composeError, setComposeError] = useState("");
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -93,7 +85,7 @@ export default function WhatsAppFlowPage() {
       setCustomers(customerPayload.customerBirthdays ?? []);
       if (projectResponse.ok) setProjects((await projectResponse.json()) as Project[]);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load WhatsApp Flow");
+      setError(loadError instanceof Error ? loadError.message : "Unable to load Customer Birthdays");
     } finally {
       setLoading(false);
     }
@@ -220,32 +212,6 @@ export default function WhatsAppFlowPage() {
     else setError("Unable to delete customer");
   }
 
-  function openWhatsAppComposer(customer: Customer) {
-    if (!customer.phone) return;
-    setComposeCustomer(customer);
-    setComposeTemplate("birthday");
-    setComposeMessage(renderWhatsAppTemplate("birthday", customer.customerName));
-    setComposeError("");
-  }
-
-  function changeComposeTemplate(templateId: WhatsAppTemplateId) {
-    setComposeTemplate(templateId);
-    if (composeCustomer) {
-      setComposeMessage(renderWhatsAppTemplate(templateId, composeCustomer.customerName));
-    }
-    setComposeError("");
-  }
-
-  function openWhatsApp() {
-    if (!composeCustomer) return;
-    const result = buildWhatsAppUrl(composeCustomer.phone, composeMessage);
-    if (!result.valid) {
-      setComposeError(result.error);
-      return;
-    }
-    window.open(result.url, "_blank", "noopener,noreferrer");
-  }
-
   return (
     <main className="overflow-x-hidden p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-6xl space-y-5">
@@ -253,8 +219,8 @@ export default function WhatsAppFlowPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-sm font-medium uppercase tracking-[0.24em] text-[#087F6B]">Customer Relationships</p>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">WhatsApp Flow</h1>
-              <p className="mt-2 text-sm text-zinc-600">Stay connected with every customer.</p>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Customer Birthdays</h1>
+              <p className="mt-2 text-sm text-zinc-600">Customer relationship and birthday tracking.</p>
             </div>
             <button type="button" onClick={openCreate} className="min-h-11 rounded-full bg-zinc-950 px-5 text-sm font-semibold text-white">
               Add Customer
@@ -270,7 +236,7 @@ export default function WhatsAppFlowPage() {
         </section>
 
         {error ? <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{error}</p> : null}
-        {loading ? <p className="rounded-[24px] border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">Loading WhatsApp Flow...</p> : null}
+        {loading ? <p className="rounded-[24px] border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-500">Loading Customer Birthdays...</p> : null}
 
         {!loading && view === "overview" ? (
           <>
@@ -330,15 +296,6 @@ export default function WhatsAppFlowPage() {
                       {customer.remarks ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-600">{customer.remarks}</p> : null}
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openWhatsAppComposer(customer)}
-                        disabled={!customer.phone}
-                        title={customer.phone ? "Compose WhatsApp message" : "Add a phone number to use WhatsApp"}
-                        className="rounded-full bg-[#168b55] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#117447] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500"
-                      >
-                        WhatsApp
-                      </button>
                       <button type="button" onClick={() => openEdit(customer)} className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold">Edit</button>
                       <details className="relative">
                         <summary aria-label={`More actions for ${customer.customerName}`} className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border border-zinc-300 text-lg font-semibold text-zinc-600 [&::-webkit-details-marker]:hidden">⋯</summary>
@@ -374,40 +331,6 @@ export default function WhatsAppFlowPage() {
         </div>
       ) : null}
 
-      {composeCustomer ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/40 p-4 sm:items-center">
-          <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-[28px] bg-white p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#168b55]">WhatsApp Message</p>
-                <h2 className="mt-1 text-xl font-semibold text-zinc-950">{composeCustomer.customerName}</h2>
-                <p className="mt-1 text-sm text-zinc-500">{composeCustomer.phone}</p>
-              </div>
-              <button type="button" onClick={() => setComposeCustomer(null)} className="rounded-full border border-zinc-200 px-3 py-1.5 text-sm font-semibold text-zinc-600">Close</button>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              <label className="block text-sm font-medium text-zinc-900">
-                Template
-                <select value={composeTemplate} onChange={(event) => changeComposeTemplate(event.target.value as WhatsAppTemplateId)} className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 outline-none">
-                  {whatsappMessageTemplates.map((template) => <option key={template.id} value={template.id}>{template.label}</option>)}
-                </select>
-              </label>
-              <label className="block text-sm font-medium text-zinc-900">
-                Message
-                <textarea value={composeMessage} onChange={(event) => { setComposeMessage(event.target.value); setComposeError(""); }} rows={7} className="mt-2 w-full resize-y rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm leading-6 outline-none" />
-              </label>
-              {composeError ? <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{composeError}</p> : null}
-              <p className="text-xs leading-5 text-zinc-500">WhatsApp will open with this message prefilled. You must review it and press Send manually in WhatsApp.</p>
-            </div>
-
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button type="button" onClick={() => setComposeCustomer(null)} className="rounded-full border border-zinc-300 px-5 py-2.5 text-sm font-semibold">Cancel</button>
-              <button type="button" onClick={openWhatsApp} className="rounded-full bg-[#168b55] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#117447]">Open WhatsApp</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
 }

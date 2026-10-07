@@ -7,7 +7,7 @@ import {
   canManageProjects,
   canManageUserApprovals,
   canManageUsers,
-  canAccessWhatsAppFlow,
+  canAccessCustomerBirthdays,
   canAccessLeaderMeetings,
   canManageLeaderMeetingsAccess,
 } from "@/lib/permissions";
@@ -88,7 +88,7 @@ export default async function AppLayout({
     canManageProjects: canManageProjects(profile),
     canManageUserApprovals: canManageUserApprovals(profile),
     canManageUsers: canManageUsers(profile),
-    canAccessWhatsAppFlow: canAccessWhatsAppFlow(profile),
+    canAccessCustomerBirthdays: canAccessCustomerBirthdays(profile),
     canAccessLeaderMeetings: await canAccessLeaderMeetings(authContext.user.id, profile),
     canManageLeaderMeetingsAccess: canManageLeaderMeetingsAccess(profile),
   };

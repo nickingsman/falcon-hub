@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireWhatsAppFlowAccess } from "@/lib/permissions";
+import { requireCustomerBirthdaysAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
-import { normalizeWhatsAppFlowCustomer } from "@/lib/whatsapp-flow";
+import { normalizeCustomerBirthday } from "@/lib/customer-birthdays";
 
 type CustomerRow = {
   id: string;
@@ -33,7 +33,7 @@ function notFound() {
   return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 }
 
-function serverError(message = "Unable to process WhatsApp Flow request") {
+function serverError(message = "Unable to process Customer Birthdays request") {
   return NextResponse.json({ error: message }, { status: 500 });
 }
 
@@ -90,7 +90,7 @@ async function validateProjectId(supabase: ReturnType<typeof createSupabaseAdmin
 }
 
 export async function listCustomerBirthdays() {
-  const authorization = await requireWhatsAppFlowAccess();
+  const authorization = await requireCustomerBirthdaysAccess();
   if (!authorization.authorized) return authorization.response;
   try {
     const supabase = createSupabaseAdminClient();
@@ -99,16 +99,16 @@ export async function listCustomerBirthdays() {
     return NextResponse.json({ customerBirthdays: ((data ?? []) as CustomerRow[]).map(toCustomer) });
   } catch (error) {
     console.error("GET /api/customer-birthdays error:", error);
-    return serverError("Unable to load WhatsApp Flow customers");
+    return serverError("Unable to load customers");
   }
 }
 
 export async function createCustomerBirthday(request: Request) {
-  const authorization = await requireWhatsAppFlowAccess();
+  const authorization = await requireCustomerBirthdaysAccess();
   if (!authorization.authorized) return authorization.response;
   const parsedBody = await parseBody(request);
   if (!parsedBody.body) return badRequest(parsedBody.error ?? "Invalid request");
-  const parsed = normalizeWhatsAppFlowCustomer(parsedBody.body);
+  const parsed = normalizeCustomerBirthday(parsedBody.body);
   if ("error" in parsed) return badRequest(parsed.error);
   try {
     const supabase = createSupabaseAdminClient();
@@ -131,7 +131,7 @@ async function findOwnedCustomer(customerId: string, ownerUserId: string) {
 }
 
 export async function getCustomerBirthday(customerId: string) {
-  const authorization = await requireWhatsAppFlowAccess();
+  const authorization = await requireCustomerBirthdaysAccess();
   if (!authorization.authorized) return authorization.response;
   try {
     const result = await findOwnedCustomer(customerId, authorization.user.id);
@@ -145,7 +145,7 @@ export async function getCustomerBirthday(customerId: string) {
 }
 
 export async function updateCustomerBirthday(request: Request, customerId: string) {
-  const authorization = await requireWhatsAppFlowAccess();
+  const authorization = await requireCustomerBirthdaysAccess();
   if (!authorization.authorized) return authorization.response;
   const parsedBody = await parseBody(request);
   if (!parsedBody.body) return badRequest(parsedBody.error ?? "Invalid request");
@@ -154,7 +154,7 @@ export async function updateCustomerBirthday(request: Request, customerId: strin
     const existing = await findOwnedCustomer(customerId, authorization.user.id);
     if (existing.error) throw existing.error;
     if (!existing.customer) return notFound();
-    const parsed = normalizeWhatsAppFlowCustomer({ ...bodyFromRow(existing.customer), ...parsedBody.body });
+    const parsed = normalizeCustomerBirthday({ ...bodyFromRow(existing.customer), ...parsedBody.body });
     if ("error" in parsed) return badRequest(parsed.error);
     const supabase = createSupabaseAdminClient();
     const projectError = await validateProjectId(supabase, parsed.value.project_id);
@@ -170,7 +170,7 @@ export async function updateCustomerBirthday(request: Request, customerId: strin
 }
 
 export async function deleteCustomerBirthday(customerId: string) {
-  const authorization = await requireWhatsAppFlowAccess();
+  const authorization = await requireCustomerBirthdaysAccess();
   if (!authorization.authorized) return authorization.response;
   if (!uuidPattern.test(customerId)) return notFound();
   try {

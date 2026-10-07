@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
-import { canAccessWhatsAppFlow } from "@/lib/permissions";
+import { canAccessCustomerBirthdays } from "@/lib/permissions";
 
-export default async function WhatsAppFlowLayout({
+export default async function CustomerBirthdaysLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const authContext = await getAuthenticatedUserProfile();
-  if (!canAccessWhatsAppFlow(authContext?.profile ?? null)) notFound();
+  if (!canAccessCustomerBirthdays(authContext?.profile ?? null)) notFound();
   return children;
 }

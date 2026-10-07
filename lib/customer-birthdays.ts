@@ -4,7 +4,7 @@ export type MalaysiaDateParts = {
   day: number;
 };
 
-export type WhatsAppFlowCustomerInput = {
+export type CustomerBirthdayInput = {
   customer_name: string;
   phone: string | null;
   birthday: string | null;
@@ -18,75 +18,7 @@ export type WhatsAppFlowCustomerInput = {
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export const whatsappMessageTemplates = [
-  {
-    id: "birthday",
-    label: "Birthday",
-    message: "Hi {{name}}, wishing you a very Happy Birthday! May your year ahead be filled with happiness, good health and success.",
-  },
-  {
-    id: "mid-autumn",
-    label: "Mid-Autumn Festival",
-    message: "Hi {{name}}, wishing you and your family a joyful Mid-Autumn Festival filled with happiness, harmony and wonderful moments together.",
-  },
-  {
-    id: "chinese-new-year",
-    label: "Chinese New Year",
-    message: "Hi {{name}}, wishing you and your family a prosperous Chinese New Year filled with good health, happiness and success.",
-  },
-  {
-    id: "christmas",
-    label: "Christmas",
-    message: "Hi {{name}}, wishing you and your family a Merry Christmas filled with joy, peace and wonderful moments.",
-  },
-  {
-    id: "custom",
-    label: "Custom",
-    message: "Hi {{name}}, ",
-  },
-] as const;
-
-export type WhatsAppTemplateId = (typeof whatsappMessageTemplates)[number]["id"];
-
-export function renderWhatsAppTemplate(templateId: WhatsAppTemplateId, customerName: string) {
-  const template = whatsappMessageTemplates.find((item) => item.id === templateId);
-  return (template?.message ?? "").replaceAll("{{name}}", customerName.trim());
-}
-
-export function normalizeMalaysiaWhatsAppPhone(phone: string | null | undefined) {
-  const original = phone?.trim() ?? "";
-  if (!original) return { valid: false as const, error: "This customer does not have a phone number." };
-  if (!/^\+?[0-9\s()-]+$/.test(original)) {
-    return { valid: false as const, error: "Enter a valid Malaysian phone number before opening WhatsApp." };
-  }
-
-  const digits = original.replace(/\D/g, "");
-  const normalized = digits.startsWith("60")
-    ? digits
-    : digits.startsWith("0")
-      ? `60${digits.slice(1)}`
-      : "";
-
-  if (!/^60\d{9,10}$/.test(normalized)) {
-    return { valid: false as const, error: "Enter a valid Malaysian phone number before opening WhatsApp." };
-  }
-
-  return { valid: true as const, phone: normalized };
-}
-
-export function buildWhatsAppUrl(phone: string | null | undefined, message: string) {
-  const normalized = normalizeMalaysiaWhatsAppPhone(phone);
-  if (!normalized.valid) return normalized;
-  if (!message.trim()) {
-    return { valid: false as const, error: "Enter a message before opening WhatsApp." };
-  }
-  return {
-    valid: true as const,
-    url: `https://wa.me/${normalized.phone}?text=${encodeURIComponent(message)}`,
-  };
-}
-
-export function isWhatsAppFlowRoleAllowed(role: string | null | undefined) {
+export function isCustomerBirthdaysRoleAllowed(role: string | null | undefined) {
   return role === "super_admin";
 }
 
@@ -184,9 +116,9 @@ function normalizeTags(value: unknown) {
   return { value: tags };
 }
 
-export function normalizeWhatsAppFlowCustomer(
+export function normalizeCustomerBirthday(
   body: Record<string, unknown>,
-): { value: WhatsAppFlowCustomerInput } | { error: string } {
+): { value: CustomerBirthdayInput } | { error: string } {
   const name = typeof body.customerName === "string" ? body.customerName.trim() : "";
   if (!name || name.length > 120) return { error: "Customer name is required and must be 120 characters or fewer" };
 
