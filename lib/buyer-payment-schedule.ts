@@ -6,27 +6,40 @@ import {
 } from "./progressive-interest";
 
 export type PurchaseMethod = "loan" | "cash";
-export type RebateTreatment = "direct_offset" | "cashback_later";
+export type BuyerPaymentIncentiveType = "rebate" | "cashback";
+
+export type BuyerPaymentIncentiveInput = {
+  id: string;
+  type: BuyerPaymentIncentiveType;
+  percentage: number;
+  applicationStageId: ScheduleHStageId;
+};
 
 export type BuyerPaymentScheduleInput = {
   spaPrice: number;
   purchaseMethod: PurchaseMethod;
   loanMarginPercent: number;
-  developerRebatePercent: number;
-  rebateTreatment: RebateTreatment;
-  rebateStageId: ScheduleHStageId;
+  incentives: BuyerPaymentIncentiveInput[];
+};
+
+export type BuyerPaymentIncentiveResult = BuyerPaymentIncentiveInput & {
+  amount: number;
+  applicationStageLabel: string;
 };
 
 export type BuyerPaymentScheduleStage = {
   stage: ScheduleHStageDefinition;
   stagePercentage: number;
   stageAmount: number;
+  baseBuyerPayment: number;
   requiredBuyerPayment: number;
   bankPayment: number;
-  developerOffset: number;
+  rebateAvailableAtStage: number;
+  rebateApplied: number;
+  rebateCarryForwardBalance: number;
   cashbackReceived: number;
   netBuyerCashMovement: number;
-  cumulativeGrossBuyerPayments: number;
+  cumulativeBuyerPayments: number;
   cumulativeCashbackReceived: number;
   cumulativeNetBuyerOutlay: number;
 };
@@ -38,21 +51,19 @@ export type BuyerPaymentScheduleResult = {
   loanAmount: number;
   grossBuyerEquity: number;
   grossBuyerPaymentObligation: number;
-  developerRebatePercent: number;
-  developerRebateAmount: number;
-  effectiveDeveloperRebate: number;
+  totalRebate: number;
+  totalCashback: number;
+  totalRebateApplied: number;
+  unusedRebateCarryForward: number;
+  netBuyerOwnFunds: number;
   netOwnFundsRequired: number;
   netOwnFundsPercent: number;
   buyerFundsToPrepare: number;
   grossBuyerPayments: number;
   totalBankPayments: number;
-  totalDeveloperOffset: number;
   totalCashbackReceived: number;
   finalNetBuyerOutlay: number;
-  rebateTreatment: RebateTreatment;
-  rebateStageId: ScheduleHStageId;
-  rebateStageLabel: string;
-  allocationError: string | null;
+  incentives: BuyerPaymentIncentiveResult[];
   isValid: boolean;
   validationErrors: string[];
   stages: BuyerPaymentScheduleStage[];
@@ -63,15 +74,13 @@ function normalizeMoney(value: number) {
   return Math.max(value, 0);
 }
 
-function getStageLabel(stageId: ScheduleHStageId) {
+export function getBuyerPaymentStageLabel(stageId: ScheduleHStageId) {
   const stage = scheduleHStages.find((item) => item.id === stageId);
-  if (!stage) return "SPA Signing";
+  if (!stage) return "Unknown Stage";
   return stage.id === "spa" ? "SPA Signing" : `${stage.code} ${stage.englishTitle}`;
 }
 
-export function calculateBuyerPaymentSchedule(
-  input: BuyerPaymentScheduleInput,
-): BuyerPaymentScheduleResult {
+function getValidationErrors(input: BuyerPaymentScheduleInput) {
   const validationErrors: string[] = [];
 
   if (!Number.isFinite(input.spaPrice) || input.spaPrice <= 0) {
@@ -87,15 +96,30 @@ export function calculateBuyerPaymentSchedule(
     validationErrors.push("Loan margin must be greater than 0 and no more than 100.");
   }
 
-  const developerRebatePercentIsValid =
-    Number.isFinite(input.developerRebatePercent) &&
-    input.developerRebatePercent >= 0 &&
-    input.developerRebatePercent <= 100;
+  input.incentives.forEach((incentive, index) => {
+    const label = `Incentive ${index + 1}`;
+    if (incentive.type !== "rebate" && incentive.type !== "cashback") {
+      validationErrors.push(`${label} type is invalid.`);
+    }
+    if (
+      !Number.isFinite(incentive.percentage) ||
+      incentive.percentage < 0 ||
+      incentive.percentage > 100
+    ) {
+      validationErrors.push(`${label} percentage must be between 0% and 100%.`);
+    }
+    if (!scheduleHStages.some((stage) => stage.id === incentive.applicationStageId)) {
+      validationErrors.push(`${label} application stage is invalid.`);
+    }
+  });
 
-  if (!developerRebatePercentIsValid) {
-    validationErrors.push("Developer Rebate must be between 0% and 100%.");
-  }
+  return validationErrors;
+}
 
+export function calculateBuyerPaymentSchedule(
+  input: BuyerPaymentScheduleInput,
+): BuyerPaymentScheduleResult {
+  const validationErrors = getValidationErrors(input);
   const isValid = validationErrors.length === 0;
   const spaPrice = isValid ? input.spaPrice : normalizeMoney(input.spaPrice);
   const loanResult =
@@ -111,95 +135,75 @@ export function calculateBuyerPaymentSchedule(
   const grossBuyerEquity = isValid
     ? input.purchaseMethod === "loan"
       ? loanResult?.buyerEquity ?? 0
-      : 0
+      : spaPrice
     : 0;
-  const grossBuyerPaymentObligation =
-    input.purchaseMethod === "cash" && isValid ? spaPrice : grossBuyerEquity;
-  const developerRebatePercent = developerRebatePercentIsValid
-    ? input.developerRebatePercent
-    : 0;
-  const developerRebateAmount = isValid
-    ? spaPrice * (developerRebatePercent / 100)
-    : 0;
-  const effectiveDeveloperRebate = Math.min(
-    developerRebateAmount,
-    grossBuyerPaymentObligation,
-  );
-  const netOwnFundsRequired = normalizeMoney(
-    grossBuyerPaymentObligation - effectiveDeveloperRebate,
-  );
-  const buyerFundsToPrepare =
-    input.rebateTreatment === "cashback_later"
-      ? grossBuyerPaymentObligation
-      : netOwnFundsRequired;
-  const selectedStageIndex = Math.max(
-    scheduleHStages.findIndex((stage) => stage.id === input.rebateStageId),
-    0,
-  );
-  const availableOffsetCapacity = scheduleHStages
-    .slice(selectedStageIndex)
-    .reduce((sum, stage) => sum + spaPrice * (stage.percentage / 100), 0);
-  const allocationError =
-    isValid &&
-    input.rebateTreatment === "direct_offset" &&
-    effectiveDeveloperRebate > availableOffsetCapacity
-      ? "This rebate timing cannot be fully applied as a direct payment offset with the current financing structure. Consider Cashback Later or review the rebate application stage."
-      : null;
+  const grossBuyerPaymentObligation = grossBuyerEquity;
+  const incentives: BuyerPaymentIncentiveResult[] = input.incentives.map((incentive) => ({
+    ...incentive,
+    amount: isValid ? spaPrice * (incentive.percentage / 100) : 0,
+    applicationStageLabel: getBuyerPaymentStageLabel(incentive.applicationStageId),
+  }));
+  const totalRebate = incentives
+    .filter((incentive) => incentive.type === "rebate")
+    .reduce((sum, incentive) => sum + incentive.amount, 0);
+  const totalCashback = incentives
+    .filter((incentive) => incentive.type === "cashback")
+    .reduce((sum, incentive) => sum + incentive.amount, 0);
 
-  let remainingBuyerFunds = buyerFundsToPrepare;
+  let remainingBuyerObligation = grossBuyerPaymentObligation;
   let remainingLoanAmount = loanAmount;
-  let remainingDeveloperOffset = effectiveDeveloperRebate;
-  let cumulativeGrossBuyerPayments = 0;
+  let rebateCarryForwardBalance = 0;
+  let cumulativeBuyerPayments = 0;
   let cumulativeCashbackReceived = 0;
 
-  const stages = scheduleHStages.map((stage, index): BuyerPaymentScheduleStage => {
-    const stageAmount = spaPrice * (stage.percentage / 100);
-    const canUseDeveloperOffset =
-      isValid &&
-      input.rebateTreatment === "direct_offset" &&
-      index >= selectedStageIndex &&
-      !allocationError;
-    const developerOffset = canUseDeveloperOffset
-      ? Math.min(stageAmount, remainingDeveloperOffset)
+  const stages = scheduleHStages.map((stage): BuyerPaymentScheduleStage => {
+    const stageAmount = isValid ? spaPrice * (stage.percentage / 100) : 0;
+    const baseBuyerPayment = isValid
+      ? Math.min(stageAmount, remainingBuyerObligation)
       : 0;
-    remainingDeveloperOffset = normalizeMoney(remainingDeveloperOffset - developerOffset);
-
-    const requiredBuyerPayment = isValid
-      ? Math.min(normalizeMoney(stageAmount - developerOffset), remainingBuyerFunds)
-      : 0;
-    remainingBuyerFunds = normalizeMoney(remainingBuyerFunds - requiredBuyerPayment);
-
+    remainingBuyerObligation = normalizeMoney(
+      remainingBuyerObligation - baseBuyerPayment,
+    );
     const bankPayment = isValid
-      ? Math.min(
-          normalizeMoney(stageAmount - developerOffset - requiredBuyerPayment),
-          remainingLoanAmount,
-        )
+      ? Math.min(normalizeMoney(stageAmount - baseBuyerPayment), remainingLoanAmount)
       : 0;
     remainingLoanAmount = normalizeMoney(remainingLoanAmount - bankPayment);
 
-    const cashbackReceived =
-      isValid &&
-      input.rebateTreatment === "cashback_later" &&
-      stage.id === input.rebateStageId
-        ? effectiveDeveloperRebate
-        : 0;
+    const stageIncentives = incentives.filter(
+      (incentive) => incentive.applicationStageId === stage.id,
+    );
+    const rebateAvailableAtStage = stageIncentives
+      .filter((incentive) => incentive.type === "rebate")
+      .reduce((sum, incentive) => sum + incentive.amount, 0);
+    rebateCarryForwardBalance += rebateAvailableAtStage;
+    const rebateApplied = Math.min(baseBuyerPayment, rebateCarryForwardBalance);
+    rebateCarryForwardBalance = normalizeMoney(
+      rebateCarryForwardBalance - rebateApplied,
+    );
+    const requiredBuyerPayment = normalizeMoney(baseBuyerPayment - rebateApplied);
+    const cashbackReceived = stageIncentives
+      .filter((incentive) => incentive.type === "cashback")
+      .reduce((sum, incentive) => sum + incentive.amount, 0);
     const netBuyerCashMovement = requiredBuyerPayment - cashbackReceived;
-    cumulativeGrossBuyerPayments += requiredBuyerPayment;
+    cumulativeBuyerPayments += requiredBuyerPayment;
     cumulativeCashbackReceived += cashbackReceived;
 
     return {
       stage,
       stagePercentage: stage.percentage,
       stageAmount,
+      baseBuyerPayment,
       requiredBuyerPayment,
       bankPayment,
-      developerOffset,
+      rebateAvailableAtStage,
+      rebateApplied,
+      rebateCarryForwardBalance,
       cashbackReceived,
       netBuyerCashMovement,
-      cumulativeGrossBuyerPayments,
+      cumulativeBuyerPayments,
       cumulativeCashbackReceived,
       cumulativeNetBuyerOutlay:
-        cumulativeGrossBuyerPayments - cumulativeCashbackReceived,
+        cumulativeBuyerPayments - cumulativeCashbackReceived,
     };
   });
 
@@ -207,12 +211,19 @@ export function calculateBuyerPaymentSchedule(
     (sum, stage) => sum + stage.requiredBuyerPayment,
     0,
   );
-  const totalBankPayments = stages.reduce((sum, stage) => sum + stage.bankPayment, 0);
-  const totalDeveloperOffset = stages.reduce((sum, stage) => sum + stage.developerOffset, 0);
+  const totalBankPayments = stages.reduce(
+    (sum, stage) => sum + stage.bankPayment,
+    0,
+  );
+  const totalRebateApplied = stages.reduce(
+    (sum, stage) => sum + stage.rebateApplied,
+    0,
+  );
   const totalCashbackReceived = stages.reduce(
     (sum, stage) => sum + stage.cashbackReceived,
     0,
   );
+  const netBuyerOwnFunds = grossBuyerPayments - totalCashbackReceived;
 
   return {
     purchaseMethod: input.purchaseMethod,
@@ -221,21 +232,19 @@ export function calculateBuyerPaymentSchedule(
     loanAmount,
     grossBuyerEquity,
     grossBuyerPaymentObligation,
-    developerRebatePercent,
-    developerRebateAmount,
-    effectiveDeveloperRebate,
-    netOwnFundsRequired,
-    netOwnFundsPercent: spaPrice > 0 ? (netOwnFundsRequired / spaPrice) * 100 : 0,
-    buyerFundsToPrepare,
+    totalRebate,
+    totalCashback,
+    totalRebateApplied,
+    unusedRebateCarryForward: rebateCarryForwardBalance,
+    netBuyerOwnFunds,
+    netOwnFundsRequired: netBuyerOwnFunds,
+    netOwnFundsPercent: spaPrice > 0 ? (netBuyerOwnFunds / spaPrice) * 100 : 0,
+    buyerFundsToPrepare: grossBuyerPayments,
     grossBuyerPayments,
     totalBankPayments,
-    totalDeveloperOffset,
     totalCashbackReceived,
-    finalNetBuyerOutlay: grossBuyerPayments - totalCashbackReceived,
-    rebateTreatment: input.rebateTreatment,
-    rebateStageId: input.rebateStageId,
-    rebateStageLabel: getStageLabel(input.rebateStageId),
-    allocationError,
+    finalNetBuyerOutlay: netBuyerOwnFunds,
+    incentives,
     isValid,
     validationErrors,
     stages,

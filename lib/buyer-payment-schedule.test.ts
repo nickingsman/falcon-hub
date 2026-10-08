@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   calculateBuyerPaymentSchedule,
+  type BuyerPaymentIncentiveInput,
   type BuyerPaymentScheduleInput,
 } from "./buyer-payment-schedule";
 import { getScheduleHPercentageTotal } from "./progressive-interest";
@@ -11,15 +12,21 @@ const baseInput: BuyerPaymentScheduleInput = {
   spaPrice: 600_000,
   purchaseMethod: "loan",
   loanMarginPercent: 90,
-  developerRebatePercent: 0,
-  rebateTreatment: "direct_offset",
-  rebateStageId: "spa",
+  incentives: [],
 };
+
+function incentive(
+  id: string,
+  type: BuyerPaymentIncentiveInput["type"],
+  percentage: number,
+  applicationStageId: BuyerPaymentIncentiveInput["applicationStageId"],
+): BuyerPaymentIncentiveInput {
+  return { id, type, percentage, applicationStageId };
+}
 
 function calculate(overrides: Partial<BuyerPaymentScheduleInput> = {}) {
   const result = calculateBuyerPaymentSchedule({ ...baseInput, ...overrides });
   assert.equal(result.isValid, true);
-  assert.equal(result.allocationError, null);
   return result;
 }
 
@@ -29,12 +36,86 @@ function stage(result: ReturnType<typeof calculate>, stageId: string) {
   return value;
 }
 
-test("existing 90% loan allocation is preserved", () => {
+test("single SPA rebate offsets only the SPA buyer payment", () => {
+  const result = calculate({
+    incentives: [incentive("rebate-1", "rebate", 5, "spa")],
+  });
+
+  assert.equal(result.totalRebate, 30_000);
+  assert.equal(result.totalRebateApplied, 30_000);
+  assert.equal(stage(result, "spa").requiredBuyerPayment, 30_000);
+  assert.equal(stage(result, "spa").rebateApplied, 30_000);
+  assert.equal(result.unusedRebateCarryForward, 0);
+});
+
+test("multiple rebates at different stages accumulate independently", () => {
+  const result = calculate({
+    purchaseMethod: "cash",
+    incentives: [
+      incentive("rebate-1", "rebate", 5, "spa"),
+      incentive("rebate-2", "rebate", 10, "2b"),
+    ],
+  });
+
+  assert.equal(stage(result, "spa").rebateApplied, 30_000);
+  assert.equal(stage(result, "2a").rebateApplied, 0);
+  assert.equal(stage(result, "2b").rebateApplied, 60_000);
+  assert.equal(result.totalRebateApplied, 90_000);
+  assert.equal(result.grossBuyerPayments, 510_000);
+});
+
+test("rebate exceeding a stage carries forward only to later stages", () => {
+  const result = calculate({
+    purchaseMethod: "cash",
+    incentives: [incentive("rebate-1", "rebate", 15, "spa")],
+  });
+
+  assert.equal(stage(result, "spa").rebateApplied, 60_000);
+  assert.equal(stage(result, "spa").rebateCarryForwardBalance, 30_000);
+  assert.equal(stage(result, "2a").rebateApplied, 30_000);
+  assert.equal(stage(result, "2a").requiredBuyerPayment, 30_000);
+  assert.equal(stage(result, "2a").rebateCarryForwardBalance, 0);
+});
+
+test("cashback at VP is a separate cash inflow at VP", () => {
+  const result = calculate({
+    purchaseMethod: "cash",
+    incentives: [incentive("cashback-1", "cashback", 10, "vp")],
+  });
+  const vp = stage(result, "vp");
+
+  assert.equal(result.grossBuyerPayments, 600_000);
+  assert.equal(vp.requiredBuyerPayment, 105_000);
+  assert.equal(vp.cashbackReceived, 60_000);
+  assert.equal(vp.netBuyerCashMovement, 45_000);
+  assert.equal(result.netBuyerOwnFunds, 540_000);
+});
+
+test("rebate and cashback combine without double counting", () => {
+  const result = calculate({
+    incentives: [
+      incentive("rebate-1", "rebate", 5, "spa"),
+      incentive("cashback-1", "cashback", 5, "vp"),
+    ],
+  });
+
+  assert.equal(result.grossBuyerPaymentObligation, 60_000);
+  assert.equal(result.totalRebateApplied, 30_000);
+  assert.equal(result.grossBuyerPayments, 30_000);
+  assert.equal(result.totalCashbackReceived, 30_000);
+  assert.equal(result.netBuyerOwnFunds, 0);
+  assert.equal(
+    result.grossBuyerPayments + result.totalBankPayments + result.totalRebateApplied,
+    result.spaPrice,
+  );
+});
+
+test("loan purchase preserves the existing buyer and bank allocation", () => {
   const result = calculate();
 
   assert.equal(result.loanAmount, 540_000);
-  assert.equal(result.grossBuyerEquity, 60_000);
-  assert.equal(stage(result, "spa").requiredBuyerPayment, 60_000);
+  assert.equal(result.grossBuyerPaymentObligation, 60_000);
+  assert.equal(stage(result, "spa").baseBuyerPayment, 60_000);
   assert.equal(stage(result, "2a").bankPayment, 60_000);
   assert.equal(result.grossBuyerPayments, 60_000);
   assert.equal(result.totalBankPayments, 540_000);
@@ -45,157 +126,84 @@ test("cash purchase funds every stage without bank financing", () => {
 
   assert.equal(result.loanAmount, 0);
   assert.equal(result.totalBankPayments, 0);
+  assert.equal(result.grossBuyerPaymentObligation, 600_000);
   assert.equal(result.grossBuyerPayments, 600_000);
-  assert.equal(result.finalNetBuyerOutlay, 600_000);
   assert.ok(result.stages.every((item) => item.bankPayment === 0));
 });
 
-test("cash direct offset begins only at the selected application stage", () => {
-  const result = calculate({
-    purchaseMethod: "cash",
-    developerRebatePercent: 10,
-    rebateTreatment: "direct_offset",
-    rebateStageId: "2a",
+test("zero incentives do not alter buyer cash flow", () => {
+  const withoutIncentives = calculate();
+  const withZeroIncentives = calculate({
+    incentives: [
+      incentive("rebate-0", "rebate", 0, "spa"),
+      incentive("cashback-0", "cashback", 0, "vp"),
+    ],
   });
 
-  assert.equal(stage(result, "spa").developerOffset, 0);
+  assert.equal(withZeroIncentives.totalRebate, 0);
+  assert.equal(withZeroIncentives.totalCashback, 0);
+  assert.deepEqual(withZeroIncentives.stages, withoutIncentives.stages);
+});
+
+test("rebates exceeding outstanding buyer payments remain unused without negatives", () => {
+  const result = calculate({
+    incentives: [incentive("rebate-1", "rebate", 100, "spa")],
+  });
+
+  assert.equal(result.totalRebate, 600_000);
+  assert.equal(result.totalRebateApplied, 60_000);
+  assert.equal(result.unusedRebateCarryForward, 540_000);
+  assert.equal(result.grossBuyerPayments, 0);
+  assert.ok(result.stages.every((item) => item.requiredBuyerPayment >= 0));
+});
+
+test("stage timing prevents future incentives from changing earlier payments", () => {
+  const result = calculate({
+    incentives: [
+      incentive("rebate-1", "rebate", 10, "2a"),
+      incentive("cashback-1", "cashback", 5, "vp"),
+    ],
+  });
+
   assert.equal(stage(result, "spa").requiredBuyerPayment, 60_000);
-  assert.equal(stage(result, "2a").developerOffset, 60_000);
-  assert.equal(stage(result, "2a").requiredBuyerPayment, 0);
-  assert.equal(result.totalBankPayments, 0);
-  assert.equal(result.grossBuyerPayments, 540_000);
-  assert.equal(result.totalDeveloperOffset, 60_000);
+  assert.equal(stage(result, "spa").rebateApplied, 0);
+  assert.equal(stage(result, "spa").cashbackReceived, 0);
+  assert.equal(result.totalRebateApplied, 0);
+  assert.equal(result.unusedRebateCarryForward, 60_000);
+  assert.equal(stage(result, "vp").cashbackReceived, 30_000);
 });
 
-test("cash cashback later records the VP inflow and reconciles", () => {
+test("multiple incentives at the same stage are summed by type", () => {
   const result = calculate({
     purchaseMethod: "cash",
-    developerRebatePercent: 10,
-    rebateTreatment: "cashback_later",
-    rebateStageId: "vp",
+    incentives: [
+      incentive("rebate-1", "rebate", 3, "2a"),
+      incentive("rebate-2", "rebate", 2, "2a"),
+      incentive("cashback-1", "cashback", 1, "2a"),
+    ],
   });
-  const vp = stage(result, "vp");
+  const foundation = stage(result, "2a");
 
-  assert.equal(result.loanAmount, 0);
-  assert.equal(result.totalBankPayments, 0);
-  assert.equal(result.grossBuyerPayments, 600_000);
-  assert.equal(result.totalCashbackReceived, 60_000);
-  assert.equal(result.finalNetBuyerOutlay, 540_000);
-  assert.equal(vp.requiredBuyerPayment, 105_000);
-  assert.equal(vp.cashbackReceived, 60_000);
-  assert.equal(vp.netBuyerCashMovement, 45_000);
+  assert.equal(foundation.rebateAvailableAtStage, 30_000);
+  assert.equal(foundation.rebateApplied, 30_000);
+  assert.equal(foundation.cashbackReceived, 6_000);
+  assert.equal(foundation.netBuyerCashMovement, 24_000);
 });
 
-test("loan cashback later preserves loan and gross buyer payments", () => {
-  const result = calculate({
-    developerRebatePercent: 10,
-    rebateTreatment: "cashback_later",
-    rebateStageId: "vp",
-  });
-
-  assert.equal(result.loanAmount, 540_000);
-  assert.equal(result.grossBuyerPayments, 60_000);
-  assert.equal(result.totalBankPayments, 540_000);
-  assert.equal(result.totalCashbackReceived, 60_000);
-  assert.equal(result.finalNetBuyerOutlay, 0);
-  assert.equal(stage(result, "vp").cashbackReceived, 60_000);
-  assert.ok(result.stages.filter((item) => item.stage.id !== "vp").every((item) => item.cashbackReceived === 0));
-});
-
-test("cashback before buyer funds are exhausted does not reduce required payments", () => {
-  const withoutCashback = calculate({ loanMarginPercent: 70 });
-  const withCashback = calculate({
-    loanMarginPercent: 70,
-    developerRebatePercent: 5,
-    rebateTreatment: "cashback_later",
-    rebateStageId: "2a",
-  });
-
-  assert.deepEqual(
-    withCashback.stages.map((item) => item.requiredBuyerPayment),
-    withoutCashback.stages.map((item) => item.requiredBuyerPayment),
-  );
-});
-
-test("cashback after buyer funds are exhausted can create a negative stage movement", () => {
-  const result = calculate({
-    developerRebatePercent: 10,
-    rebateTreatment: "cashback_later",
-    rebateStageId: "2a",
-  });
-  const release = stage(result, "2a");
-
-  assert.equal(release.requiredBuyerPayment, 0);
-  assert.equal(release.cashbackReceived, 60_000);
-  assert.equal(release.netBuyerCashMovement, -60_000);
-});
-
-test("cashback larger than the selected-stage buyer payment is not clamped", () => {
-  const result = calculate({
-    loanMarginPercent: 85,
-    developerRebatePercent: 15,
-    rebateTreatment: "cashback_later",
-    rebateStageId: "2a",
-  });
-  const release = stage(result, "2a");
-
-  assert.equal(release.requiredBuyerPayment, 30_000);
-  assert.equal(release.cashbackReceived, 90_000);
-  assert.equal(release.netBuyerCashMovement, -60_000);
-});
-
-test("partial buyer and bank transition remains supported", () => {
-  const result = calculate({ loanMarginPercent: 75 });
-  const structure = stage(result, "2b");
-
-  assert.equal(structure.requiredBuyerPayment, 30_000);
-  assert.equal(structure.bankPayment, 60_000);
-});
-
-test("direct-offset capacity validation is preserved", () => {
-  const result = calculateBuyerPaymentSchedule({
+test("invalid incentive percentages are rejected", () => {
+  const negative = calculateBuyerPaymentSchedule({
     ...baseInput,
-    purchaseMethod: "cash",
-    developerRebatePercent: 10,
-    rebateStageId: "stakeholder",
+    incentives: [incentive("rebate-negative", "rebate", -1, "spa")],
+  });
+  const excessive = calculateBuyerPaymentSchedule({
+    ...baseInput,
+    incentives: [incentive("cashback-excessive", "cashback", 100.01, "vp")],
   });
 
-  assert.equal(result.isValid, true);
-  assert.match(result.allocationError ?? "", /cannot be fully applied/);
-});
-
-test("direct-offset and cashback schedules reconcile", () => {
-  const direct = calculate({ developerRebatePercent: 7, rebateStageId: "2a" });
-  const cashback = calculate({
-    developerRebatePercent: 7,
-    rebateTreatment: "cashback_later",
-    rebateStageId: "stakeholder",
-  });
-
-  assert.equal(
-    direct.grossBuyerPayments + direct.totalBankPayments + direct.totalDeveloperOffset,
-    direct.spaPrice,
-  );
-  assert.equal(
-    cashback.grossBuyerPayments + cashback.totalBankPayments,
-    cashback.spaPrice,
-  );
-  assert.equal(
-    cashback.finalNetBuyerOutlay,
-    cashback.grossBuyerPayments - cashback.totalCashbackReceived,
-  );
-});
-
-test("rebate remains capped to the gross buyer obligation", () => {
-  const loan = calculate({ developerRebatePercent: 50, rebateTreatment: "cashback_later" });
-  const cash = calculate({
-    purchaseMethod: "cash",
-    developerRebatePercent: 100,
-    rebateTreatment: "cashback_later",
-  });
-
-  assert.equal(loan.effectiveDeveloperRebate, 60_000);
-  assert.equal(cash.effectiveDeveloperRebate, 600_000);
+  assert.equal(negative.isValid, false);
+  assert.match(negative.validationErrors.join(" "), /between 0% and 100%/);
+  assert.equal(excessive.isValid, false);
+  assert.match(excessive.validationErrors.join(" "), /between 0% and 100%/);
 });
 
 test("canonical Schedule H stages remain at 100%", () => {
