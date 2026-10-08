@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { resolveSalesAccessScope } from "@/app/api/sales/sales-access";
 import { canManageSales, requireSalesApiAccess } from "@/lib/permissions";
 import { calculateSalesAnalytics, getSalesDateRange, normalizeSalesUnit, parseSalesPercentage, salesStatuses, type SalesCase, type SalesStatus } from "@/lib/sales";
+import { filterSalesCasesForAccess } from "@/lib/sales-authorization";
+import { normalizeHistoricalIdentity } from "@/lib/sales-project-contribution";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { isValidDateString } from "@/lib/malaysia-date";
 import { getMemberDisplayName } from "@/lib/member-display";
@@ -82,7 +85,7 @@ async function parseInput(request: Request) {
 
 function toSalesCase(row: SalesCaseDbRow): SalesCase {
   return {
-    id: row.id, projectId: row.project_id ?? `historical-project:${row.id}`, projectName: row.project?.project_name ?? row.source_project_name ?? "Unknown project",
+    id: row.id, projectId: row.project_id ?? `historical-project:${normalizeHistoricalIdentity(row.source_project_name ?? "unknown")}`, projectName: row.project?.project_name ?? row.source_project_name ?? "Unknown project",
     unitNo: row.unit_no, bookingDate: row.booking_date, nettPrice: Number(row.nett_price),
     falconPortion: Number(row.falcon_portion), status: row.status, spaSignedDate: row.spa_signed_date,
     cancelDate: row.cancel_date, remark: row.remark,
@@ -110,7 +113,8 @@ export async function listSales(request: Request) {
     const url = new URL(request.url);
     const range = getSalesDateRange(url.searchParams.get("period"), url.searchParams.get("from"), url.searchParams.get("to"));
     const canManage = canManageSales(authorization.profile);
-    const visibleCases = canManage ? allCases : allCases.filter((item) => item.contributors.some((contributor) => contributor.memberId === authorization.profile.member_id));
+    const accessScope = await resolveSalesAccessScope(supabase, authorization.profile);
+    const visibleCases = filterSalesCasesForAccess(allCases, accessScope);
     const projectId = url.searchParams.get("projectId");
     const status = url.searchParams.get("status");
     const memberId = url.searchParams.get("memberId");
@@ -121,13 +125,15 @@ export async function listSales(request: Request) {
       .filter((item) => !memberId || item.contributors.some((contributor) => contributor.memberId === memberId))
       .filter((item) => !search || item.projectName.toLowerCase().includes(search) || item.unitNo.toLowerCase().includes(search));
 
+    const recordProjects = [...new Map(visibleCases.map((item) => [item.projectId, { id: item.projectId, project_name: item.projectName }])).values()]
+      .sort((a, b) => a.project_name.localeCompare(b.project_name, "en-MY") || a.id.localeCompare(b.id));
     const [{ data: projects, error: projectsError }, { data: members, error: membersError }] = await Promise.all([
       supabase.from("projects").select("id, project_name").eq("is_deleted", false).order("project_name"),
       supabase.from("users").select("id, full_name, display_name, member_code, position").eq("is_deleted", false).eq("status", "Active").order("full_name"),
     ]);
     if (projectsError) throw projectsError;
     if (membersError) throw membersError;
-    return NextResponse.json({ range, canManage, analytics: calculateSalesAnalytics(allCases, range.from, range.to), records, projects: projects ?? [], members: canManage ? members ?? [] : [] });
+    return NextResponse.json({ range, canManage, analytics: calculateSalesAnalytics(visibleCases, range.from, range.to), records, recordProjects, projects: canManage ? projects ?? [] : [], members: canManage ? members ?? [] : [] });
   } catch (error) {
     console.error("GET /api/sales error:", error);
     return NextResponse.json({ error: "Unable to load Sales" }, { status: 500 });

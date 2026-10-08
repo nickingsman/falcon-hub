@@ -73,16 +73,6 @@ export function getProjectContributionMemberKey(memberId: string | null, sourceM
   return normalized ? `historical-member:${normalized}` : "historical-member:unknown";
 }
 
-export function filterProjectContributionCasesForAccess(
-  cases: ProjectContributionCase[],
-  canManage: boolean,
-  memberId: string | null,
-) {
-  if (canManage) return cases;
-  if (!memberId) return [];
-  return cases.filter((salesCase) => salesCase.contributors.some((contributor) => contributor.memberId === memberId));
-}
-
 function matchesStatus(status: ProjectContributionSalesStatus, filter: ProjectContributionStatusFilter) {
   if (filter === "all") return true;
   if (filter === "converted") return status === "sign_spa";

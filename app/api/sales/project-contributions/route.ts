@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { canManageSales, requireSalesApiAccess } from "@/lib/permissions";
+import { resolveSalesAccessScope } from "@/app/api/sales/sales-access";
+import { requireSalesApiAccess } from "@/lib/permissions";
 import { getMemberDisplayName } from "@/lib/member-display";
+import { filterSalesCasesForAccess, type SalesAccessScope } from "@/lib/sales-authorization";
 import { getSalesDateRange, salesStatuses, type SalesStatus } from "@/lib/sales";
 import {
   calculateProjectContributionReport,
-  filterProjectContributionCasesForAccess,
   getProjectContributionProjectKey,
   normalizeHistoricalIdentity,
   type ProjectContributionCase,
@@ -49,33 +50,30 @@ function parseStatusFilter(value: string | null): ProjectContributionStatusFilte
 
 async function getVisibleProjectOptions(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
-  canManage: boolean,
-  memberId: string | null,
+  accessScope: SalesAccessScope,
 ) {
-  const { data: activeProjects, error: projectsError } = await supabase
-    .from("projects")
-    .select("id, project_name")
-    .eq("is_deleted", false)
-    .order("project_name");
-  if (projectsError) throw projectsError;
+  const activeProjects = accessScope.canViewAll
+    ? await supabase.from("projects").select("id, project_name").eq("is_deleted", false).order("project_name")
+    : { data: [], error: null };
+  if (activeProjects.error) throw activeProjects.error;
 
   let visibleCaseIds: string[] | null = null;
-  if (!canManage) {
-    if (!memberId) visibleCaseIds = [];
-    else {
-      const contributorCaseIds: string[] = [];
+  if (!accessScope.canViewAll) {
+    const contributorCaseIds: string[] = [];
+    for (let memberOffset = 0; memberOffset < accessScope.memberIds.length; memberOffset += 200) {
+      const memberIds = accessScope.memberIds.slice(memberOffset, memberOffset + 200);
       for (let offset = 0; ; offset += 1000) {
         const { data, error } = await supabase
           .from("sales_case_contributors")
           .select("sales_case_id")
-          .eq("member_id", memberId)
+          .in("member_id", memberIds)
           .range(offset, offset + 999);
         if (error) throw error;
         contributorCaseIds.push(...(data ?? []).map((row) => row.sales_case_id));
         if ((data ?? []).length < 1000) break;
       }
-      visibleCaseIds = [...new Set(contributorCaseIds)];
     }
+    visibleCaseIds = [...new Set(contributorCaseIds)];
   }
 
   const identityRows: ProjectIdentityRow[] = [];
@@ -106,7 +104,7 @@ async function getVisibleProjectOptions(
   }
 
   const options = new Map<string, ProjectOption>();
-  for (const project of activeProjects ?? []) {
+  for (const project of activeProjects.data ?? []) {
     if (!project.project_name?.trim()) continue;
     options.set(`project:${project.id}`, { id: `project:${project.id}`, label: project.project_name.trim(), kind: "current" });
   }
@@ -125,8 +123,8 @@ export async function GET(request: Request) {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const canManage = canManageSales(authorization.profile);
-    const options = await getVisibleProjectOptions(supabase, canManage, authorization.profile.member_id);
+    const accessScope = await resolveSalesAccessScope(supabase, authorization.profile);
+    const options = await getVisibleProjectOptions(supabase, accessScope);
     const url = new URL(request.url);
     const projectKey = url.searchParams.get("projectKey")?.trim() ?? "";
     if (!projectKey) return NextResponse.json({ projects: options, report: null });
@@ -162,7 +160,7 @@ export async function GET(request: Request) {
       const expectedName = projectKey.slice("historical:".length);
       rows = rows.filter((row) => normalizeHistoricalIdentity(row.source_project_name ?? "") === expectedName);
     }
-    const cases = filterProjectContributionCasesForAccess(rows.map((row): ProjectContributionCase => ({
+    const cases = filterSalesCasesForAccess(rows.map((row): ProjectContributionCase => ({
       id: row.id,
       projectKey: getProjectContributionProjectKey(row.project_id, row.source_project_name),
       projectName: row.project?.project_name?.trim() || row.source_project_name?.trim() || "Unknown project",
@@ -176,7 +174,7 @@ export async function GET(request: Request) {
         memberName: contributor.member ? getMemberDisplayName(contributor.member) : contributor.source_member_name?.trim() || "Unknown member",
         portion: Number(contributor.portion),
       })),
-    })), canManage, authorization.profile.member_id);
+    })), accessScope);
     const report = calculateProjectContributionReport(cases, {
       projectKey,
       projectName: selectedProject.label,

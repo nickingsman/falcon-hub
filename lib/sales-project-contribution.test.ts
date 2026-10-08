@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   buildProjectContributionExportRows,
   calculateProjectContributionReport,
-  filterProjectContributionCasesForAccess,
   getProjectContributionProjectKey,
   type ProjectContributionCase,
 } from "./sales-project-contribution";
@@ -88,26 +87,6 @@ test("historical contributors with null member ids aggregate by normalized exact
   ]);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].salesCases, 2);
-});
-
-test("Admin and Super Admin access keeps the full Project ranking including historical contributors", () => {
-  const cases = [
-    sale(),
-    sale({ id: "historical", contributors: [{ memberId: null, sourceMemberName: "Former Agent", memberName: "Former Agent", portion: 25 }] }),
-  ];
-  const result = report(filterProjectContributionCasesForAccess(cases, true, "admin-member"));
-  assert.equal(result.summary.totalSalesCases, 2);
-  assert.ok(result.rows.some((row) => row.memberName === "Former Agent"));
-});
-
-test("ordinary Sales users receive only cases they contributed to", () => {
-  const cases = [
-    sale({ id: "authorized", contributors: [{ memberId: "current-user", sourceMemberName: null, memberName: "Current User", portion: 50 }] }),
-    sale({ id: "team-wide", contributors: [{ memberId: "another-user", sourceMemberName: null, memberName: "Another User", portion: 50 }] }),
-  ];
-  const visible = filterProjectContributionCasesForAccess(cases, false, "current-user");
-  assert.deepEqual(visible.map((item) => item.id), ["authorized"]);
-  assert.equal(report(visible).summary.totalSalesCases, 1);
 });
 
 test("approved aliases aggregate through their shared member id", () => {
