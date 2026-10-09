@@ -10,7 +10,7 @@ import { getMemberDisplayName } from "@/lib/member-display";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const salesCaseSelect = `
-  id, project_id, source_type, source_project_name, unit_no, booking_date, nett_price, falcon_portion, status,
+  id, project_id, source_type, source_project_name, unit_no, booking_date, nett_price, falcon_portion, status, allocation_status,
   spa_signed_date, cancel_date, remark, created_at, updated_at,
   project:projects!sales_cases_project_id_fkey(project_name),
   contributors:sales_case_contributors(id, member_id, source_member_name, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name, position)),
@@ -25,10 +25,10 @@ type SalesInput = {
   cancelDate: string | null; remark: string | null; contributors: InputContributor[];
 };
 type SalesCaseDbRow = {
-  id: string; project_id: string | null; source_type: "manual" | "historical_2026_case_report"; source_project_name: string | null; unit_no: string; booking_date: string; nett_price: number | string;
+  id: string; project_id: string | null; source_type: "manual" | "historical_2024_case_report" | "historical_2025_case_report" | "historical_2026_case_report"; source_project_name: string | null; unit_no: string; booking_date: string; nett_price: number | string;
   falcon_portion: number | string; status: SalesStatus; spa_signed_date: string | null; cancel_date: string | null;
-  remark: string | null; project: { project_name: string | null } | null;
-  contributors: Array<{ id: string; member_id: string | null; source_member_name: string | null; portion: number | string; member: { full_name: string | null; display_name: string | null; position: string | null } | null }> | null;
+  remark: string | null; allocation_status: "verified" | "pending"; project: { project_name: string | null } | null;
+  contributors: Array<{ id: string; member_id: string | null; source_member_name: string | null; portion: number | string | null; member: { full_name: string | null; display_name: string | null; position: string | null } | null }> | null;
   status_history: Array<{ status: SalesStatus; effective_date: string | null; created_at: string; event_type: "lifecycle" | "spa_correction"; note: string | null }> | null;
   unit_history: Array<{ previous_unit_no: string; new_unit_no: string; changed_at: string }> | null;
 };
@@ -88,8 +88,8 @@ function toSalesCase(row: SalesCaseDbRow): SalesCase {
     id: row.id, projectId: row.project_id ?? `historical-project:${normalizeHistoricalIdentity(row.source_project_name ?? "unknown")}`, projectName: row.project?.project_name ?? row.source_project_name ?? "Unknown project",
     unitNo: row.unit_no, bookingDate: row.booking_date, nettPrice: Number(row.nett_price),
     falconPortion: Number(row.falcon_portion), status: row.status, spaSignedDate: row.spa_signed_date,
-    cancelDate: row.cancel_date, remark: row.remark,
-    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id ?? `historical-member:${item.id}`, memberName: item.member ? getMemberDisplayName(item.member) : item.source_member_name ?? "Unknown member", position: item.member?.position ?? null, portion: Number(item.portion) })),
+    cancelDate: row.cancel_date, remark: row.remark, allocationStatus: row.allocation_status ?? "verified",
+    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id, sourceMemberName: item.source_member_name, memberName: item.member ? getMemberDisplayName(item.member) : item.source_member_name ?? "Unknown member", position: item.member?.position ?? null, portion: item.portion === null ? null : Number(item.portion) })),
     statusHistory: (row.status_history ?? []).map((item) => ({ status: item.status, effectiveDate: item.effective_date, createdAt: item.created_at, eventType: item.event_type, note: item.note })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     unitHistory: (row.unit_history ?? []).map((item) => ({ previousUnitNo: item.previous_unit_no, newUnitNo: item.new_unit_no, changedAt: item.changed_at })).sort((a, b) => b.changedAt.localeCompare(a.changedAt)),
   };
@@ -118,10 +118,12 @@ export async function listSales(request: Request) {
     const projectId = url.searchParams.get("projectId");
     const status = url.searchParams.get("status");
     const memberId = url.searchParams.get("memberId");
+    const allocation = url.searchParams.get("allocation");
     const search = url.searchParams.get("search")?.trim().toLowerCase();
     const records = visibleCases.filter((item) => item.bookingDate >= range.from && item.bookingDate <= range.to)
       .filter((item) => !projectId || item.projectId === projectId)
       .filter((item) => !status || item.status === status)
+      .filter((item) => allocation !== "pending" || item.allocationStatus === "pending")
       .filter((item) => !memberId || item.contributors.some((contributor) => contributor.memberId === memberId))
       .filter((item) => !search || item.projectName.toLowerCase().includes(search) || item.unitNo.toLowerCase().includes(search));
 
@@ -150,9 +152,10 @@ async function saveSales(request: Request, caseId: string | null) {
   try {
     const supabase = createSupabaseAdminClient();
     if (caseId) {
-      const { data: existing, error: existingError } = await supabase.from("sales_cases").select("status, spa_signed_date").eq("id", caseId).eq("is_deleted", false).maybeSingle();
+      const { data: existing, error: existingError } = await supabase.from("sales_cases").select("status, spa_signed_date, allocation_status").eq("id", caseId).eq("is_deleted", false).maybeSingle();
       if (existingError) throw existingError;
       if (!existing) return badRequest("Sales case not found");
+      if (existing.allocation_status === "pending") return badRequest("Use Review Allocation to verify this historical Sales case");
       if (existing.status === "cancelled" && input.status !== "cancelled") return badRequest("Cancelled cases are terminal. Create a new case for a rebooking");
       if (existing.status === "sign_spa" && input.status !== "sign_spa" && input.status !== "cancelled") return badRequest("Use Remove Incorrect SPA Record to correct an erroneous conversion");
       if (input.status === "cancelled" && existing.spa_signed_date && input.cancelDate && input.cancelDate < existing.spa_signed_date) return badRequest("Cancel Date cannot be before SPA Signed Date");
@@ -208,5 +211,73 @@ export async function correctSalesSpa(request: Request, caseId: string) {
   } catch (error) {
     console.error("POST /api/sales/[id]/correct-spa error:", error);
     return NextResponse.json({ error: "Unable to correct SPA record" }, { status: 500 });
+  }
+}
+
+export async function verifyHistoricalSalesAllocation(request: Request, caseId: string) {
+  const authorization = await requireSalesApiAccess(true);
+  if (!authorization.authorized) return authorization.response;
+  if (!uuidPattern.test(caseId)) return badRequest("Sales case id is invalid");
+
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return badRequest("Request body must be an object");
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return badRequest("Request body must be valid JSON");
+  }
+  if (!Array.isArray(body.contributors) || body.contributors.length === 0) return badRequest("At least one contributor is required");
+
+  const contributors: Array<{ sourceName: string; memberId: string | null; portion: string }> = [];
+  for (const raw of body.contributors) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return badRequest("Contributor is invalid");
+    const item = raw as Record<string, unknown>;
+    const sourceName = typeof item.sourceName === "string" ? item.sourceName.trim() : "";
+    const memberId = typeof item.memberId === "string" && item.memberId ? item.memberId : null;
+    const portion = parseSalesPercentage(item.portion);
+    if (!sourceName || (memberId !== null && !uuidPattern.test(memberId)) || !portion) {
+      return badRequest("Every contributor needs a source name and a valid portion using at most 4 decimal places");
+    }
+    contributors.push({ sourceName, memberId, portion: portion.normalized });
+  }
+  const mappedIds = contributors.flatMap((item) => item.memberId ? [item.memberId] : []);
+  if (new Set(mappedIds).size !== mappedIds.length) return badRequest("A Falcon member can only be selected once");
+
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data: salesCase, error: caseError } = await supabase
+      .from("sales_cases")
+      .select("falcon_portion, allocation_status, source_type")
+      .eq("id", caseId)
+      .eq("is_deleted", false)
+      .maybeSingle();
+    if (caseError) throw caseError;
+    if (!salesCase || salesCase.allocation_status !== "pending" || !["historical_2024_case_report", "historical_2025_case_report"].includes(salesCase.source_type)) {
+      return badRequest("Pending historical Sales case not found");
+    }
+    const falconPortion = parseSalesPercentage(salesCase.falcon_portion);
+    const allocatedScaled = contributors.reduce((sum, item) => sum + (parseSalesPercentage(item.portion)?.scaled ?? 0), 0);
+    if (!falconPortion || allocatedScaled !== falconPortion.scaled) return badRequest("Contributor allocations must exactly equal Falcon Portion");
+    if (mappedIds.length) {
+      const { data: validMembers, error: memberError } = await supabase
+        .from("users")
+        .select("id")
+        .in("id", mappedIds)
+        .eq("is_deleted", false)
+        .eq("status", "Active");
+      if (memberError) throw memberError;
+      if ((validMembers ?? []).length !== mappedIds.length) return badRequest("Mapped contributors must be active Falcon members");
+    }
+    const { error } = await supabase.rpc("verify_historical_sales_allocation", {
+      p_case_id: caseId,
+      p_contributors: contributors,
+      p_actor: authorization.user.id,
+    });
+    if (error) throw error;
+    return NextResponse.json({ verified: true });
+  } catch (error) {
+    console.error("POST /api/sales/[id]/verify-allocation error:", error);
+    return NextResponse.json({ error: "Unable to verify historical allocation" }, { status: 500 });
   }
 }

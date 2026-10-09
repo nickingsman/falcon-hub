@@ -108,7 +108,9 @@ test("Project Contribution export contains only server-authorized Sales", () => 
       unitNo: "A-01-01",
       bookingDate: "2026-01-01",
       nettPrice: 500_000,
+      falconPortion: 100,
       status: "booking",
+      allocationStatus: "verified",
       contributors: [{ memberId: "direct", sourceMemberName: null, memberName: "Direct", portion: 100 }],
     },
     {
@@ -118,7 +120,9 @@ test("Project Contribution export contains only server-authorized Sales", () => 
       unitNo: "A-01-02",
       bookingDate: "2026-01-02",
       nettPrice: 600_000,
+      falconPortion: 100,
       status: "booking",
+      allocationStatus: "verified",
       contributors: [{ memberId: "other-agent", sourceMemberName: null, memberName: "Other", portion: 100 }],
     },
   ];

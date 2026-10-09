@@ -9,13 +9,26 @@ export type ProjectContributionCase = {
   unitNo: string;
   bookingDate: string;
   nettPrice: number;
+  falconPortion: number;
   status: ProjectContributionSalesStatus;
+  allocationStatus: "verified" | "pending";
   contributors: Array<{
     memberId: string | null;
     sourceMemberName: string | null;
     memberName: string;
-    portion: number;
+    portion: number | null;
   }>;
+};
+
+export type PendingProjectContribution = {
+  salesCaseId: string;
+  bookingDate: string;
+  projectName: string;
+  unitNo: string;
+  status: ProjectContributionSalesStatus;
+  falconPortion: number;
+  falconCreditedGdv: number;
+  sourceContributorNames: string[];
 };
 
 export type ProjectContributionDetail = {
@@ -52,9 +65,12 @@ export type ProjectContributionReport = {
     totalContributors: number;
     totalPortion: number;
     totalCreditedGdv: number;
+    pendingAllocationCases: number;
+    pendingFalconCreditedGdv: number;
   };
   rows: ProjectContributionRow[];
   details: ProjectContributionDetail[];
+  pendingAllocations: PendingProjectContribution[];
 };
 
 export function normalizeHistoricalIdentity(value: string) {
@@ -102,9 +118,24 @@ export function calculateProjectContributionReport(
   ).values()];
   const memberMap = new Map<string, Omit<ProjectContributionRow, "rank"> & { caseIds: Set<string> }>();
   const details: ProjectContributionDetail[] = [];
+  const pendingAllocations: PendingProjectContribution[] = [];
 
   for (const salesCase of filteredCases) {
+    if (salesCase.allocationStatus === "pending") {
+      pendingAllocations.push({
+        salesCaseId: salesCase.id,
+        bookingDate: salesCase.bookingDate,
+        projectName: salesCase.projectName,
+        unitNo: salesCase.unitNo,
+        status: salesCase.status,
+        falconPortion: salesCase.falconPortion,
+        falconCreditedGdv: salesCase.nettPrice * salesCase.falconPortion / 100,
+        sourceContributorNames: salesCase.contributors.map((item) => item.sourceMemberName?.trim() || item.memberName).filter(Boolean),
+      });
+      continue;
+    }
     for (const contributor of salesCase.contributors) {
+      if (contributor.portion === null) continue;
       const memberKey = getProjectContributionMemberKey(contributor.memberId, contributor.sourceMemberName);
       const portion = contributor.portion / 100;
       const creditedGdv = salesCase.nettPrice * portion;
@@ -172,6 +203,8 @@ export function calculateProjectContributionReport(
       totalContributors: rows.length,
       totalPortion: rows.reduce((sum, row) => sum + row.totalPortion, 0),
       totalCreditedGdv: rows.reduce((sum, row) => sum + row.creditedGdv, 0),
+      pendingAllocationCases: pendingAllocations.length,
+      pendingFalconCreditedGdv: pendingAllocations.reduce((sum, row) => sum + row.falconCreditedGdv, 0),
     },
     rows,
     details: details.sort(
@@ -180,6 +213,7 @@ export function calculateProjectContributionReport(
         a.memberName.localeCompare(b.memberName, "en-MY") ||
         a.salesCaseId.localeCompare(b.salesCaseId),
     ),
+    pendingAllocations: pendingAllocations.sort((a, b) => b.bookingDate.localeCompare(a.bookingDate) || a.salesCaseId.localeCompare(b.salesCaseId)),
   };
 }
 
@@ -204,6 +238,16 @@ export function buildProjectContributionExportRows(report: ProjectContributionRe
       "Contributor Percentage": detail.contributorPercentage,
       Portion: detail.portion,
       "Credited GDV": detail.creditedGdv,
+    })),
+    pending: report.pendingAllocations.map((item) => ({
+      "Booking Date": item.bookingDate,
+      Project: item.projectName,
+      Unit: item.unitNo,
+      Status: item.status,
+      "Falcon Portion": item.falconPortion,
+      "Falcon Credited GDV": item.falconCreditedGdv,
+      "Source Contributor Names": item.sourceContributorNames.join(", "),
+      Allocation: "Pending Allocation",
     })),
   };
 }

@@ -17,7 +17,7 @@ type SalesRankingRow = {
   nett_price: number | string;
   contributors: Array<{
     member_id: string;
-    portion: number | string;
+    portion: number | string | null;
     member: {
       full_name: string | null;
       display_name: string | null;
@@ -98,6 +98,7 @@ export async function GET(request: Request) {
 
         if (
           !member ||
+          contributor.portion === null ||
           member.is_deleted ||
           member.status !== "Active" ||
           !isDashboardSalesLeaderboardPosition(member.position)
@@ -109,6 +110,7 @@ export async function GET(request: Request) {
           {
             memberId: contributor.member_id,
             memberName: getMemberDisplayName(member),
+            sourceMemberName: null,
             position: member.position,
             portion: Number(contributor.portion),
           } satisfies SalesContributor,

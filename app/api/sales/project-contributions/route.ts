@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const reportSelect = `
-  id, project_id, source_project_name, unit_no, booking_date, nett_price, status,
+  id, project_id, source_project_name, unit_no, booking_date, nett_price, falcon_portion, status, allocation_status,
   project:projects!sales_cases_project_id_fkey(project_name),
   contributors:sales_case_contributors(id, member_id, source_member_name, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name))
 `;
@@ -33,12 +33,14 @@ type ReportRow = ProjectIdentityRow & {
   unit_no: string;
   booking_date: string;
   nett_price: number | string;
+  falcon_portion: number | string;
   status: SalesStatus;
+  allocation_status: "verified" | "pending";
   contributors: Array<{
     id: string;
     member_id: string | null;
     source_member_name: string | null;
-    portion: number | string;
+    portion: number | string | null;
     member: { full_name: string | null; display_name: string | null } | null;
   }> | null;
 };
@@ -167,12 +169,14 @@ export async function GET(request: Request) {
       unitNo: row.unit_no,
       bookingDate: row.booking_date,
       nettPrice: Number(row.nett_price),
+      falconPortion: Number(row.falcon_portion),
       status: row.status,
+      allocationStatus: row.allocation_status ?? "verified",
       contributors: (row.contributors ?? []).map((contributor) => ({
         memberId: contributor.member_id,
         sourceMemberName: contributor.source_member_name,
         memberName: contributor.member ? getMemberDisplayName(contributor.member) : contributor.source_member_name?.trim() || "Unknown member",
-        portion: Number(contributor.portion),
+        portion: contributor.portion === null ? null : Number(contributor.portion),
       })),
     })), accessScope);
     const report = calculateProjectContributionReport(cases, {

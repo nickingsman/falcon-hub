@@ -124,7 +124,15 @@ export function ProjectContributionReport({ period, customFrom, customTo }: Prop
         { header: "Portion", key: "Portion", width: 14 }, { header: "Credited GDV", key: "Credited GDV", width: 18 },
       ];
       exportRows.details.forEach((row) => details.addRow({ ...row, Status: statusLabel(row.Status as SalesStatus) }));
-      for (const sheet of [summary, details]) {
+      const pending = workbook.addWorksheet("Pending Allocations");
+      pending.columns = [
+        { header: "Booking Date", key: "Booking Date", width: 16 }, { header: "Project", key: "Project", width: 28 },
+        { header: "Unit", key: "Unit", width: 16 }, { header: "Status", key: "Status", width: 18 },
+        { header: "Falcon Portion", key: "Falcon Portion", width: 18 }, { header: "Falcon Credited GDV", key: "Falcon Credited GDV", width: 22 },
+        { header: "Source Contributor Names", key: "Source Contributor Names", width: 42 }, { header: "Allocation", key: "Allocation", width: 22 },
+      ];
+      exportRows.pending.forEach((row) => pending.addRow({ ...row, Status: statusLabel(row.Status as SalesStatus) }));
+      for (const sheet of [summary, details, pending]) {
         sheet.views = [{ state: "frozen", ySplit: 1 }];
         sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
         sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF26231E" } };
@@ -135,6 +143,8 @@ export function ProjectContributionReport({ period, customFrom, customTo }: Prop
       details.getColumn("Contributor Percentage").numFmt = "0.0000%";
       details.getColumn("Portion").numFmt = "0.0000";
       details.getColumn("Credited GDV").numFmt = '"RM" #,##0.00';
+      pending.getColumn("Falcon Portion").numFmt = "0.0000";
+      pending.getColumn("Falcon Credited GDV").numFmt = '"RM" #,##0.00';
       details.eachRow((row, rowNumber) => {
         if (rowNumber > 1) row.getCell("Contributor Percentage").value = Number(row.getCell("Contributor Percentage").value) / 100;
       });
@@ -168,8 +178,8 @@ export function ProjectContributionReport({ period, customFrom, customTo }: Prop
     {error ? <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
     {!projectKey ? <p className="mt-6 rounded-2xl border border-dashed border-[var(--falcon-soft-border)] bg-[#faf9f5] px-4 py-8 text-center text-sm text-zinc-500">Select a Project to view its contribution report.</p> : loading ? <p className="py-10 text-center text-sm text-zinc-500">Loading contribution report…</p> : report ? <>
       <p className="mt-4 text-xs text-zinc-500">Booking Date: {formatDate(report.from)} – {formatDate(report.to)} · {statusOptions.find((option) => option.value === report.statusFilter)?.label}</p>
-      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[['Total Sales Cases', String(report.summary.totalSalesCases)], ['Total Contributors', String(report.summary.totalContributors)], ['Total Portion', portion.format(report.summary.totalPortion)], ['Total Credited GDV', money.format(report.summary.totalCreditedGdv)]].map(([label, value]) => <div key={label} className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[#faf9f5] px-4 py-3"><p className="text-xs text-zinc-500">{label}</p><p className="mt-1 font-semibold text-zinc-950">{value}</p></div>)}
+      <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+        {[['Total Sales Cases', String(report.summary.totalSalesCases)], ['Verified Contributors', String(report.summary.totalContributors)], ['Verified Portion', portion.format(report.summary.totalPortion)], ['Verified Credited GDV', money.format(report.summary.totalCreditedGdv)], ['Pending Cases', String(report.summary.pendingAllocationCases)], ['Pending Falcon GDV', money.format(report.summary.pendingFalconCreditedGdv)]].map(([label, value]) => <div key={label} className="rounded-2xl border border-[var(--falcon-soft-border)] bg-[#faf9f5] px-4 py-3"><p className="text-xs text-zinc-500">{label}</p><p className="mt-1 font-semibold text-zinc-950">{value}</p></div>)}
       </div>
       {!sortedRows.length ? <p className="mt-4 rounded-2xl border border-dashed border-[var(--falcon-soft-border)] px-4 py-8 text-center text-sm text-zinc-500">No matching Sales records for this Project and period.</p> : <div className="mt-4 overflow-x-auto rounded-2xl border border-[var(--falcon-soft-border)]">
         <table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-[#faf9f5] text-xs uppercase tracking-wide text-zinc-500"><tr><th className="px-4 py-3">Rank</th><th className="px-4 py-3">Member</th><th className="px-4 py-3 text-right">Sales Cases</th><th className="px-4 py-3 text-right">Total Portion</th><th className="px-4 py-3 text-right">Credited GDV</th></tr></thead><tbody className="divide-y divide-zinc-100">{sortedRows.map((row) => <Fragment key={row.memberKey}>
@@ -177,6 +187,7 @@ export function ProjectContributionReport({ period, customFrom, customTo }: Prop
           {expandedMember === row.memberKey ? <tr><td colSpan={5} className="bg-[#fcfbf8] px-4 py-4"><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-xs"><thead className="text-left uppercase tracking-wide text-zinc-500"><tr><th className="pb-2">Booking Date</th><th className="pb-2">Project</th><th className="pb-2">Unit</th><th className="pb-2">Status</th><th className="pb-2">Member / Source Name</th><th className="pb-2 text-right">Contributor %</th><th className="pb-2 text-right">Portion</th><th className="pb-2 text-right">Credited GDV</th></tr></thead><tbody className="divide-y divide-zinc-200">{row.details.map((detail) => <tr key={`${detail.salesCaseId}:${detail.memberKey}`}><td className="py-2 whitespace-nowrap">{formatDate(detail.bookingDate)}</td><td className="py-2 font-medium">{detail.projectName}</td><td className="py-2 whitespace-nowrap">{detail.unitNo}</td><td className="py-2 whitespace-nowrap">{statusLabel(detail.status)}</td><td className="py-2">{detail.memberName}</td><td className="py-2 text-right">{percentage.format(detail.contributorPercentage)}%</td><td className="py-2 text-right">{portion.format(detail.portion)}</td><td className="py-2 text-right whitespace-nowrap">{money.format(detail.creditedGdv)}</td></tr>)}</tbody></table></div></td></tr> : null}
         </Fragment>)}</tbody></table>
       </div>}
+      {report.pendingAllocations.length ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4"><h3 className="text-sm font-semibold text-amber-950">Pending Allocations</h3><p className="mt-1 text-xs leading-5 text-amber-800">These cases count toward Project and Falcon GDV totals, but are excluded from individual rankings until contributor percentages are verified.</p><div className="mt-3 divide-y divide-amber-200">{report.pendingAllocations.map((item) => <div key={item.salesCaseId} className="grid gap-1 py-3 text-sm sm:grid-cols-[110px_minmax(0,1fr)_160px] sm:items-center"><span>{formatDate(item.bookingDate)}</span><span><strong>{item.unitNo}</strong> · {item.sourceContributorNames.join(", ") || "Source contributor names unavailable"}</span><span className="font-semibold sm:text-right">{money.format(item.falconCreditedGdv)}</span></div>)}</div></div> : null}
     </> : null}
   </section>;
 }

@@ -36,10 +36,11 @@ export function normalizeSalesUnit(value: string) {
 }
 
 export type SalesContributor = {
-  memberId: string;
+  memberId: string | null;
   memberName: string;
+  sourceMemberName: string | null;
   position: string | null;
-  portion: number;
+  portion: number | null;
 };
 
 export type SalesCase = {
@@ -54,6 +55,7 @@ export type SalesCase = {
   spaSignedDate: string | null;
   cancelDate: string | null;
   remark: string | null;
+  allocationStatus: "verified" | "pending";
   contributors: SalesContributor[];
   statusHistory?: Array<{ status: SalesStatus; effectiveDate: string | null; createdAt: string; eventType: "lifecycle" | "spa_correction"; note: string | null }>;
   unitHistory?: Array<{ previousUnitNo: string; newUnitNo: string; changedAt: string }>;
@@ -94,6 +96,7 @@ export function calculateSalesTopClosers(
 
   for (const salesCase of cases) {
     for (const contributor of salesCase.contributors) {
+      if (!contributor.memberId || contributor.portion === null) continue;
       const current = memberMap.get(contributor.memberId) ?? {
         memberId: contributor.memberId,
         memberName: contributor.memberName,

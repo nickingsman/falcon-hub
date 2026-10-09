@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildHistoricalSalesPreview, HistoricalWorkbookError } from "@/lib/historical-sales-import";
+import { buildHistoricalSalesPreviews, HistoricalWorkbookError } from "@/lib/historical-sales-import";
 import { requireSalesApiAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 
@@ -30,20 +30,20 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
-    if (!(file instanceof File)) return NextResponse.json({ error: "Choose a 2026 Case Report workbook" }, { status: 400 });
+    if (!(file instanceof File)) return NextResponse.json({ error: "Choose a historical Case Report workbook" }, { status: 400 });
 
     const supabase = createSupabaseAdminClient();
     const [projects, members, existingCases, fingerprints] = await Promise.all([
       fetchAll((from, to) => supabase.from("projects").select("id, project_name").eq("is_deleted", false).range(from, to)),
       fetchAll((from, to) => supabase.from("users").select("id, full_name, display_name, member_code, position").eq("is_deleted", false).range(from, to)),
       fetchAll((from, to) => supabase.from("sales_cases").select("id, project_id, source_project_name, unit_no, status").eq("is_deleted", false).range(from, to)),
-      fetchAll((from, to) => supabase.from("sales_cases").select("source_fingerprint").eq("is_deleted", false).eq("source_type", "historical_2026_case_report").range(from, to)),
+      fetchAll((from, to) => supabase.from("sales_cases").select("source_fingerprint").eq("is_deleted", false).like("source_type", "historical_%_case_report").range(from, to)),
     ]);
 
-    const preview = await buildHistoricalSalesPreview(file, {
+    const previews = await buildHistoricalSalesPreviews(file, {
       projects, members, existingCases, fingerprints,
     });
-    return NextResponse.json({ preview });
+    return NextResponse.json({ preview: previews[0], previews });
   } catch (error) {
     console.error("POST /api/sales/import/preview failed", errorDetails(error));
     const safeMessage = error instanceof HistoricalWorkbookError ? error.message : "Unable to preview historical Sales workbook";

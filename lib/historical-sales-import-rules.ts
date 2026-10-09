@@ -29,6 +29,10 @@ const confirmedDateCorrections = new Map([
   [119, "2026-03-21"],
 ]);
 
+const confirmedSourceDateCorrections = new Map([
+  ["2025_case_report:140", "2025-04-30"],
+]);
+
 const confirmedUnitCorrections = new Map([
   [74, "08-16"],
   [132, "09-06"],
@@ -71,8 +75,10 @@ export function getHistoricalCorrectedUnit(sourceRow: number, sourceUnit: string
   return confirmedUnitCorrections.get(sourceRow) ?? sourceUnit.trim();
 }
 
-export function getHistoricalCorrectedDate(sourceRow: number, parsedDate: string | null) {
-  return confirmedDateCorrections.get(sourceRow) ?? parsedDate;
+export function getHistoricalCorrectedDate(sourceRow: number, parsedDate: string | null, source = "2026_case_report") {
+  return confirmedSourceDateCorrections.get(`${source}:${sourceRow}`)
+    ?? (source === "2026_case_report" ? confirmedDateCorrections.get(sourceRow) : null)
+    ?? parsedDate;
 }
 
 export function getHistoricalContributorAllocationCorrection(sourceRow: number) {

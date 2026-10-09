@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# local historical import workbooks
+/import-data/
+
 # next.js
 /.next/
 /out/

@@ -17,7 +17,9 @@ function sale(overrides: Partial<ProjectContributionCase> = {}): ProjectContribu
     unitNo: "A-01-01",
     bookingDate: "2026-10-05",
     nettPrice: 500_000,
+    falconPortion: 100,
     status: "booking",
+    allocationStatus: "verified",
     contributors: [
       { memberId: "member-eric", sourceMemberName: "Eric Source", memberName: "Eric", portion: 75 },
       { memberId: "member-shanie", sourceMemberName: "Shanie Source", memberName: "Shanie", portion: 25 },
@@ -146,9 +148,27 @@ test("export totals match visible report totals", () => {
   assert.equal(exported.details.length, result.details.length);
 });
 
+test("pending allocations are separated from verified individual rankings while preserving Falcon GDV", () => {
+  const result = report([sale({
+    allocationStatus: "pending",
+    falconPortion: 50,
+    nettPrice: 800_000,
+    contributors: [
+      { memberId: "member-eric", sourceMemberName: "Eric", memberName: "Eric", portion: null },
+      { memberId: null, sourceMemberName: "Former Agent", memberName: "Former Agent", portion: null },
+    ],
+  })]);
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.summary.pendingAllocationCases, 1);
+  assert.equal(result.summary.pendingFalconCreditedGdv, 400_000);
+  assert.equal(result.summary.totalCreditedGdv, 0);
+  assert.deepEqual(result.pendingAllocations[0].sourceContributorNames, ["Eric", "Former Agent"]);
+  assert.equal(buildProjectContributionExportRows(result).pending[0]["Falcon Credited GDV"], 400_000);
+});
+
 test("an empty project result has zero summaries", () => {
   const result = report([]);
-  assert.deepEqual(result.summary, { totalSalesCases: 0, totalContributors: 0, totalPortion: 0, totalCreditedGdv: 0 });
+  assert.deepEqual(result.summary, { totalSalesCases: 0, totalContributors: 0, totalPortion: 0, totalCreditedGdv: 0, pendingAllocationCases: 0, pendingFalconCreditedGdv: 0 });
   assert.deepEqual(result.rows, []);
 });
 
