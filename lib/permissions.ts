@@ -8,6 +8,7 @@ import {
   leaderMeetingsFeatureKey,
 } from "@/lib/feature-access";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { isLeaderPromotionManager } from "@/lib/leader-promotions";
 
 const roleRank: Record<UserRole, number> = {
   agent: 1,
@@ -38,6 +39,10 @@ export function canManageProjects(profile: UserProfile | null) {
 
 export function canManageUsers(profile: UserProfile | null) {
   return hasRole(profile, ["super_admin", "admin"]);
+}
+
+export function canManageLeaderPromotions(profile: UserProfile | null) {
+  return isLeaderPromotionManager(profile);
 }
 
 export function canManageUserApprovals(profile: UserProfile | null) {
@@ -262,6 +267,15 @@ export async function requireAdminUserManagementAccess() {
     return { authorized: false, response: forbiddenJson() } as const;
   }
 
+  return { authorized: true, ...authContext } as const;
+}
+
+export async function requireLeaderPromotionManagement() {
+  const authContext = await getAuthenticatedUserProfile();
+  if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
+  if (!canManageLeaderPromotions(authContext.profile)) {
+    return { authorized: false, response: forbiddenJson("Super Admin access is required") } as const;
+  }
   return { authorized: true, ...authContext } as const;
 }
 

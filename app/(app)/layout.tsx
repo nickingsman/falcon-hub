@@ -10,6 +10,7 @@ import {
   canAccessCustomerBirthdays,
   canAccessLeaderMeetings,
   canManageLeaderMeetingsAccess,
+  canManageLeaderPromotions,
 } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
@@ -49,10 +50,11 @@ export default async function AppLayout({
   let memberDisplayName: string | null = null;
   let memberCode: number | null = null;
   let memberPhone: string | null = null;
+  let leaderPromotionPendingCount = 0;
+  const adminSupabase = createSupabaseAdminClient();
 
   if (profile?.member_id) {
-    const supabase = createSupabaseAdminClient();
-    const { data: member } = await supabase
+    const { data: member } = await adminSupabase
       .from("users")
       .select("full_name, display_name, member_code, phone")
       .eq("id", profile.member_id)
@@ -64,6 +66,14 @@ export default async function AppLayout({
       typeof member?.phone === "string" && member.phone.trim()
         ? member.phone.trim()
         : null;
+  }
+
+  if (canManageLeaderPromotions(profile)) {
+    const { count } = await adminSupabase
+      .from("leader_promotion_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending");
+    leaderPromotionPendingCount = count ?? 0;
   }
 
   const metadataFullName = authContext?.user.user_metadata?.full_name;
@@ -91,6 +101,8 @@ export default async function AppLayout({
     canAccessCustomerBirthdays: canAccessCustomerBirthdays(profile),
     canAccessLeaderMeetings: await canAccessLeaderMeetings(authContext.user.id, profile),
     canManageLeaderMeetingsAccess: canManageLeaderMeetingsAccess(profile),
+    canManageLeaderPromotions: canManageLeaderPromotions(profile),
+    leaderPromotionPendingCount,
   };
 
   return (

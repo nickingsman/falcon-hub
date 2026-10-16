@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveSalesAccessScope } from "@/app/api/sales/sales-access";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import { getMemberDisplayName } from "@/lib/member-display";
 import { isDashboardSalesLeaderboardPosition } from "@/lib/member-options";
@@ -8,12 +9,14 @@ import {
   type SalesContributor,
 } from "@/lib/sales";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { filterSalesCasesForAccess, filterSalesContributorsForAggregation } from "@/lib/sales-authorization";
 
 const rankingPeriods = ["last_week", "this_week", "this_month", "this_year"] as const;
 
 type RankingPeriod = (typeof rankingPeriods)[number];
 
 type SalesRankingRow = {
+  id: string;
   nett_price: number | string;
   contributors: Array<{
     member_id: string;
@@ -63,6 +66,7 @@ export async function GET(request: Request) {
       const { data, error } = await supabase
         .from("sales_cases")
         .select(`
+          id,
           nett_price,
           contributors:sales_case_contributors(
             member_id,
@@ -91,7 +95,19 @@ export async function GET(request: Request) {
       if (pageRows.length < pageSize) break;
     }
 
-    const cases = rows.map((row) => ({
+    const accessScope = await resolveSalesAccessScope(supabase, authContext.profile);
+    const authorizedRows = filterSalesContributorsForAggregation(filterSalesCasesForAccess(
+      rows.map((row) => ({
+        ...row,
+        contributors: (row.contributors ?? []).map((contributor) => ({
+          ...contributor,
+          memberId: contributor.member_id,
+        })),
+      })),
+      accessScope,
+    ), accessScope);
+
+    const cases = authorizedRows.map((row) => ({
       nettPrice: Number(row.nett_price),
       contributors: (row.contributors ?? []).flatMap((contributor) => {
         const member = contributor.member;

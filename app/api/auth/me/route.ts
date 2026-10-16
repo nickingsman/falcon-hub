@@ -7,6 +7,7 @@ import {
   canManageUsers,
   canAccessLeaderMeetings,
   canManageLeaderMeetingsAccess,
+  canManageLeaderPromotions,
 } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
@@ -78,6 +79,15 @@ export async function GET() {
 
     const displayName = memberDisplayName || getFallbackDisplayName(userData.user);
     const userProfile = profile ? (profile as UserProfile) : null;
+    let leaderPromotionPendingCount = 0;
+    if (canManageLeaderPromotions(userProfile)) {
+      const adminSupabase = createSupabaseAdminClient();
+      const { count } = await adminSupabase
+        .from("leader_promotion_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+      leaderPromotionPendingCount = count ?? 0;
+    }
 
     return NextResponse.json({
       displayName,
@@ -93,6 +103,8 @@ export async function GET() {
       canManageUsers: canManageUsers(userProfile),
       canAccessLeaderMeetings: await canAccessLeaderMeetings(userData.user.id, userProfile),
       canManageLeaderMeetingsAccess: canManageLeaderMeetingsAccess(userProfile),
+      canManageLeaderPromotions: canManageLeaderPromotions(userProfile),
+      leaderPromotionPendingCount,
     });
   } catch (error) {
     console.error("GET /api/auth/me error:", error);
@@ -111,6 +123,8 @@ export async function GET() {
       canManageUsers: false,
       canAccessLeaderMeetings: false,
       canManageLeaderMeetingsAccess: false,
+      canManageLeaderPromotions: false,
+      leaderPromotionPendingCount: 0,
     });
   }
 }

@@ -619,12 +619,19 @@ export default function UserManagementPage() {
                         onChange={(event) => updateFormField("role", event.target.value)}
                         className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
                       >
-                        {assignableRoles.map((role) => (
+                        {assignableRoles
+                          .filter((role) => role !== "leader" || selectedAccount.role === "leader")
+                          .map((role) => (
                           <option key={role} value={role}>
                             {roleLabels[role]}
                           </option>
                         ))}
                       </select>
+                      {selectedAccount.role !== "leader" ? (
+                        <span className="mt-2 block text-xs leading-5 text-zinc-500">
+                          Agent-to-Leader changes require Super Admin approval from Leader Promotions.
+                        </span>
+                      ) : null}
                     </label>
                   </div>
                 ) : null}

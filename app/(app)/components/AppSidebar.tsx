@@ -85,7 +85,12 @@ export default function AppSidebar() {
                               : "border border-transparent text-zinc-500 hover:border-zinc-800 hover:bg-zinc-900/70 hover:text-zinc-200"
                           }`}
                         >
-                          {child.label}
+                          <span>{child.label}</span>
+                          {child.badgeCount ? (
+                            <span className="ml-auto rounded-full bg-[var(--falcon-gold)] px-2 py-0.5 text-xs font-semibold text-zinc-950">
+                              {child.badgeCount}
+                            </span>
+                          ) : null}
                         </Link>
                       );
                     })}

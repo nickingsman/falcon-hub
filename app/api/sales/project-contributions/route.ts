@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveSalesAccessScope } from "@/app/api/sales/sales-access";
 import { requireSalesApiAccess } from "@/lib/permissions";
 import { getMemberDisplayName } from "@/lib/member-display";
-import { filterSalesCasesForAccess, type SalesAccessScope } from "@/lib/sales-authorization";
+import { filterSalesCasesForAccess, filterSalesContributorsForAggregation, type SalesAccessScope } from "@/lib/sales-authorization";
 import { getSalesDateRange, salesStatuses, type SalesStatus } from "@/lib/sales";
 import {
   calculateProjectContributionReport,
@@ -162,7 +162,7 @@ export async function GET(request: Request) {
       const expectedName = projectKey.slice("historical:".length);
       rows = rows.filter((row) => normalizeHistoricalIdentity(row.source_project_name ?? "") === expectedName);
     }
-    const cases = filterSalesCasesForAccess(rows.map((row): ProjectContributionCase => ({
+    const cases = filterSalesContributorsForAggregation(filterSalesCasesForAccess(rows.map((row): ProjectContributionCase => ({
       id: row.id,
       projectKey: getProjectContributionProjectKey(row.project_id, row.source_project_name),
       projectName: row.project?.project_name?.trim() || row.source_project_name?.trim() || "Unknown project",
@@ -178,7 +178,7 @@ export async function GET(request: Request) {
         memberName: contributor.member ? getMemberDisplayName(contributor.member) : contributor.source_member_name?.trim() || "Unknown member",
         portion: contributor.portion === null ? null : Number(contributor.portion),
       })),
-    })), accessScope);
+    })), accessScope), accessScope);
     const report = calculateProjectContributionReport(cases, {
       projectKey,
       projectName: selectedProject.label,

@@ -16,6 +16,8 @@ type AppPermissions = {
   canAccessCustomerBirthdays: boolean;
   canAccessLeaderMeetings: boolean;
   canManageLeaderMeetingsAccess: boolean;
+  canManageLeaderPromotions: boolean;
+  leaderPromotionPendingCount: number;
 };
 
 const readOnlyPermissions: AppPermissions = {
@@ -31,6 +33,8 @@ const readOnlyPermissions: AppPermissions = {
   canAccessCustomerBirthdays: false,
   canAccessLeaderMeetings: false,
   canManageLeaderMeetingsAccess: false,
+  canManageLeaderPromotions: false,
+  leaderPromotionPendingCount: 0,
 };
 
 const AppPermissionContext = createContext<AppPermissions>(readOnlyPermissions);

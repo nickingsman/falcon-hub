@@ -49,7 +49,10 @@ export default function MorePage() {
                   href={item.href}
                   className="group flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:border-zinc-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-zinc-300"
                 >
-                  <span>{item.label}</span>
+                  <span className="flex items-center gap-2">
+                    {item.label}
+                    {item.badgeCount ? <span className="rounded-full bg-[var(--falcon-gold)] px-2 py-0.5 text-xs text-zinc-950">{item.badgeCount}</span> : null}
+                  </span>
                   <span
                     aria-hidden="true"
                     className="text-lg leading-none text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-zinc-700"

@@ -44,3 +44,16 @@ export function filterSalesCasesForAccess<T extends SalesCaseWithMappedContribut
     ),
   );
 }
+
+export function filterSalesContributorsForAggregation<
+  T extends SalesCaseWithMappedContributors,
+>(cases: T[], scope: SalesAccessScope): T[] {
+  if (scope.canViewAll) return cases;
+  const authorizedMemberIds = new Set(scope.memberIds);
+  return cases.map((salesCase) => ({
+    ...salesCase,
+    contributors: salesCase.contributors.filter(
+      (contributor) => contributor.memberId !== null && authorizedMemberIds.has(contributor.memberId),
+    ),
+  }));
+}

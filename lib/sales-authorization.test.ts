@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildSalesAccessScope,
   filterSalesCasesForAccess,
+  filterSalesContributorsForAggregation,
   type SalesAuthorizationProfile,
 } from "./sales-authorization";
 import {
@@ -10,6 +11,7 @@ import {
   calculateProjectContributionReport,
   type ProjectContributionCase,
 } from "./sales-project-contribution";
+import { calculateSalesTopClosers } from "./sales";
 
 const members = [
   { id: "leader", leader_id: null, status: "Active" },
@@ -139,4 +141,24 @@ test("Project Contribution export contains only server-authorized Sales", () => 
 
   assert.deepEqual(exported.summary.map((row) => row.Member), ["Direct"]);
   assert.deepEqual(exported.details.map((row) => row.Unit), ["A-01-01"]);
+});
+
+test("Dashboard Top Closers aggregates only server-authorized Sales", () => {
+  const rankingCases = [
+    { nettPrice: 500_000, contributors: [{ memberId: "direct", memberName: "Direct", sourceMemberName: null, position: "REN 70", portion: 100 }] },
+    { nettPrice: 9_000_000, contributors: [{ memberId: "other-agent", memberName: "Other", sourceMemberName: null, position: "REN 70", portion: 100 }] },
+  ];
+  const scope = buildSalesAccessScope(profile("agent", "direct"), members);
+  const authorized = filterSalesContributorsForAggregation(filterSalesCasesForAccess(rankingCases, scope), scope);
+  assert.deepEqual(calculateSalesTopClosers(authorized).map((row) => row.memberName), ["Direct"]);
+});
+
+test("scoped reports do not aggregate an unrelated contributor from an authorized shared case", () => {
+  const scope = buildSalesAccessScope(profile("agent", "direct"), members);
+  const shared = [{
+    id: "shared",
+    contributors: [{ memberId: "direct", portion: 50 }, { memberId: "other-agent", portion: 50 }],
+  }];
+  const result = filterSalesContributorsForAggregation(filterSalesCasesForAccess(shared, scope), scope);
+  assert.deepEqual(result[0].contributors, [{ memberId: "direct", portion: 50 }]);
 });

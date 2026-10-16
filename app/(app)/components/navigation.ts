@@ -8,12 +8,15 @@ export type NavigationPermissions = {
   canManageUsers: boolean;
   canAccessCustomerBirthdays: boolean;
   canAccessLeaderMeetings: boolean;
+  canManageLeaderPromotions: boolean;
+  leaderPromotionPendingCount: number;
 };
 
 export type AppNavItem = {
   label: string;
   href: string;
-  permission?: "canManageUsers" | "canAccessCustomerBirthdays" | "canAccessLeaderMeetings";
+  permission?: "canManageUsers" | "canAccessCustomerBirthdays" | "canAccessLeaderMeetings" | "canManageLeaderPromotions";
+  badgeCount?: number;
   minRole?: "leader";
   children?: AppNavItem[];
 };
@@ -47,6 +50,7 @@ export const desktopNavItems: AppNavItem[] = [
       { label: "Members", href: "/team/members" },
       { label: "User Management", href: "/team/user-management", permission: "canManageUsers" },
       { label: "Leader Meetings", href: "/team/leader-meetings", permission: "canAccessLeaderMeetings" },
+      { label: "Leader Promotions", href: "/team/leader-promotions", permission: "canManageLeaderPromotions" },
     ],
   },
   {
@@ -78,6 +82,7 @@ function isVisibleItem(item: AppNavItem, permissions: NavigationPermissions) {
   if (item.permission === "canManageUsers") return permissions.canManageUsers;
   if (item.permission === "canAccessCustomerBirthdays") return permissions.canAccessCustomerBirthdays;
   if (item.permission === "canAccessLeaderMeetings") return permissions.canAccessLeaderMeetings;
+  if (item.permission === "canManageLeaderPromotions") return permissions.canManageLeaderPromotions;
   if (item.minRole === "leader") return canViewAttendance(permissions);
 
   return true;
@@ -97,7 +102,9 @@ export function getVisibleDesktopNavItems(permissions: NavigationPermissions) {
         ...(permissions.canManageUserApprovals
           ? [{ label: "User Approvals", href: "/team/user-approvals" }]
           : []),
-      ],
+      ].map((child) => child.href === "/team/leader-promotions"
+        ? { ...child, badgeCount: permissions.leaderPromotionPendingCount }
+        : child),
     };
   });
 }
@@ -150,6 +157,9 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
           : []),
         ...(permissions.canManageUserApprovals
           ? [{ label: "User Approvals", href: "/team/user-approvals" }]
+          : []),
+        ...(permissions.canManageLeaderPromotions
+          ? [{ label: "Leader Promotions", href: "/team/leader-promotions", badgeCount: permissions.leaderPromotionPendingCount }]
           : []),
       ],
     },
