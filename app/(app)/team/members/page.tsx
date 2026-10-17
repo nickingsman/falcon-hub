@@ -6,6 +6,7 @@ import { SearchCombobox } from "@/app/(app)/components/SearchCombobox";
 import { OrganizationChart } from "@/app/(app)/team/members/OrganizationChart";
 import { formatMemberCode, formatMemberDisplayName } from "@/lib/member-display";
 import { getHierarchyDescendants } from "@/lib/member-hierarchy";
+import { getActiveDirectDownlines } from "@/lib/member-resignation";
 import type { OrganizationChartMember } from "@/lib/organization-chart";
 import {
   employmentTypeOptions,
@@ -95,6 +96,7 @@ export default function MembersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<MemberFormState>(initialFormState);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
+  const [downlineAssignments, setDownlineAssignments] = useState<Record<string, string>>({});
 
   const fetchMembers = async () => {
     try {
@@ -250,6 +252,7 @@ export default function MembersPage() {
 
     setEditingMemberId(null);
     setFormState(initialFormState);
+    setDownlineAssignments({});
     setIsDrawerOpen(true);
   };
 
@@ -269,6 +272,7 @@ export default function MembersPage() {
       join_date: member.join_date || "",
       status: member.status || "Active",
     });
+    setDownlineAssignments({});
     setIsDrawerOpen(true);
   };
 
@@ -276,12 +280,42 @@ export default function MembersPage() {
     setIsDrawerOpen(false);
     setEditingMemberId(null);
     setFormState(initialFormState);
+    setDownlineAssignments({});
   };
+
+  const editingMember = useMemo(
+    () => members.find((member) => member.id === editingMemberId) ?? null,
+    [editingMemberId, members],
+  );
+  const isNewResignation = Boolean(
+    editingMember && editingMember.status === "Active" && formState.status === "Resigned",
+  );
+  const activeDirectDownlines = useMemo(
+    () => editingMemberId && isNewResignation
+      ? getActiveDirectDownlines(members, editingMemberId)
+      : [],
+    [editingMemberId, isNewResignation, members],
+  );
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!canManageMembers) return;
+
+    if (isNewResignation) {
+      const missingAssignment = activeDirectDownlines.some(
+        (member) => !downlineAssignments[member.id],
+      );
+      if (missingAssignment) {
+        setErrorMessage("Choose a new leader or No Leader for every active direct downline.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Resign ${formatMemberDisplayName(editingMember)}? Their Falcon Hub access will be deactivated automatically. This does not delete historical Sales attribution.`,
+      );
+      if (!confirmed) return;
+    }
 
     setIsSubmitting(true);
     setErrorMessage(null);
@@ -298,6 +332,14 @@ export default function MembersPage() {
         leader_id: formState.leader_id || null,
         join_date: formState.join_date || null,
         status: formState.status || "Active",
+        downlineReassignments: isNewResignation
+          ? activeDirectDownlines.map((member) => ({
+              memberId: member.id,
+              leaderId: downlineAssignments[member.id] === "__none__"
+                ? null
+                : downlineAssignments[member.id],
+            }))
+          : undefined,
       };
 
       const url = editingMemberId
@@ -815,13 +857,66 @@ export default function MembersPage() {
                   }
                   className="w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 outline-none"
                 >
-                  {memberStatusOptions.map((status) => (
+                  {memberStatusOptions
+                    .filter((status) => editingMemberId || status !== "Resigned")
+                    .map((status) => (
                     <option key={status} value={status}>
                       {status}
                     </option>
                   ))}
                 </select>
               </label>
+
+              {isNewResignation ? (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                  <p className="font-semibold">Confirm member resignation</p>
+                  <p className="mt-1 leading-6">
+                    Saving will mark this member Resigned and immediately deactivate their Falcon Hub access.
+                    Historical Sales attribution will remain unchanged.
+                  </p>
+
+                  {activeDirectDownlines.length > 0 ? (
+                    <div className="mt-4 space-y-3 border-t border-amber-200 pt-4">
+                      <p className="font-medium">
+                        Reassign every active direct downline before continuing.
+                      </p>
+                      {activeDirectDownlines.map((downline) => (
+                        <label key={downline.id} className="block">
+                          <span className="mb-1 block font-medium">
+                            {formatMemberDisplayName(downline)}
+                          </span>
+                          <select
+                            value={downlineAssignments[downline.id] ?? ""}
+                            onChange={(event) => setDownlineAssignments((current) => ({
+                              ...current,
+                              [downline.id]: event.target.value,
+                            }))}
+                            className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 outline-none"
+                          >
+                            <option value="">Select reassignment...</option>
+                            <option value="__none__">No Leader</option>
+                            {members
+                              .filter((candidate) =>
+                                candidate.status === "Active" &&
+                                candidate.id !== editingMemberId &&
+                                candidate.id !== downline.id,
+                              )
+                              .map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {formatMemberDisplayName(candidate)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs font-medium uppercase tracking-[0.16em] text-amber-800">
+                      No active direct downlines require reassignment.
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
               {errorMessage ? (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

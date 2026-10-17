@@ -26,9 +26,11 @@ export function buildSalesAccessScope(
   if (!profile.member_id) return { canViewAll: false, memberIds: [] };
   if (profile.role === "agent") return { canViewAll: false, memberIds: [profile.member_id] };
 
+  const activeMembers = members.filter((member) => member.status === "Active");
+
   return {
     canViewAll: false,
-    memberIds: getHierarchyMembers(members, profile.member_id).map((member) => member.id),
+    memberIds: getHierarchyMembers(activeMembers, profile.member_id).map((member) => member.id),
   };
 }
 

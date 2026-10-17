@@ -51,7 +51,7 @@ export function compareFalconPositions(
   return firstRank === null || secondRank === null ? null : firstRank - secondRank;
 }
 
-export const memberStatusOptions = ["Active", "Review", "Pending"] as const;
+export const memberStatusOptions = ["Active", "Review", "Pending", "Resigned"] as const;
 
 export type MemberStatus = (typeof memberStatusOptions)[number];
 

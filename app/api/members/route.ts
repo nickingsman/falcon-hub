@@ -210,8 +210,9 @@ export async function GET() {
       );
     }
 
+    const activeMembers = members.filter((member) => member.status === "Active");
     const scopedMembers = getScopedHierarchyMembers(
-      members,
+      activeMembers,
       authorization.profile.member_id,
     );
 
@@ -247,6 +248,13 @@ export async function POST(request: Request) {
   try {
     const supabase = createSupabaseAdminClient();
     const payload = await buildMemberPayload(supabase, await request.json());
+
+    if (payload.status === "Resigned") {
+      return NextResponse.json(
+        { error: "Create the member as Active. Resignation is available when editing an existing member." },
+        { status: 400 },
+      );
+    }
 
     const { data, error } = await supabase
       .from("users")

@@ -736,9 +736,13 @@ export default function UserManagementPage() {
                           required
                           value={formState.status}
                           onChange={(event) => updateFormField("status", event.target.value)}
+                          disabled={formState.status === "Resigned"}
                           className="w-full rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm outline-none focus:border-zinc-900"
                         >
-                          {memberStatusOptions.map((status) => (
+                          {formState.status === "Resigned" ? (
+                            <option value="Resigned">Resigned — manage in Team Members</option>
+                          ) : null}
+                          {memberStatusOptions.filter((status) => status !== "Resigned").map((status) => (
                             <option key={status} value={status}>
                               {status}
                             </option>

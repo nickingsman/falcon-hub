@@ -13,6 +13,8 @@ export async function resolveSalesAccessScope(
     const { data, error } = await supabase
       .from("users")
       .select("id, leader_id, status")
+      .eq("is_deleted", false)
+      .eq("status", "Active")
       .range(offset, offset + 999);
     if (error) throw error;
     const page = data ?? [];

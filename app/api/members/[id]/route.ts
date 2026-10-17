@@ -8,8 +8,13 @@ import {
   getLeaderAssignmentError,
   type HierarchyMember,
 } from "@/lib/member-hierarchy";
+import {
+  parseDownlineReassignments,
+  toResignationRpcAssignments,
+} from "@/lib/member-resignation";
 import { requireMembersApiWriteAccess } from "@/lib/permissions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
+import { createSupabaseSsrClient } from "@/lib/supabase-ssr";
 
 const memberSelectFields = `
   id,
@@ -38,7 +43,35 @@ type MemberPayload = {
   leader_id?: unknown;
   join_date?: unknown;
   status?: unknown;
+  downlineReassignments?: unknown;
 };
+
+type CurrentMember = {
+  full_name: string | null;
+  display_name: string | null;
+  email: string | null;
+  phone: string | null;
+  birthday: string | null;
+  employment_type: string | null;
+  position: string | null;
+  leader_id: string | null;
+  join_date: string | null;
+  status: string | null;
+};
+
+function hasNonStatusChanges(current: CurrentMember, next: Awaited<ReturnType<typeof buildMemberPayload>>) {
+  return (
+    current.full_name !== next.full_name ||
+    current.display_name !== next.display_name ||
+    current.email !== next.email ||
+    current.phone !== next.phone ||
+    current.birthday !== next.birthday ||
+    current.employment_type !== next.employment_type ||
+    current.position !== next.position ||
+    current.leader_id !== next.leader_id ||
+    current.join_date !== next.join_date
+  );
+}
 
 function optionalText(value: unknown) {
   if (typeof value !== "string") return null;
@@ -184,7 +217,65 @@ export async function PATCH(
   try {
     const { id } = await params;
     const supabase = createSupabaseAdminClient();
-    const payload = await buildMemberPayload(supabase, await request.json());
+    const requestPayload = (await request.json()) as MemberPayload;
+    const payload = await buildMemberPayload(supabase, requestPayload);
+
+    const { data: currentMember, error: currentMemberError } = await supabase
+      .from("users")
+      .select(memberSelectFields)
+      .eq("id", id)
+      .eq("is_deleted", false)
+      .maybeSingle();
+
+    if (currentMemberError) throw currentMemberError;
+    if (!currentMember) {
+      return NextResponse.json({ error: "Member not found" }, { status: 404 });
+    }
+
+    if (currentMember.status === "Resigned" && payload.status !== "Resigned") {
+      return NextResponse.json(
+        { error: "A Resigned member cannot be reactivated through Team Members." },
+        { status: 409 },
+      );
+    }
+
+    if (currentMember.status !== "Resigned" && payload.status === "Resigned") {
+      if (currentMember.status !== "Active") {
+        return NextResponse.json(
+          { error: "Only an Active member can be resigned." },
+          { status: 409 },
+        );
+      }
+      if (hasNonStatusChanges(currentMember as CurrentMember, payload)) {
+        return NextResponse.json(
+          { error: "Save other member changes before resigning this member." },
+          { status: 409 },
+        );
+      }
+
+      const assignments = parseDownlineReassignments(
+        requestPayload.downlineReassignments ?? [],
+      );
+      const authenticatedSupabase = await createSupabaseSsrClient();
+      const { error: resignationError } = await authenticatedSupabase.rpc(
+        "resign_falconhub_member",
+        {
+          p_member_id: id,
+          p_downline_reassignments: toResignationRpcAssignments(assignments),
+        },
+      );
+      if (resignationError) throw resignationError;
+
+      const { data: resignedMember, error: resignedMemberError } = await supabase
+        .from("users")
+        .select(memberSelectFields)
+        .eq("id", id)
+        .eq("is_deleted", false)
+        .maybeSingle();
+      if (resignedMemberError) throw resignedMemberError;
+      return NextResponse.json({ data: resignedMember }, { status: 200 });
+    }
+
     await validateLeaderAssignment(supabase, id, payload.leader_id);
 
     const { data, error } = await supabase
@@ -214,8 +305,24 @@ export async function PATCH(
       { status: 200 }
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update member";
-    const status = error instanceof Error ? 400 : 500;
+    const errorRecord = error && typeof error === "object"
+      ? error as { code?: unknown; message?: unknown }
+      : null;
+    const message = error instanceof Error
+      ? error.message
+      : typeof errorRecord?.message === "string"
+        ? errorRecord.message
+        : "Unable to update member";
+    const code = typeof errorRecord?.code === "string" ? errorRecord.code : "";
+    const status = code === "P0002"
+      ? 404
+      : code === "42501"
+        ? 403
+        : code === "23514"
+          ? 409
+          : error instanceof Error
+            ? 400
+            : 500;
 
     return NextResponse.json(
       { error: message },

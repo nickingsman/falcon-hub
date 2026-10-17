@@ -45,6 +45,13 @@ test("inactive, deleted, unlinked, and non-Agent accounts are not eligible", () 
   ], []), []);
 });
 
+test("Resigned members cannot trigger or participate in Leader Promotion", () => {
+  assert.deepEqual(getLeaderPromotionCandidates([
+    { ...members[0], status: "Resigned" },
+    ...members.slice(1),
+  ], profiles, []), []);
+});
+
 test("only an active Super Admin receives promotion-management permission", () => {
   assert.equal(isLeaderPromotionManager({ role: "super_admin", status: "active" }), true);
   assert.equal(isLeaderPromotionManager({ role: "admin", status: "active" }), false);

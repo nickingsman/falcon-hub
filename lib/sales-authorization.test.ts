@@ -101,6 +101,22 @@ test("cycle-safe hierarchy traversal cannot loop or broaden access", () => {
   assert.equal(scope.memberIds.includes("unrelated"), false);
 });
 
+test("Leader Sales scope stops at a Resigned member and does not traverse through them", () => {
+  const membersWithResignedBranch = [
+    { id: "leader", leader_id: null, status: "Active" },
+    { id: "resigned", leader_id: "leader", status: "Resigned" },
+    { id: "former-downline", leader_id: "resigned", status: "Active" },
+    { id: "active-direct", leader_id: "leader", status: "Active" },
+  ];
+
+  const scope = buildSalesAccessScope(
+    profile("leader", "leader"),
+    membersWithResignedBranch,
+  );
+
+  assert.deepEqual(new Set(scope.memberIds), new Set(["leader", "active-direct"]));
+});
+
 test("Project Contribution export contains only server-authorized Sales", () => {
   const contributionCases: ProjectContributionCase[] = [
     {

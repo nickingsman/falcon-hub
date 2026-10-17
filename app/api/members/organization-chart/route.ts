@@ -30,6 +30,7 @@ export async function GET() {
       .from("users")
       .select(organizationMemberFields)
       .eq("is_deleted", false)
+      .eq("status", "Active")
       .order("member_code", { ascending: true });
 
     if (error) {
