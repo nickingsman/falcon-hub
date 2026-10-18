@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { isValidDateString } from "@/lib/malaysia-date";
 import { getMemberDisplayName } from "@/lib/member-display";
 import { canSubmitSalesContributor, preservesUnavailableContributors } from "@/lib/sales-contributor-edit";
+import { rankSalesSearchMatches } from "@/lib/sales-search";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const salesCaseSelect = `
@@ -120,13 +121,13 @@ export async function listSales(request: Request) {
     const status = url.searchParams.get("status");
     const memberId = url.searchParams.get("memberId");
     const allocation = url.searchParams.get("allocation");
-    const search = url.searchParams.get("search")?.trim().toLowerCase();
-    const records = visibleCases.filter((item) => item.bookingDate >= range.from && item.bookingDate <= range.to)
+    const search = url.searchParams.get("search") ?? "";
+    const filteredRecords = visibleCases.filter((item) => item.bookingDate >= range.from && item.bookingDate <= range.to)
       .filter((item) => !projectId || item.projectId === projectId)
       .filter((item) => !status || item.status === status)
       .filter((item) => allocation !== "pending" || item.allocationStatus === "pending")
-      .filter((item) => !memberId || item.contributors.some((contributor) => contributor.memberId === memberId))
-      .filter((item) => !search || item.projectName.toLowerCase().includes(search) || item.unitNo.toLowerCase().includes(search));
+      .filter((item) => !memberId || item.contributors.some((contributor) => contributor.memberId === memberId));
+    const records = rankSalesSearchMatches(filteredRecords, search);
 
     const recordProjects = [...new Map(visibleCases.map((item) => [item.projectId, { id: item.projectId, project_name: item.projectName }])).values()]
       .sort((a, b) => a.project_name.localeCompare(b.project_name, "en-MY") || a.id.localeCompare(b.id));
