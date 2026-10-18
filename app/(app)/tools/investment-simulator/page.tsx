@@ -5,11 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { SearchCombobox } from "../../components/SearchCombobox";
 import { Button, PageHeader, StatusBadge } from "../../components/ui";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
-import {
-  getCustomerPdfBrandingStyles,
-  renderRepeatedCustomerPdfWatermark,
-  type CustomerPdfBranding,
-} from "@/lib/customer-pdf-branding";
+import { buildInvestmentAnalysisPdfHtml } from "@/lib/investment-simulator-pdf";
 import {
   calculateInvestmentEntryCapital,
   calculateInvestmentFinancing,
@@ -128,179 +124,10 @@ function formatSignedMoney(value: number) {
   return `${value > 0 ? "+" : "−"} ${formatMoney(Math.abs(value))}`;
 }
 
-function getFinancialTone(value: number): "positive" | "negative" | "neutral" {
-  if (value > 0) return "positive";
-  if (value < 0) return "negative";
-  return "neutral";
-}
-
 function formatPercent(value: number | null) {
   return value === null || !Number.isFinite(value)
     ? "Not available"
     : `${percentFormatter.format(value)}%`;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-type InvestmentSummaryPdfData = {
-  branding: CustomerPdfBranding;
-  generatedOn: string;
-  projectName: string;
-  unitType: string;
-  holdingPeriodYears: number;
-  spaPrice: string;
-  nettPrice: string;
-  loanMargin: string;
-  interestRate: string;
-  loanTenure: string;
-  expectedMonthlyRental: string;
-  capitalAppreciation: string;
-  cashNeeded: string;
-  monthlyInstalment: string;
-  monthlyCashFlow: string;
-  estimatedProfit: string;
-  monthlyRental: string;
-  maintenanceFee: string;
-  otherMonthlyExpenses: string;
-  propertyValue: string;
-  outstandingLoan: string;
-  sellingCosts: string;
-  netSaleProceeds: string;
-  accumulatedRentalCashFlow: string;
-  totalCashInvested: string;
-  monthlyCashFlowTone: "positive" | "negative" | "neutral";
-  accumulatedRentalCashFlowTone: "positive" | "negative" | "neutral";
-  estimatedProfitTone: "positive" | "negative" | "neutral";
-};
-
-function buildInvestmentSummaryPdfHtml(data: InvestmentSummaryPdfData) {
-  const holdingPeriod = `${data.holdingPeriodYears} Years`;
-  const propertyLine = [data.projectName, data.unitType].filter(Boolean).join(" · ");
-  const assumptionItems = [
-    ["SPA Price", data.spaPrice],
-    ["Nett Price", data.nettPrice],
-    ["Loan Margin", data.loanMargin],
-    ["Interest Rate", data.interestRate],
-    ["Loan Tenure", data.loanTenure],
-    ["Expected Monthly Rental", data.expectedMonthlyRental],
-    ["Holding Period", holdingPeriod],
-    ["Capital Appreciation", data.capitalAppreciation],
-  ];
-  const renderRows = (rows: Array<[string, string, string?]>) => rows.map(([label, value, className = ""]) => `
-    <div class="row ${className}">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
-    </div>
-  `).join("");
-
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="format-detection" content="telephone=no" />
-    <title>Falcon-Investment-Summary-${data.holdingPeriodYears}Y</title>
-    <style>
-      @page { size: A4; margin: 12mm; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: #f6f2e9; color: #27272a; font-family: Arial, Helvetica, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .page { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 14mm; background: transparent; position: relative; z-index: 2; }
-      .header { border-bottom: 2px solid #b8924a; padding-bottom: 10px; }
-      .brand { color: #171717; font-size: 10px; font-weight: 800; letter-spacing: .24em; }
-      h1 { margin: 5px 0 0; font-size: 25px; line-height: 1.15; }
-      .property { margin: 6px 0 0; color: #71717a; font-size: 10px; }
-      .generated { margin: 5px 0 0; color: #a1a1aa; font-size: 8px; }
-      .section { margin-top: 14px; break-inside: avoid; page-break-inside: avoid; }
-      .section-title { margin: 0 0 7px; color: #8a6a2d; font-size: 8px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
-      .assumptions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
-      .assumption { border: 1px solid #e7e5e4; border-radius: 8px; padding: 8px; }
-      .assumption span, .metric span { display: block; color: #71717a; font-size: 7.5px; line-height: 1.3; }
-      .assumption strong { display: block; margin-top: 3px; font-size: 10px; line-height: 1.2; }
-      .snapshot { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-      .metric { border: 1px solid #e7e5e4; border-radius: 10px; padding: 10px; background: #fff; }
-      .metric.featured { border-color: #d8c48e; background: #fbf8ef; }
-      .metric strong { display: block; margin-top: 4px; font-size: 16px; line-height: 1.15; white-space: nowrap; }
-      .tone-positive { color: #047857 !important; }
-      .tone-negative { color: #b91c1c !important; }
-      .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-      .panel { border: 1px solid #e7e5e4; border-radius: 10px; overflow: hidden; }
-      .panel h2 { margin: 0; padding: 9px 10px; background: #faf8f3; font-size: 10px; }
-      .rows { padding: 0 10px; }
-      .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid #eeeae2; padding: 7px 0; font-size: 8.5px; }
-      .row:last-child { border-bottom: 0; }
-      .row strong { font-size: 9px; text-align: right; white-space: nowrap; }
-      .row.total span, .row.total strong { color: #171717; font-weight: 800; }
-      .row-with-note { border-bottom: 1px solid #eeeae2; padding: 7px 0; }
-      .row-with-note .row { border-bottom: 0; padding: 0; }
-      .explanation { margin: 3px 0 0; color: #71717a; font-size: 7px; line-height: 1.35; }
-      .profit-result { background: #fbf8ef; border: 1px solid #d8c48e; border-radius: 8px; margin: 8px 0 9px; padding: 9px; }
-      .profit-result span { color: #52525b; display: block; font-size: 8px; font-weight: 800; }
-      .profit-result strong { display: block; font-size: 15px; margin-top: 4px; white-space: nowrap; }
-      .disclaimer { border-top: 1px solid #e7e5e4; margin: 14px 0 0; padding-top: 8px; color: #71717a; font-size: 7.5px; line-height: 1.45; }
-      ${getCustomerPdfBrandingStyles()}
-      @media print { body { background: #fff; } .page { width: auto; min-height: auto; margin: 0; padding: 0; } }
-    </style>
-  </head>
-  <body>
-    ${renderRepeatedCustomerPdfWatermark(data.branding)}
-    <main class="page">
-      <header class="header">
-        <div class="brand">FALCON HUB</div>
-        <h1>Investment Summary</h1>
-        <p class="generated">Generated on ${escapeHtml(data.generatedOn)}</p>
-        ${propertyLine ? `<p class="property">${escapeHtml(propertyLine)}</p>` : ""}
-      </header>
-
-      <section class="section">
-        <p class="section-title">Property / Assumptions</p>
-        <div class="assumptions">${assumptionItems.map(([label, value]) => `<div class="assumption"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}</div>
-      </section>
-
-      <section class="section">
-        <p class="section-title">Investment Snapshot</p>
-        <div class="snapshot">
-          <div class="metric"><span>Cash Needed</span><strong>${escapeHtml(data.cashNeeded)}</strong></div>
-          <div class="metric"><span>Monthly Instalment</span><strong>${escapeHtml(data.monthlyInstalment)}</strong></div>
-          <div class="metric"><span>Monthly Cash Flow</span><strong class="tone-${data.monthlyCashFlowTone}">${escapeHtml(data.monthlyCashFlow)}</strong></div>
-          <div class="metric featured"><span>Estimated Profit After ${data.holdingPeriodYears} Years</span><strong class="tone-${data.estimatedProfitTone}">${escapeHtml(data.estimatedProfit)}</strong></div>
-        </div>
-      </section>
-
-      <section class="section columns">
-        <div class="panel">
-          <h2>Monthly Cash Flow</h2>
-          <div class="rows">${renderRows([
-            ["Monthly Rental", data.monthlyRental],
-            ["− Loan Instalment", data.monthlyInstalment],
-            ["− Maintenance Fee", data.maintenanceFee],
-            ["− Other Monthly Expenses", data.otherMonthlyExpenses],
-            ["= Monthly Cash Flow", data.monthlyCashFlow, `total tone-${data.monthlyCashFlowTone}`],
-          ])}</div>
-        </div>
-        <div class="panel">
-          <h2>Exit After ${data.holdingPeriodYears} Years</h2>
-          <div class="rows">${renderRows([
-            ["Estimated Property Value", data.propertyValue],
-            ["− Outstanding Loan", data.outstandingLoan],
-            ["− Estimated Selling Costs", data.sellingCosts],
-            ["= Net Sale Proceeds", data.netSaleProceeds, "total"],
-          ])}<div class="row-with-note"><div class="row"><span>+ Accumulated Rental Cash Flow</span><strong class="tone-${data.accumulatedRentalCashFlowTone}">${escapeHtml(data.accumulatedRentalCashFlow)}</strong></div><p class="explanation">Net rental cash flow accumulated over ${data.holdingPeriodYears} years.</p></div>${renderRows([
-            ["− Total Cash Invested", data.totalCashInvested],
-          ])}<div class="profit-result"><span>Estimated Investment Profit</span><strong class="tone-${data.estimatedProfitTone}">${escapeHtml(data.estimatedProfit)}</strong></div></div>
-        </div>
-      </section>
-
-      <p class="disclaimer">This simulation is for illustration purposes only and is based on the assumptions provided. Actual financing, rental, expenses, property value and returns may vary.</p>
-    </main>
-  </body>
-</html>`;
 }
 
 function InputField({
@@ -397,6 +224,7 @@ export default function InvestmentSimulatorPage() {
   const [presentationMode, setPresentationMode] = useState<PresentationMode>("simple");
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [form, setForm] = useState<SimulatorForm>(defaultForm);
   const [customDownpayment, setCustomDownpayment] = useState("");
   const [downpaymentOverridden, setDownpaymentOverridden] = useState(false);
@@ -584,7 +412,7 @@ export default function InvestmentSimulatorPage() {
     }
   }
 
-  function handleExportPdf() {
+  async function handleExportPdf() {
     setExportError("");
 
     if (!result || !selected || !yearOne) {
@@ -595,49 +423,73 @@ export default function InvestmentSimulatorPage() {
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
-      window.alert("Please allow pop-ups to preview and export the PDF.");
+      const message = "Please allow pop-ups to preview and export the PDF.";
+      setExportError(message);
+      window.alert(message);
       return;
     }
 
+    setExportingPdf(true);
+
     proposalWindow.document.open();
-    proposalWindow.document.write(buildInvestmentSummaryPdfHtml({
-      branding: {
-        agentName: displayName,
-        agentPhone: phone,
-      },
-      generatedOn: generatedDateFormatter.format(new Date()),
-      projectName: selectedProject?.project_name?.trim() || "",
-      unitType: selectedUnitType
-        ? [selectedUnitType.type_code, selectedUnitType.type_name].filter(Boolean).join(" · ")
-        : "",
-      holdingPeriodYears: selected.year,
-      spaPrice: formatMoney(result.input.spaPrice),
-      nettPrice: formatMoney(result.input.nettPrice),
-      loanMargin: formatPercent(result.input.loanMarginPercent),
-      interestRate: `${formatPercent(result.input.annualInterestRatePercent)} p.a.`,
-      loanTenure: `${result.input.loanTenureYears} Years`,
-      expectedMonthlyRental: formatMoney(result.input.startingMonthlyRental),
-      capitalAppreciation: `${formatPercent(result.input.capitalAppreciationPercent)} p.a.`,
-      cashNeeded: formatMoney(selected.totalCashInvested),
-      monthlyInstalment: formatMoney(result.monthlyInstalment),
-      monthlyCashFlow: formatSignedMoney(yearOne.averageMonthlyCashFlow),
-      estimatedProfit: formatSignedMoney(selected.estimatedInvestmentProfit),
-      monthlyRental: formatMoney(yearOne.monthlyRental),
-      maintenanceFee: formatMoney(result.input.monthlyMaintenance),
-      otherMonthlyExpenses: formatMoney(result.input.otherMonthlyExpenses),
-      propertyValue: formatMoney(selected.propertyValue),
-      outstandingLoan: formatMoney(selected.outstandingLoan),
-      sellingCosts: formatMoney(selected.estimatedSellingCost),
-      netSaleProceeds: formatMoney(selected.netSaleProceedsBeforeTax),
-      accumulatedRentalCashFlow: formatMoney(selected.cumulativePositiveOperatingCashFlow),
-      totalCashInvested: formatMoney(selected.totalCashInvested),
-      monthlyCashFlowTone: getFinancialTone(yearOne.averageMonthlyCashFlow),
-      accumulatedRentalCashFlowTone: getFinancialTone(selected.cumulativePositiveOperatingCashFlow),
-      estimatedProfitTone: getFinancialTone(selected.estimatedInvestmentProfit),
-    }));
+    proposalWindow.document.write(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Preparing Investment Analysis</title><style>body{align-items:center;background:#f6f2e9;color:#27272a;display:flex;font-family:Arial,Helvetica,sans-serif;justify-content:center;margin:0;min-height:100vh;padding:24px;text-align:center}.brand{color:#8a6a2d;font-size:11px;font-weight:800;letter-spacing:.2em}.message{font-size:18px;font-weight:700;margin-top:12px}.detail{color:#71717a;font-size:13px;margin-top:8px}</style></head><body><main><div class="brand">FALCON HUB</div><div class="message">Preparing your Investment Analysis...</div><div class="detail">Your print preview will open automatically.</div></main></body></html>`);
     proposalWindow.document.close();
-    proposalWindow.focus();
-    proposalWindow.setTimeout(() => proposalWindow.print(), 100);
+
+    try {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+      const reportHtml = buildInvestmentAnalysisPdfHtml({
+        branding: {
+          agentName: displayName,
+          agentPhone: phone,
+        },
+        generatedOn: generatedDateFormatter.format(new Date()),
+        projectName: selectedProject?.project_name,
+        unitType: selectedUnitType
+          ? [selectedUnitType.type_code, selectedUnitType.type_name]
+              .filter(Boolean)
+              .join(" · ")
+          : null,
+        result,
+        exitComparison:
+          presentationMode === "advanced" ? exitScenarios : [],
+      });
+
+      proposalWindow.document.open();
+      proposalWindow.document.write(reportHtml);
+      proposalWindow.document.close();
+
+      if (proposalWindow.document.fonts?.ready) {
+        await proposalWindow.document.fonts.ready;
+      }
+
+      await new Promise<void>((resolve) =>
+        proposalWindow.requestAnimationFrame(() =>
+          proposalWindow.requestAnimationFrame(() => resolve()),
+        ),
+      );
+
+      if (proposalWindow.closed) {
+        throw new Error("The PDF preview window was closed before it was ready.");
+      }
+
+      proposalWindow.focus();
+      proposalWindow.print();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to prepare the Investment Analysis PDF.";
+      setExportError(message);
+
+      if (!proposalWindow.closed) {
+        proposalWindow.document.open();
+        proposalWindow.document.write(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Unable to prepare report</title><style>body{background:#f6f2e9;color:#27272a;font-family:Arial,Helvetica,sans-serif;margin:0;padding:32px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:18px;margin:12vh auto 0;max-width:520px;padding:24px}h1{font-size:20px;margin:0}p{color:#71717a;line-height:1.6;margin:10px 0 0}</style></head><body><main class="card"><h1>Unable to prepare the report</h1><p>Please close this window and try Export PDF again.</p></main></body></html>`);
+        proposalWindow.document.close();
+      }
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   function applyScenario(nextScenario: InvestmentScenario) {
@@ -691,7 +543,7 @@ export default function InvestmentSimulatorPage() {
       <div className="mx-auto max-w-7xl space-y-6">
         <PageHeader eyebrow="Customer Tools" title="Investment Simulator" description="Explore projected value, rental, financing, cash flow and exit outcomes using transparent assumptions." actions={<Button type="button" variant="secondary" onClick={resetSimulator}>Reset</Button>} meta={<StatusBadge variant="accent">Illustrative assumptions</StatusBadge>} />
 
-        <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-between">
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-start">
           <div className="inline-flex rounded-full border border-[var(--falcon-soft-border)] bg-white p-1 shadow-sm" role="group" aria-label="Investment Simulator presentation mode">
             {(["simple", "advanced"] as const).map((mode) => (
               <button
@@ -705,9 +557,8 @@ export default function InvestmentSimulatorPage() {
               </button>
             ))}
           </div>
-          {presentationMode === "simple" ? <Button type="button" variant="secondary" onClick={handleExportPdf}>Export PDF</Button> : null}
         </div>
-        {presentationMode === "simple" && exportError ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{exportError}</p> : null}
+        {exportError ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">{exportError}</p> : null}
 
         {presentationMode === "simple" ? <>
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
@@ -785,7 +636,7 @@ export default function InvestmentSimulatorPage() {
             </div>
 
             <section className="rounded-[28px] border border-[#d8c48e] bg-[#fbf8ef] p-5 shadow-sm sm:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Customer Summary</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Picture</h2></div><Button type="button" variant="secondary" onClick={() => void copyCustomerSummary()}>{summaryCopied ? "Copied" : "Copy Summary"}</Button></div>
+              <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Customer Summary</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Picture</h2></div><div className="flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={() => void copyCustomerSummary()}>{summaryCopied ? "Copied" : "Copy Summary"}</Button><Button type="button" onClick={() => void handleExportPdf()} disabled={exportingPdf}>{exportingPdf ? "Preparing PDF..." : "Export PDF"}</Button></div></div>
               <div className="mt-4 space-y-2 text-sm leading-6 text-zinc-700">
                 <p>Assuming a {selected.year}-year holding period, the projected property value is about <strong className="text-zinc-950">{formatMoney(selected.propertyValue)}</strong>.</p>
                 <p>The estimated outstanding loan would be about <strong className="text-zinc-950">{formatMoney(selected.outstandingLoan)}</strong>, with net sale proceeds of about <strong className="text-zinc-950">{formatMoney(selected.netSaleProceedsBeforeTax)}</strong> before tax.</p>
@@ -894,7 +745,7 @@ export default function InvestmentSimulatorPage() {
           </section>
 
           <section className="rounded-[28px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Result</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Outcome</h2>
+            <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--falcon-gold-dark)]">Result</p><h2 className="mt-1 text-lg font-semibold text-[var(--falcon-charcoal)]">Estimated Investment Outcome</h2></div><Button type="button" onClick={() => void handleExportPdf()} disabled={exportingPdf}>{exportingPdf ? "Preparing PDF..." : "Export PDF"}</Button></div>
             <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-12">
               <Metric className="xl:col-span-2" valueClassName="whitespace-nowrap text-[clamp(0.875rem,1.25vw,1rem)] leading-tight tracking-[-0.025em]" label="Total Cash Invested" value={formatMoney(selected.totalCashInvested)} />
               <Metric className="xl:col-span-2" valueClassName="whitespace-nowrap text-[clamp(0.875rem,1.25vw,1rem)] leading-tight tracking-[-0.025em]" label="Net Operating Cash Flow" value={formatSignedMoney(selected.cumulativeOperatingCashFlow)} tone={selected.cumulativeOperatingCashFlow >= 0 ? "positive" : "negative"} />
