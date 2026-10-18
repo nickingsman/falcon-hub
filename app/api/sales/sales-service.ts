@@ -7,13 +7,14 @@ import { normalizeHistoricalIdentity } from "@/lib/sales-project-contribution";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { isValidDateString } from "@/lib/malaysia-date";
 import { getMemberDisplayName } from "@/lib/member-display";
+import { canSubmitSalesContributor, preservesUnavailableContributors } from "@/lib/sales-contributor-edit";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const salesCaseSelect = `
   id, project_id, source_type, source_project_name, unit_no, booking_date, nett_price, falcon_portion, status, allocation_status,
   spa_signed_date, cancel_date, remark, created_at, updated_at,
   project:projects!sales_cases_project_id_fkey(project_name),
-  contributors:sales_case_contributors(id, member_id, source_member_name, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name, position)),
+  contributors:sales_case_contributors(id, member_id, source_member_name, portion, member:users!sales_case_contributors_member_id_fkey(full_name, display_name, position, status)),
   status_history:sales_case_status_history(status, effective_date, created_at, event_type, note),
   unit_history:sales_unit_history(previous_unit_no, new_unit_no, changed_at)
 `;
@@ -28,7 +29,7 @@ type SalesCaseDbRow = {
   id: string; project_id: string | null; source_type: "manual" | "historical_2024_case_report" | "historical_2025_case_report" | "historical_2026_case_report"; source_project_name: string | null; unit_no: string; booking_date: string; nett_price: number | string;
   falcon_portion: number | string; status: SalesStatus; spa_signed_date: string | null; cancel_date: string | null;
   remark: string | null; allocation_status: "verified" | "pending"; project: { project_name: string | null } | null;
-  contributors: Array<{ id: string; member_id: string | null; source_member_name: string | null; portion: number | string | null; member: { full_name: string | null; display_name: string | null; position: string | null } | null }> | null;
+  contributors: Array<{ id: string; member_id: string | null; source_member_name: string | null; portion: number | string | null; member: { full_name: string | null; display_name: string | null; position: string | null; status: string | null } | null }> | null;
   status_history: Array<{ status: SalesStatus; effective_date: string | null; created_at: string; event_type: "lifecycle" | "spa_correction"; note: string | null }> | null;
   unit_history: Array<{ previous_unit_no: string; new_unit_no: string; changed_at: string }> | null;
 };
@@ -89,7 +90,7 @@ function toSalesCase(row: SalesCaseDbRow): SalesCase {
     unitNo: row.unit_no, bookingDate: row.booking_date, nettPrice: Number(row.nett_price),
     falconPortion: Number(row.falcon_portion), status: row.status, spaSignedDate: row.spa_signed_date,
     cancelDate: row.cancel_date, remark: row.remark, allocationStatus: row.allocation_status ?? "verified",
-    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id, sourceMemberName: item.source_member_name, memberName: item.member ? getMemberDisplayName(item.member) : item.source_member_name ?? "Unknown member", position: item.member?.position ?? null, portion: item.portion === null ? null : Number(item.portion) })),
+    contributors: (row.contributors ?? []).map((item) => ({ memberId: item.member_id, sourceMemberName: item.source_member_name, memberName: item.member ? getMemberDisplayName(item.member) : item.source_member_name ?? "Unknown member", position: item.member?.position ?? null, memberStatus: item.member?.status ?? null, portion: item.portion === null ? null : Number(item.portion) })),
     statusHistory: (row.status_history ?? []).map((item) => ({ status: item.status, effectiveDate: item.effective_date, createdAt: item.created_at, eventType: item.event_type, note: item.note })).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     unitHistory: (row.unit_history ?? []).map((item) => ({ previousUnitNo: item.previous_unit_no, newUnitNo: item.new_unit_no, changedAt: item.changed_at })).sort((a, b) => b.changedAt.localeCompare(a.changedAt)),
   };
@@ -151,6 +152,7 @@ async function saveSales(request: Request, caseId: string | null) {
   const input = parsed.input;
   try {
     const supabase = createSupabaseAdminClient();
+    let existingContributors: Array<{ memberId: string; portion: string | number }> = [];
     if (caseId) {
       const { data: existing, error: existingError } = await supabase.from("sales_cases").select("status, spa_signed_date, allocation_status").eq("id", caseId).eq("is_deleted", false).maybeSingle();
       if (existingError) throw existingError;
@@ -159,15 +161,38 @@ async function saveSales(request: Request, caseId: string | null) {
       if (existing.status === "cancelled" && input.status !== "cancelled") return badRequest("Cancelled cases are terminal. Create a new case for a rebooking");
       if (existing.status === "sign_spa" && input.status !== "sign_spa" && input.status !== "cancelled") return badRequest("Use Remove Incorrect SPA Record to correct an erroneous conversion");
       if (input.status === "cancelled" && existing.spa_signed_date && input.cancelDate && input.cancelDate < existing.spa_signed_date) return badRequest("Cancel Date cannot be before SPA Signed Date");
+      const { data: contributorRows, error: contributorsError } = await supabase
+        .from("sales_case_contributors")
+        .select("member_id, portion")
+        .eq("sales_case_id", caseId);
+      if (contributorsError) throw contributorsError;
+      existingContributors = (contributorRows ?? []).flatMap((item) => item.member_id && item.portion !== null ? [{
+        memberId: item.member_id,
+        portion: item.portion,
+      }] : []);
     }
-    const [{ data: project }, { data: validMembers }, { data: activeProjectCases, error: activeCasesError }] = await Promise.all([
+    const contributorMemberIds = [...new Set([
+      ...input.contributors.map((item) => item.memberId),
+      ...existingContributors.map((item) => item.memberId),
+    ])];
+    const [{ data: project }, { data: contributorMembers }, { data: activeProjectCases, error: activeCasesError }] = await Promise.all([
       supabase.from("projects").select("id").eq("id", input.projectId).eq("is_deleted", false).maybeSingle(),
-      supabase.from("users").select("id").in("id", input.contributors.map((item) => item.memberId)).eq("is_deleted", false).eq("status", "Active"),
+      supabase.from("users").select("id, status, is_deleted").in("id", contributorMemberIds),
       supabase.from("sales_cases").select("id, unit_no").eq("project_id", input.projectId).eq("is_deleted", false).neq("status", "cancelled"),
     ]);
     if (activeCasesError) throw activeCasesError;
     if (!project) return badRequest("Project is not available");
-    if ((validMembers ?? []).length !== input.contributors.length) return badRequest("Every contributor must be an active Falcon member");
+    const contributorMemberMap = new Map((contributorMembers ?? []).map((member) => [member.id, member]));
+    if (input.contributors.some((contributor) => !canSubmitSalesContributor(
+      contributor,
+      contributorMemberMap.get(contributor.memberId),
+      existingContributors,
+    ))) {
+      return badRequest("New contributors must be active. Resigned or inactive contributors may only retain their existing allocation");
+    }
+    if (!preservesUnavailableContributors(input.contributors, existingContributors, contributorMemberMap)) {
+      return badRequest("Existing resigned or inactive contributors and their allocations must be preserved");
+    }
     const duplicateCase = (activeProjectCases ?? []).find((item) => item.id !== caseId && normalizeSalesUnit(item.unit_no) === normalizeSalesUnit(input.unitNo));
     if (duplicateCase) return conflict();
     const { data, error } = await supabase.rpc("save_sales_case", {

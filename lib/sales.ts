@@ -40,6 +40,7 @@ export type SalesContributor = {
   memberName: string;
   sourceMemberName: string | null;
   position: string | null;
+  memberStatus?: string | null;
   portion: number | null;
 };
 
