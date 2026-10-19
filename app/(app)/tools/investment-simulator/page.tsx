@@ -7,6 +7,11 @@ import { Button, PageHeader, StatusBadge } from "../../components/ui";
 import { useAppPermissions } from "../../components/AppPermissionProvider";
 import { buildInvestmentAnalysisPdfHtml } from "@/lib/investment-simulator-pdf";
 import {
+  installStandalonePdfPreviewRecovery,
+  isIosStandalonePwa,
+  type IosStandaloneNavigator,
+} from "@/lib/pdf-preview-recovery";
+import {
   calculateInvestmentEntryCapital,
   calculateInvestmentFinancing,
   calculateInvestmentPricePosition,
@@ -420,6 +425,9 @@ export default function InvestmentSimulatorPage() {
       return;
     }
 
+    const shouldInstallStandaloneRecovery = isIosStandalonePwa(
+      window.navigator as IosStandaloneNavigator,
+    );
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -459,6 +467,14 @@ export default function InvestmentSimulatorPage() {
       proposalWindow.document.write(reportHtml);
       proposalWindow.document.close();
 
+      if (shouldInstallStandaloneRecovery) {
+        installStandalonePdfPreviewRecovery({
+          previewWindow: proposalWindow,
+          openerWindow: window,
+          returnPath: "/tools/investment-simulator",
+        });
+      }
+
       if (proposalWindow.document.fonts?.ready) {
         await proposalWindow.document.fonts.ready;
       }
@@ -486,6 +502,14 @@ export default function InvestmentSimulatorPage() {
         proposalWindow.document.open();
         proposalWindow.document.write(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Unable to prepare report</title><style>body{background:#f6f2e9;color:#27272a;font-family:Arial,Helvetica,sans-serif;margin:0;padding:32px}.card{background:#fff;border:1px solid #e7e5e4;border-radius:18px;margin:12vh auto 0;max-width:520px;padding:24px}h1{font-size:20px;margin:0}p{color:#71717a;line-height:1.6;margin:10px 0 0}</style></head><body><main class="card"><h1>Unable to prepare the report</h1><p>Please close this window and try Export PDF again.</p></main></body></html>`);
         proposalWindow.document.close();
+
+        if (shouldInstallStandaloneRecovery) {
+          installStandalonePdfPreviewRecovery({
+            previewWindow: proposalWindow,
+            openerWindow: window,
+            returnPath: "/tools/investment-simulator",
+          });
+        }
       }
     } finally {
       setExportingPdf(false);
