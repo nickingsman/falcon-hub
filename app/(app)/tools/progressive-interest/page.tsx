@@ -7,6 +7,11 @@ import {
   renderCustomerPdfWatermark,
   type CustomerPdfBranding,
 } from "@/lib/customer-pdf-branding";
+import {
+  installStandalonePdfPreviewRecovery,
+  isIosStandalonePwa,
+  type IosStandaloneNavigator,
+} from "@/lib/pdf-preview-recovery";
 import { calculateMonthlyInstalment } from "@/lib/property-finance";
 import {
   calculateProgressiveInterest,
@@ -1054,6 +1059,9 @@ export default function ProgressiveInterestPage() {
       return;
     }
 
+    const shouldInstallStandaloneRecovery = isIosStandalonePwa(
+      window.navigator as IosStandaloneNavigator,
+    );
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -1076,6 +1084,16 @@ export default function ProgressiveInterestPage() {
       }),
     );
     proposalWindow.document.close();
+
+    if (shouldInstallStandaloneRecovery) {
+      installStandalonePdfPreviewRecovery({
+        previewWindow: proposalWindow,
+        openerWindow: window,
+        returnPath: "/tools/progressive-interest",
+        returnLabel: "Return to Progressive Interest",
+      });
+    }
+
     proposalWindow.focus();
 
     printProgressiveInterestProposal(proposalWindow);

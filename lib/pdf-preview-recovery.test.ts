@@ -119,6 +119,35 @@ test("installs a screen recovery link that is completely hidden when printing", 
   assert.match(pdfPreviewRecoveryStyles, /display: none !important/);
 });
 
+test("supports a feature-specific Return label without changing recovery behavior", () => {
+  const document = new FakeDocument();
+  const previewWindow = {
+    document,
+    closed: false,
+    location: { replace() {} },
+    addEventListener() {},
+    close() {},
+    focus() {},
+    setTimeout() {
+      return 1;
+    },
+  };
+
+  installStandalonePdfPreviewRecovery({
+    previewWindow: previewWindow as never,
+    openerWindow: { closed: false, focus() {} },
+    returnPath: "/tools/progressive-interest",
+    returnLabel: "Return to Progressive Interest",
+  });
+
+  const returnLink = document.body.children[0]?.children[0];
+  assert.equal(returnLink?.textContent, "Return to Progressive Interest");
+  assert.equal(
+    returnLink?.attributes.get("href"),
+    "/tools/progressive-interest",
+  );
+});
+
 test("afterprint refocuses the original Simulator and closes the preview without navigating", () => {
   const harness = createRecoveryHarness({ closeSucceeds: true });
 

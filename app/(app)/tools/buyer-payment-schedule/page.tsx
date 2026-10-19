@@ -8,6 +8,11 @@ import {
   type CustomerPdfBranding,
 } from "@/lib/customer-pdf-branding";
 import {
+  installStandalonePdfPreviewRecovery,
+  isIosStandalonePwa,
+  type IosStandaloneNavigator,
+} from "@/lib/pdf-preview-recovery";
+import {
   calculateBuyerPaymentSchedule,
   type BuyerPaymentIncentiveType,
   type BuyerPaymentScheduleResult,
@@ -870,6 +875,9 @@ export default function BuyerPaymentSchedulePage() {
       return;
     }
 
+    const shouldInstallStandaloneRecovery = isIosStandalonePwa(
+      window.navigator as IosStandaloneNavigator,
+    );
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -891,6 +899,16 @@ export default function BuyerPaymentSchedulePage() {
       }),
     );
     proposalWindow.document.close();
+
+    if (shouldInstallStandaloneRecovery) {
+      installStandalonePdfPreviewRecovery({
+        previewWindow: proposalWindow,
+        openerWindow: window,
+        returnPath: "/tools/buyer-payment-schedule",
+        returnLabel: "Return to Buyer Payment Schedule",
+      });
+    }
+
     proposalWindow.focus();
 
     printBuyerPaymentSchedule(proposalWindow);

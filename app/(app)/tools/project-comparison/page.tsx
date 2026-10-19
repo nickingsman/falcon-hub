@@ -8,6 +8,11 @@ import {
   type CustomerPdfBranding,
 } from "@/lib/customer-pdf-branding";
 import {
+  installStandalonePdfPreviewRecovery,
+  isIosStandalonePwa,
+  type IosStandaloneNavigator,
+} from "@/lib/pdf-preview-recovery";
+import {
   calculateProjectComparisonMetrics,
   type ComparisonAssumptions,
   type ComparisonRange,
@@ -3491,6 +3496,9 @@ export default function ProjectComparisonPage() {
   function handleGenerateComparisonPdf() {
     if (selectedExportSections.length === 0 || comparedOptions.length === 0) return;
 
+    const shouldInstallStandaloneRecovery = isIosStandalonePwa(
+      window.navigator as IosStandaloneNavigator,
+    );
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -3514,6 +3522,16 @@ export default function ProjectComparisonPage() {
       }),
     );
     proposalWindow.document.close();
+
+    if (shouldInstallStandaloneRecovery) {
+      installStandalonePdfPreviewRecovery({
+        previewWindow: proposalWindow,
+        openerWindow: window,
+        returnPath: "/tools/project-comparison",
+        returnLabel: "Return to Project Comparison",
+      });
+    }
+
     proposalWindow.focus();
     setIsExportModalOpen(false);
 

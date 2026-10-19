@@ -104,10 +104,12 @@ export function installStandalonePdfPreviewRecovery({
   previewWindow,
   openerWindow,
   returnPath,
+  returnLabel = "Return to Investment Simulator",
 }: {
   previewWindow: RecoveryWindow;
   openerWindow: OpenerWindow;
   returnPath: string;
+  returnLabel?: string;
 }) {
   const { document } = previewWindow;
 
@@ -122,7 +124,7 @@ export function installStandalonePdfPreviewRecovery({
 
   const returnLink = document.createElement("a");
   returnLink.setAttribute("href", returnPath);
-  returnLink.textContent = "Return to Investment Simulator";
+  returnLink.textContent = returnLabel;
   returnLink.addEventListener("click", (event) => {
     event.preventDefault();
     restoreOriginalWindow({

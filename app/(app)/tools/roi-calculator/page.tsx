@@ -8,6 +8,11 @@ import {
   type CustomerPdfBranding,
 } from "@/lib/customer-pdf-branding";
 import {
+  installStandalonePdfPreviewRecovery,
+  isIosStandalonePwa,
+  type IosStandaloneNavigator,
+} from "@/lib/pdf-preview-recovery";
+import {
   calculateRoi,
   type CashBenefitTreatment,
   type DiscountMethod,
@@ -3321,6 +3326,9 @@ export default function RoiCalculatorPage() {
   async function handleExportPdf() {
     if (hasBlockingValidation) return;
 
+    const shouldInstallStandaloneRecovery = isIosStandalonePwa(
+      window.navigator as IosStandaloneNavigator,
+    );
     const proposalWindow = window.open("", "_blank");
 
     if (!proposalWindow) {
@@ -3328,7 +3336,19 @@ export default function RoiCalculatorPage() {
       return;
     }
 
+    const installPdfPreviewRecovery = () => {
+      if (!shouldInstallStandaloneRecovery) return;
+
+      installStandalonePdfPreviewRecovery({
+        previewWindow: proposalWindow,
+        openerWindow: window,
+        returnPath: "/tools/roi-calculator",
+        returnLabel: "Return to Unit Calculation",
+      });
+    };
+
     writeProposalPreparationState(proposalWindow, "loading");
+    installPdfPreviewRecovery();
 
     try {
       const [freshUnitPresentation, freshFloorPlanPresentation] = await Promise.all([
@@ -3360,6 +3380,7 @@ export default function RoiCalculatorPage() {
         }),
       );
       proposalWindow.document.close();
+      installPdfPreviewRecovery();
       proposalWindow.focus();
 
       printWhenImagesAreReady(proposalWindow);
@@ -3368,6 +3389,7 @@ export default function RoiCalculatorPage() {
 
       if (!proposalWindow.closed) {
         writeProposalPreparationState(proposalWindow, "error");
+        installPdfPreviewRecovery();
         proposalWindow.focus();
       }
     }
