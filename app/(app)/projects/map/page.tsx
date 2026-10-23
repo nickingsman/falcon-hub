@@ -27,6 +27,7 @@ export default function ProjectMapPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [saving, setSaving] = useState(false);
@@ -46,6 +47,7 @@ export default function ProjectMapPage() {
     const initialize = () => {
       if (!node.current || !window.google?.maps || map.current) return;
       map.current = new window.google.maps.Map(node.current, { center: { lat: 3.139, lng: 101.687 }, zoom: 11, mapTypeControl: false });
+      setMapReady(true);
     };
     if (window.google?.maps) { initialize(); return; }
     const script = document.createElement("script");
@@ -64,7 +66,7 @@ export default function ProjectMapPage() {
       marker.addListener("click", () => setSelected(p.id));
       return marker;
     });
-  }, [visible, key, loading]);
+  }, [visible, mapReady]);
   useEffect(() => {
     if (current && validPoint(current) && map.current) {
       map.current.setCenter({lat:current.latitude!,lng:current.longitude!});
