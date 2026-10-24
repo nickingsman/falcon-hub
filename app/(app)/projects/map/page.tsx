@@ -8,12 +8,18 @@ type Project = {
   starting_price: number | null; tenure: string | null; status: string | null;
   latitude: number | null; longitude: number | null; can_edit_map?: boolean;
 };
-type MapsAPI = { Map: new (node: HTMLElement, options: Record<string, unknown>) => google.maps.Map; Marker: new (options: Record<string, unknown>) => google.maps.Marker };
-declare global { interface Window { google?: { maps: MapsAPI } } }
-declare namespace google.maps {
-  interface Map { setCenter(center: {lat:number;lng:number}): void; setZoom(zoom:number): void }
-  interface Marker { setMap(map: Map | null): void; addListener(name: string, handler: () => void): void }
-}
+type Point = {lat:number;lng:number};
+type LeafletMarker = { remove():void; on(event:string,handler:(event?:{target?:{getLatLng():Point}})=>void):LeafletMarker; bindPopup(content:string):LeafletMarker; openPopup():void; addTo(map:LeafletMap):LeafletMarker };
+type LeafletMap = { setView(coords:[number,number],zoom:number):LeafletMap; remove():void; fitBounds(coords:[number,number][],options?:{padding?:[number,number];maxZoom?:number}):void };
+type LeafletApi = {
+  map(node:HTMLElement,options:{zoomControl:boolean}):LeafletMap;
+  tileLayer(url:string,options:{attribution:string;maxZoom:number}):{addTo(map:LeafletMap):void};
+  circleMarker(coords:[number,number],options:{radius:number;color:string;fillColor:string;fillOpacity:number;weight:number}):{addTo(map:LeafletMap):LeafletMarker};
+  marker(coords:[number,number],options:{draggable:boolean}):{addTo(map:LeafletMap):LeafletMarker};
+};
+declare global { interface Window { L?: LeafletApi } }
+const pinColor = (status:string|null) => /complet|ready|vp|handover/i.test(status ?? "") ? "#2563eb" : "#16a34a";
+const escapeHtml = (value:string) => value.replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char] ?? char));
 const validPoint = (p: Project) => p.latitude !== null && p.longitude !== null &&
   Number.isFinite(p.latitude) && Number.isFinite(p.longitude) &&
   Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180;
@@ -30,9 +36,9 @@ export default function ProjectMapPage() {
   const [draft, setDraft] = useState<{lat:number;lng:number}|null>(null);
   const [saving, setSaving] = useState(false);
   const node = useRef<HTMLDivElement>(null);
-  const map = useRef<google.maps.Map | null>(null);
-  const markers = useRef<google.maps.Marker[]>([]);
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const map = useRef<LeafletMap | null>(null);
+  const markers = useRef<LeafletMarker[]>([]);
+
   const visible = useMemo(() => projects.filter(p => [p.project_name,p.developer,p.location].join(" ").toLowerCase().includes(query.toLowerCase())), [projects,query]);
   const current = projects.find(p => p.id === selected);
   const canEdit = projects.some(p => p.can_edit_map);
@@ -45,7 +51,7 @@ export default function ProjectMapPage() {
       const results: {lat:string;lon:string}[] = await response.json();
       if (!results.length) throw Error("Address not found. Try a more complete address.");
       const point = {lat:Number(results[0].lat),lng:Number(results[0].lon)};
-      setDraft(point); map.current?.setCenter(point); map.current?.setZoom(16);
+      setDraft(point); map.current?.setView([point.lat,point.lng],16);
     } catch (e) { setError(e instanceof Error ? e.message : "Unable to locate address"); }
   };
   const save = async () => {
@@ -64,56 +70,70 @@ export default function ProjectMapPage() {
       .then((items: Project[]) => setProjects(items)).catch(e => setError(String(e.message))).finally(() => setLoading(false));
   }, []);
   useEffect(() => {
-    if (!key || !node.current) return;
+    if (!node.current || map.current) return;
+    let active = true;
+    const cssId = "falcon-property-map-leaflet-css";
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement("link");
+      link.id = cssId; link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
+    }
     const initialize = () => {
-      if (!node.current || !window.google?.maps || map.current) return;
-      map.current = new window.google.maps.Map(node.current, { center: { lat: 3.139, lng: 101.687 }, zoom: 11, mapTypeControl: false });
+      if (!active || !node.current || !window.L || map.current) return;
+      map.current = window.L.map(node.current,{zoomControl:true}).setView([3.139,101.687],10);
+      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+        attribution:"&copy; OpenStreetMap contributors",maxZoom:19
+      }).addTo(map.current);
       setMapReady(true);
     };
-    if (window.google?.maps) { initialize(); return; }
-    const script = document.createElement("script");
-    script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(key) + "&v=weekly";
-    script.async = true;
-    script.onload = initialize;
-    script.onerror = () => setError("Google Maps could not load. Check API key, referrer and enabled APIs.");
-    document.head.appendChild(script);
-    return () => { script.onload = null; script.onerror = null; };
-  }, [key]);
+    if (window.L) initialize();
+    else {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.async = true; script.onload = initialize;
+      script.onerror = () => setError("Map library could not load.");
+      document.head.appendChild(script);
+    }
+    return () => { active = false; map.current?.remove(); map.current = null; };
+  }, []);
   useEffect(() => {
-    if (!map.current || !window.google?.maps) return;
-    markers.current.forEach(marker => marker.setMap(null));
-    markers.current = visible.filter(validPoint).map(p => {
-      const marker = new window.google!.maps.Marker({ map: map.current!, position: {lat:p.latitude!,lng:p.longitude!}, title:p.project_name });
-      marker.addListener("click", () => setSelected(p.id));
+    if (!map.current || !window.L) return;
+    markers.current.forEach(marker=>marker.remove());
+    markers.current = visible.filter(validPoint).map(p=>{
+      const marker = window.L!.circleMarker([p.latitude!,p.longitude!],{
+        radius:10,color:"#fff",fillColor:pinColor(p.status),fillOpacity:1,weight:3
+      }).addTo(map.current!);
+      marker.bindPopup("<strong>"+escapeHtml(p.project_name)+"</strong><br/>"+escapeHtml(p.location ?? "")+"<br/>"+escapeHtml(p.status ?? "Status not provided"));
+      marker.on("click",()=>setSelected(p.id));
+      if (selected === p.id) marker.openPopup();
       return marker;
     });
     if (draft && selected && canEdit) {
-      const marker = new window.google.maps.Marker({map:map.current,position:draft,draggable:true,title:"Drag to adjust location"});
-      marker.addListener("dragend", () => {
-        const position = (marker as unknown as {getPosition():{lat():number;lng():number}|null}).getPosition();
-        if (position) setDraft({lat:position.lat(),lng:position.lng()});
+      const marker = window.L.marker([draft.lat,draft.lng],{draggable:true}).addTo(map.current);
+      marker.bindPopup("Drag to correct the project position");
+      marker.on("dragend",(event)=>{
+        const point = event?.target?.getLatLng();
+        if (point) setDraft({lat:point.lat,lng:point.lng});
       });
       markers.current.push(marker);
     }
-  }, [visible, mapReady, draft, selected, canEdit]);
+  }, [visible,mapReady,draft,selected,canEdit]);
   useEffect(() => { setDraft(current && validPoint(current) ? {lat:current.latitude!,lng:current.longitude!} : null); setAddress(current?.location ?? ""); }, [selected]);
   useEffect(() => {
-    if (current && validPoint(current) && map.current) {
-      map.current.setCenter({lat:current.latitude!,lng:current.longitude!});
-      map.current.setZoom(15);
-    }
-  }, [current]);
-  return <main className="p-4 sm:p-6 space-y-4">
+    if (current && validPoint(current)) map.current?.setView([current.latitude!,current.longitude!],14);
+  }, [selected,projects]);
+  return <main className="min-h-screen space-y-4 bg-[#f8f6f1] p-4 text-zinc-900 sm:p-6">
     <div className="flex items-center justify-between gap-3"><div><p className="text-xs uppercase tracking-widest text-amber-700">Project Discovery</p><h1 className="text-2xl font-semibold">Property Map</h1></div><Link className="underline text-sm" href="/projects">All Projects</Link></div>
-    <p className="text-sm text-zinc-600">Read-only preview of existing projects. Map pins will be added after locations are verified.</p>
+    <p className="text-sm text-zinc-600">One map for all verified project locations. Green: Under Construction · Blue: Completed. Projects without saved coordinates remain in the list.</p>
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
-    {!key && <p className="rounded-xl bg-amber-50 p-3 text-sm">Map API key is not configured. Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in the development environment.</p>}
-    <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
+
+    <div className="grid gap-4 lg:grid-cols-[310px_1fr]">
       <aside className="space-y-3"><input aria-label="Search projects" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search project, area or developer" className="w-full rounded-xl border p-3 text-sm" />
         <p className="text-xs text-zinc-500">{loading ? "Loading…" : visible.filter(validPoint).length + " mapped / " + visible.length + " projects"}</p>
-        <div className="max-h-[440px] overflow-y-auto space-y-2">{visible.map(p=><button key={p.id} onClick={()=>setSelected(p.id)} className={"block w-full rounded-xl border p-3 text-left text-sm "+(selected===p.id?"border-amber-600 bg-amber-50":"bg-white")}><strong>{p.project_name}</strong><span className="block text-zinc-500">{p.location ?? "Location not provided"} · {validPoint(p)?"Mapped":"Location pin pending"}</span></button>)}</div>
+        <div className="max-h-[440px] overflow-y-auto space-y-2">{visible.map(p=><button key={p.id} onClick={()=>setSelected(p.id)} className={"block w-full rounded-xl border p-3 text-left text-sm "+(selected===p.id?"border-amber-600 bg-amber-50":"bg-white")}><span className="inline-block mr-2 h-3 w-3 rounded-full" style={{backgroundColor:pinColor(p.status)}}/><strong>{p.project_name}</strong><span className="block text-zinc-500">{p.location ?? "Location not provided"} · {validPoint(p)?"Mapped":"Location pin pending"}</span></button>)}</div>
       </aside>
-      <section className="space-y-3"><div ref={node} aria-label="Google map of property projects" className="h-[420px] w-full rounded-2xl border bg-zinc-100 sm:h-[550px]" />
+      <section className="space-y-3"><div ref={node} aria-label="Interactive KL and Selangor property map" className="h-[570px] w-full rounded-2xl border bg-zinc-100" />
         {current && <div className="rounded-2xl border bg-white p-4 space-y-2"><h2 className="text-lg font-semibold">{current.project_name}</h2><p className="text-sm">{current.developer ?? "Developer not provided"} · {current.location ?? "Location not provided"}</p><p className="text-sm">{money(current.starting_price)} · {current.tenure ?? "Tenure not provided"}</p><Link className="inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white" href={"/projects/"+encodeURIComponent(current.id)}>View Project Details</Link>
 
           {canEdit && <div className="mt-4 space-y-3 border-t pt-4"><h3 className="font-semibold">Edit project pin (Admin)</h3><div className="flex gap-2"><input aria-label="Project address" value={address} onChange={e=>setAddress(e.target.value)} placeholder="Enter full project address" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" /><button type="button" onClick={locate} className="rounded-lg border px-3 py-2 text-sm">Find</button></div><p className="text-xs text-zinc-500">Search address, then drag the new pin to the correct building. Verify location before saving.</p>{draft && <p className="text-xs">Latitude {draft.lat.toFixed(6)} · Longitude {draft.lng.toFixed(6)}</p>}<button type="button" disabled={!draft || saving} onClick={save} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving ? "Saving…" : "Save pin location"}</button></div>}
