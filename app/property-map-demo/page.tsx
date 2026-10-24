@@ -4,12 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Category = "construction" | "completed";
 type Place = { id: number; name: string; area: string; lat: number; lng: number; category: Category };
-type LeafletMarker = { remove(): void; on(event: string, cb: () => void): LeafletMarker; bindPopup(html: string): LeafletMarker; openPopup(): void };
-type LeafletMap = { setView(coords: [number, number], zoom: number): LeafletMap; remove(): void; fitBounds(coords: [number, number][], options?: { padding?: [number, number]; maxZoom?: number }): void };
+type LeafletMarker = { remove():void; on(event:string,handler:(event?:{target?:{getLatLng():{lat:number;lng:number}}})=>void):LeafletMarker; bindPopup(content:string):LeafletMarker; openPopup():void; addTo(map:LeafletMap):LeafletMarker };
+type LeafletMap = { setView(coords:[number,number],zoom:number):LeafletMap; remove():void; fitBounds(coords:[number,number][],options?:{padding?:[number,number];maxZoom?:number}):void };
 type LeafletApi = {
-  map(node: HTMLElement, options: { zoomControl: boolean }): LeafletMap;
-  tileLayer(url: string, options: { attribution: string; maxZoom: number }): { addTo(map: LeafletMap): void };
-  circleMarker(coords: [number, number], options: { radius: number; color: string; fillColor: string; fillOpacity: number; weight: number }): { addTo(map: LeafletMap): LeafletMarker };
+ map(node:HTMLElement,options:{zoomControl:boolean}):LeafletMap;
+ tileLayer(url:string,options:{attribution:string;maxZoom:number}):{addTo(map:LeafletMap):void};
+ circleMarker(coords:[number,number],options:{radius:number;color:string;fillColor:string;fillOpacity:number;weight:number}):{addTo(map:LeafletMap):LeafletMarker};
+ marker(coords:[number,number],options:{draggable:boolean}):{addTo(map:LeafletMap):LeafletMarker};
 };
 declare global { interface Window { L?: LeafletApi } }
 
