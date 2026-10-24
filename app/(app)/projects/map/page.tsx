@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Project = {
   id: string; project_name: string; developer: string | null; location: string | null;
   starting_price: number | null; tenure: string | null; status: string | null;
-  latitude: number | null; longitude: number | null;
+  latitude: number | null; longitude: number | null; can_edit_map?: boolean;
 };
 type MapsAPI = { Map: new (node: HTMLElement, options: Record<string, unknown>) => google.maps.Map; Marker: new (options: Record<string, unknown>) => google.maps.Marker };
 declare global { interface Window { google?: { maps: MapsAPI } } }
@@ -26,12 +26,39 @@ export default function ProjectMapPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
+  const [address, setAddress] = useState("");
+  const [draft, setDraft] = useState<{lat:number;lng:number}|null>(null);
+  const [saving, setSaving] = useState(false);
   const node = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const markers = useRef<google.maps.Marker[]>([]);
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   const visible = useMemo(() => projects.filter(p => [p.project_name,p.developer,p.location].join(" ").toLowerCase().includes(query.toLowerCase())), [projects,query]);
   const current = projects.find(p => p.id === selected);
+  const canEdit = projects.some(p => p.can_edit_map);
+  const locate = async () => {
+    if (!address.trim()) return;
+    try {
+      setError("");
+      const response = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=my&q=" + encodeURIComponent(address));
+      if (!response.ok) throw Error("Address lookup unavailable");
+      const results: {lat:string;lon:string}[] = await response.json();
+      if (!results.length) throw Error("Address not found. Try a more complete address.");
+      const point = {lat:Number(results[0].lat),lng:Number(results[0].lon)};
+      setDraft(point); map.current?.setCenter(point); map.current?.setZoom(16);
+    } catch (e) { setError(e instanceof Error ? e.message : "Unable to locate address"); }
+  };
+  const save = async () => {
+    if (!current || !draft || !canEdit) return;
+    setSaving(true); setError("");
+    try {
+      const response = await fetch("/api/projects/map", {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({project_id:current.id,latitude:draft.lat,longitude:draft.lng})});
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "Save failed");
+      setProjects(items => items.map(p => p.id === current.id ? {...p,latitude:draft.lat,longitude:draft.lng} : p));
+    } catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
+    finally { setSaving(false); }
+  };
   useEffect(() => {
     fetch("/api/projects/map").then(async r => { if (!r.ok) throw Error((await r.json()).error ?? "Unable to load projects"); return r.json(); })
       .then((items: Project[]) => setProjects(items)).catch(e => setError(String(e.message))).finally(() => setLoading(false));
@@ -60,7 +87,16 @@ export default function ProjectMapPage() {
       marker.addListener("click", () => setSelected(p.id));
       return marker;
     });
-  }, [visible, mapReady]);
+    if (draft && selected && canEdit) {
+      const marker = new window.google.maps.Marker({map:map.current,position:draft,draggable:true,title:"Drag to adjust location"});
+      marker.addListener("dragend", () => {
+        const position = (marker as unknown as {getPosition():{lat():number;lng():number}|null}).getPosition();
+        if (position) setDraft({lat:position.lat(),lng:position.lng()});
+      });
+      markers.current.push(marker);
+    }
+  }, [visible, mapReady, draft, selected, canEdit]);
+  useEffect(() => { setDraft(current && validPoint(current) ? {lat:current.latitude!,lng:current.longitude!} : null); setAddress(current?.location ?? ""); }, [selected]);
   useEffect(() => {
     if (current && validPoint(current) && map.current) {
       map.current.setCenter({lat:current.latitude!,lng:current.longitude!});
@@ -80,6 +116,7 @@ export default function ProjectMapPage() {
       <section className="space-y-3"><div ref={node} aria-label="Google map of property projects" className="h-[420px] w-full rounded-2xl border bg-zinc-100 sm:h-[550px]" />
         {current && <div className="rounded-2xl border bg-white p-4 space-y-2"><h2 className="text-lg font-semibold">{current.project_name}</h2><p className="text-sm">{current.developer ?? "Developer not provided"} · {current.location ?? "Location not provided"}</p><p className="text-sm">{money(current.starting_price)} · {current.tenure ?? "Tenure not provided"}</p><Link className="inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white" href={"/projects/"+encodeURIComponent(current.id)}>View Project Details</Link>
 
+          {canEdit && <div className="mt-4 space-y-3 border-t pt-4"><h3 className="font-semibold">Edit project pin (Admin)</h3><div className="flex gap-2"><input aria-label="Project address" value={address} onChange={e=>setAddress(e.target.value)} placeholder="Enter full project address" className="min-w-0 flex-1 rounded-lg border p-2 text-sm" /><button type="button" onClick={locate} className="rounded-lg border px-3 py-2 text-sm">Find</button></div><p className="text-xs text-zinc-500">Search address, then drag the new pin to the correct building. Verify location before saving.</p>{draft && <p className="text-xs">Latitude {draft.lat.toFixed(6)} · Longitude {draft.lng.toFixed(6)}</p>}<button type="button" disabled={!draft || saving} onClick={save} className="rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50">{saving ? "Saving…" : "Save pin location"}</button></div>}
         </div>}
       </section>
     </div>
