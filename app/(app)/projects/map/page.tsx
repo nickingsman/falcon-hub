@@ -9,7 +9,7 @@ type Project = {
   latitude: number | null; longitude: number | null; can_edit_map?: boolean;
 };
 type Point = {lat:number;lng:number};
-type LeafletMarker = { remove():void; on(event:string,handler:(event?:{target?:{getLatLng():Point}})=>void):LeafletMarker; bindPopup(content:string):LeafletMarker; openPopup():void; addTo(map:LeafletMap):LeafletMarker };
+type LeafletMarker = { remove():void; on(event:string,handler:(event?:{target?:{getLatLng():{lat:number;lng:number}}})=>void):LeafletMarker; bindPopup(content:string):LeafletMarker; openPopup():void; addTo(map:LeafletMap):LeafletMarker };
 type LeafletMap = { setView(coords:[number,number],zoom:number):LeafletMap; remove():void; fitBounds(coords:[number,number][],options?:{padding?:[number,number];maxZoom?:number}):void };
 type LeafletApi = {
   map(node:HTMLElement,options:{zoomControl:boolean}):LeafletMap;
