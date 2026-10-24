@@ -28,6 +28,8 @@ const money = (n: number | null) => n === null ? "Price on request" : "RM " + n.
 export default function ProjectMapPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [query, setQuery] = useState("");
+  const [showConstruction, setShowConstruction] = useState(true);
+  const [showCompleted, setShowCompleted] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,7 +41,11 @@ export default function ProjectMapPage() {
   const map = useRef<LeafletMap | null>(null);
   const markers = useRef<LeafletMarker[]>([]);
 
-  const visible = useMemo(() => projects.filter(p => [p.project_name,p.developer,p.location].join(" ").toLowerCase().includes(query.toLowerCase())), [projects,query]);
+  const visible = useMemo(() => projects.filter(p => {
+    const matchesSearch = [p.project_name,p.developer,p.location].join(" ").toLowerCase().includes(query.toLowerCase());
+    const completed = /complet|ready|vp|handover/i.test(p.status ?? "");
+    return matchesSearch && (completed ? showCompleted : showConstruction);
+  }), [projects,query,showConstruction,showCompleted]);
   const current = projects.find(p => p.id === selected);
   const canEdit = projects.some(p => p.can_edit_map);
   const locate = async () => {
@@ -130,7 +136,8 @@ export default function ProjectMapPage() {
 
     <div className="grid gap-4 lg:grid-cols-[310px_1fr]">
       <aside className="space-y-3"><input aria-label="Search projects" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search project, area or developer" className="w-full rounded-xl border p-3 text-sm" />
-        <p className="text-xs text-zinc-500">{loading ? "Loading…" : visible.filter(validPoint).length + " mapped / " + visible.length + " projects"}</p>
+        <div className="flex flex-wrap gap-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={showConstruction} onChange={e=>setShowConstruction(e.target.checked)}/><span className="h-3 w-3 rounded-full bg-green-600"/>Under Construction</label><label className="flex items-center gap-2"><input type="checkbox" checked={showCompleted} onChange={e=>setShowCompleted(e.target.checked)}/><span className="h-3 w-3 rounded-full bg-blue-600"/>Completed</label></div>
+        <p className="text-xs text-zinc-500">{loading ? "Loading…" : visible.filter(validPoint).length + " mapped / " + visible.length + " filtered projects (" + projects.length + " total)"}</p>
         <div className="max-h-[440px] overflow-y-auto space-y-2">{visible.map(p=><button key={p.id} onClick={()=>setSelected(p.id)} className={"block w-full rounded-xl border p-3 text-left text-sm "+(selected===p.id?"border-amber-600 bg-amber-50":"bg-white")}><span className="inline-block mr-2 h-3 w-3 rounded-full" style={{backgroundColor:pinColor(p.status)}}/><strong>{p.project_name}</strong><span className="block text-zinc-500">{p.location ?? "Location not provided"} · {validPoint(p)?"Mapped":"Location pin pending"}</span></button>)}</div>
       </aside>
       <section className="space-y-3"><div ref={node} aria-label="Interactive KL and Selangor property map" className="h-[570px] w-full rounded-2xl border bg-zinc-100" />
