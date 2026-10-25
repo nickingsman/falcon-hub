@@ -30,6 +30,7 @@ export default function PropertyMapDemoPage() {
   const [categories, setCategories] = useState<Category[]>(["construction", "completed"]);
   const [selected, setSelected] = useState<number | null>(null);
   const [mapError, setMapError] = useState("");
+  const [ready, setReady] = useState(false);
   const node = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const pins = useRef<LeafletMarker[]>([]);
@@ -60,7 +61,6 @@ export default function PropertyMapDemoPage() {
     document.head.appendChild(script);
     return () => { active = false; script.onload = null; script.onerror = null; map.current?.remove(); map.current = null; };
   }, []);
-  const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!ready || !map.current || !window.L) return;
     pins.current.forEach(pin => pin.remove());
