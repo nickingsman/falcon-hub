@@ -11,6 +11,7 @@ const publicRoutes = [
   "/forgot-password",
   "/reset-password",
   "/auth/callback",
+  ...(process.env.VERCEL_ENV === "preview" ? ["/property-map-demo"] : []),
 ];
 const guestOnlyRoutes = ["/login", "/register", "/forgot-password"];
 

@@ -29,6 +29,7 @@ export type MoreNavSection = {
 export const desktopNavItems: AppNavItem[] = [
   { label: "Dashboard", href: "/" },
   { label: "Projects", href: "/projects" },
+  { label: "Property Map", href: "/property-map" },
   { label: "Unit Calculation", href: "/tools/roi-calculator" },
   { label: "Loan Amortization", href: "/tools/loan-amortization" },
   { label: "Investment Simulator", href: "/tools/investment-simulator" },
@@ -113,7 +114,10 @@ export function getMoreNavSections(permissions: NavigationPermissions): MoreNavS
   return [
     {
       title: "Work / Projects",
-      items: [{ label: "Projects", href: "/projects" }],
+      items: [
+        { label: "Projects", href: "/projects" },
+        { label: "Property Map", href: "/property-map" },
+      ],
     },
     {
       title: "Customer Tools",
@@ -176,7 +180,14 @@ export function isNavHrefActive(pathname: string, item: AppNavItem) {
 export function isDesktopNavItemActive(pathname: string, item: AppNavItem) {
   if (item.label === "Team") return pathname.startsWith("/team/");
   if (item.label === "Sales") return pathname === "/sales" || pathname.startsWith("/sales/");
-  if (item.label === "Projects") return pathname === "/projects" || pathname.startsWith("/projects/");
+  if (item.label === "Property Map") {
+    return pathname === "/projects/map" || isNavHrefActive(pathname, item);
+  }
+  if (item.label === "Projects") {
+    return pathname === "/projects" || (
+      pathname.startsWith("/projects/") && pathname !== "/projects/map"
+    );
+  }
 
   return isNavHrefActive(pathname, item);
 }
