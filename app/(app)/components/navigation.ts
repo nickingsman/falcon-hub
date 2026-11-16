@@ -15,52 +15,69 @@ export type NavigationPermissions = {
 export type AppNavItem = {
   label: string;
   href: string;
-  permission?: "canManageUsers" | "canAccessCustomerBirthdays" | "canAccessLeaderMeetings" | "canManageLeaderPromotions";
+  permission?:
+    | "canManageUserApprovals"
+    | "canManageUsers"
+    | "canAccessCustomerBirthdays"
+    | "canAccessLeaderMeetings"
+    | "canManageLeaderPromotions";
   badgeCount?: number;
   minRole?: "leader";
   children?: AppNavItem[];
 };
 
-export type MoreNavSection = {
-  title: string;
-  items: AppNavItem[];
-};
-
 export const desktopNavItems: AppNavItem[] = [
   { label: "Dashboard", href: "/" },
   { label: "Projects", href: "/projects" },
-  { label: "Property Map", href: "/property-map" },
-  { label: "Unit Calculation", href: "/tools/roi-calculator" },
-  { label: "Loan Amortization", href: "/tools/loan-amortization" },
-  { label: "Investment Simulator", href: "/tools/investment-simulator" },
-  { label: "生涯运数", href: "/tools/career-numerology", permission: "canManageUsers" },
-  { label: "Project Comparison", href: "/tools/project-comparison" },
-  { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
-  { label: "Progressive Interest", href: "/tools/progressive-interest" },
-  { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
-  { label: "DSR Calculator", href: "/tools/dsr-calculator" },
-  { label: "Check In", href: "/check-in" },
-  { label: "Calendar", href: "/calendar" },
-  { label: "Customer Birthdays", href: "/customer-birthdays", permission: "canAccessCustomerBirthdays" },
-  { label: "Saved Work", href: "/saved-work" },
-  { label: "DSI", href: "/dsi" },
   {
-    label: "Team",
+    label: "Agent Tools",
+    href: "#",
+    children: [
+      { label: "Property Map", href: "/property-map" },
+      { label: "Unit Calculation", href: "/tools/roi-calculator" },
+      { label: "Loan Amortization", href: "/tools/loan-amortization" },
+      { label: "Investment Simulator", href: "/tools/investment-simulator" },
+      { label: "Project Comparison", href: "/tools/project-comparison" },
+      { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
+      { label: "Progressive Interest", href: "/tools/progressive-interest" },
+      { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
+      { label: "DSR Calculator", href: "/tools/dsr-calculator" },
+      { label: "Saved Work", href: "/saved-work" },
+    ],
+  },
+  { label: "生涯运数", href: "/tools/career-numerology", permission: "canManageUsers" },
+  {
+    label: "Daily Operations",
+    href: "#",
+    children: [
+      { label: "Check In", href: "/check-in" },
+      { label: "DSI Update", href: "/dsi" },
+      { label: "Calendar", href: "/calendar" },
+      {
+        label: "Customer Birthday",
+        href: "/customer-birthdays",
+        permission: "canAccessCustomerBirthdays",
+      },
+    ],
+  },
+  {
+    label: "Team Management",
     href: "#",
     children: [
       { label: "Members", href: "/team/members" },
       { label: "User Management", href: "/team/user-management", permission: "canManageUsers" },
-      { label: "Leader Meetings", href: "/team/leader-meetings", permission: "canAccessLeaderMeetings" },
+      { label: "Leader Meeting", href: "/team/leader-meetings", permission: "canAccessLeaderMeetings" },
       { label: "Leader Promotions", href: "/team/leader-promotions", permission: "canManageLeaderPromotions" },
+      { label: "Attendance", href: "/team/attendance", minRole: "leader" },
+      { label: "User Approval", href: "/team/user-approvals", permission: "canManageUserApprovals" },
     ],
   },
   {
     label: "Sales",
     href: "#",
-    children: [{ label: "Sales Records", href: "/sales" }],
+    children: [{ label: "Sales Record", href: "/sales" }],
   },
   { label: "Falcon Academy", href: "/academy" },
-  { label: "Settings", href: "#" },
 ];
 
 export const mobilePrimaryNavItems: AppNavItem[] = [
@@ -80,6 +97,7 @@ function canViewAttendance(permissions: NavigationPermissions) {
 }
 
 function isVisibleItem(item: AppNavItem, permissions: NavigationPermissions) {
+  if (item.permission === "canManageUserApprovals") return permissions.canManageUserApprovals;
   if (item.permission === "canManageUsers") return permissions.canManageUsers;
   if (item.permission === "canAccessCustomerBirthdays") return permissions.canAccessCustomerBirthdays;
   if (item.permission === "canAccessLeaderMeetings") return permissions.canAccessLeaderMeetings;
@@ -90,84 +108,20 @@ function isVisibleItem(item: AppNavItem, permissions: NavigationPermissions) {
 }
 
 export function getVisibleDesktopNavItems(permissions: NavigationPermissions) {
-  return desktopNavItems.filter((item) => isVisibleItem(item, permissions)).map((item) => {
-    if (item.label !== "Team") return item;
+  return desktopNavItems.flatMap((item) => {
+    if (!isVisibleItem(item, permissions)) return [];
+    if (!item.children) return [item];
 
-    return {
-      ...item,
-      children: [
-        ...((item.children ?? []).filter((child) => isVisibleItem(child, permissions))),
-        ...(canViewAttendance(permissions)
-          ? [{ label: "Attendance", href: "/team/attendance" }]
-          : []),
-        ...(permissions.canManageUserApprovals
-          ? [{ label: "User Approvals", href: "/team/user-approvals" }]
-          : []),
-      ].map((child) => child.href === "/team/leader-promotions"
-        ? { ...child, badgeCount: permissions.leaderPromotionPendingCount }
-        : child),
-    };
+    const children = item.children
+      .filter((child) => isVisibleItem(child, permissions))
+      .map((child) =>
+        child.href === "/team/leader-promotions"
+          ? { ...child, badgeCount: permissions.leaderPromotionPendingCount }
+          : child,
+      );
+
+    return children.length ? [{ ...item, children }] : [];
   });
-}
-
-export function getMoreNavSections(permissions: NavigationPermissions): MoreNavSection[] {
-  return [
-    {
-      title: "Work / Projects",
-      items: [
-        { label: "Projects", href: "/projects" },
-        { label: "Property Map", href: "/property-map" },
-      ],
-    },
-    {
-      title: "Customer Tools",
-      items: [
-        { label: "Unit Calculation", href: "/tools/roi-calculator" },
-        { label: "Loan Amortization", href: "/tools/loan-amortization" },
-        { label: "Investment Simulator", href: "/tools/investment-simulator" },
-        ...(permissions.canManageUsers
-          ? [{ label: "生涯运数", href: "/tools/career-numerology" }]
-          : []),
-        { label: "Project Comparison", href: "/tools/project-comparison" },
-        { label: "Smart Project Finder", href: "/tools/smart-project-finder" },
-        { label: "Progressive Interest", href: "/tools/progressive-interest" },
-        { label: "Payment Schedule", href: "/tools/buyer-payment-schedule" },
-        { label: "DSR Calculator", href: "/tools/dsr-calculator" },
-      ],
-    },
-    {
-      title: "My Work",
-      items: [
-        { label: "Sales", href: "/sales" },
-        { label: "Saved Work", href: "/saved-work" },
-        ...(permissions.canAccessCustomerBirthdays
-          ? [{ label: "Customer Birthdays", href: "/customer-birthdays" }]
-          : []),
-      ],
-    },
-    {
-      title: "Learning",
-      items: [{ label: "Falcon Academy", href: "/academy" }],
-    },
-    {
-      title: "Team",
-      items: [
-        { label: "Members", href: "/team/members" },
-        ...(canViewAttendance(permissions)
-          ? [{ label: "Attendance", href: "/team/attendance" }]
-          : []),
-        ...(permissions.canManageUsers
-          ? [{ label: "User Management", href: "/team/user-management" }]
-          : []),
-        ...(permissions.canManageUserApprovals
-          ? [{ label: "User Approvals", href: "/team/user-approvals" }]
-          : []),
-        ...(permissions.canManageLeaderPromotions
-          ? [{ label: "Leader Promotions", href: "/team/leader-promotions", badgeCount: permissions.leaderPromotionPendingCount }]
-          : []),
-      ],
-    },
-  ].filter((section) => section.items.length > 0);
 }
 
 export function isNavHrefActive(pathname: string, item: AppNavItem) {
@@ -177,9 +131,13 @@ export function isNavHrefActive(pathname: string, item: AppNavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-export function isDesktopNavItemActive(pathname: string, item: AppNavItem) {
-  if (item.label === "Team") return pathname.startsWith("/team/");
-  if (item.label === "Sales") return pathname === "/sales" || pathname.startsWith("/sales/");
+export function isDesktopNavItemActive(
+  pathname: string,
+  item: AppNavItem,
+): boolean {
+  if (item.children) {
+    return item.children.some((child) => isDesktopNavItemActive(pathname, child));
+  }
   if (item.label === "Property Map") {
     return pathname === "/projects/map" || isNavHrefActive(pathname, item);
   }
@@ -190,6 +148,24 @@ export function isDesktopNavItemActive(pathname: string, item: AppNavItem) {
   }
 
   return isNavHrefActive(pathname, item);
+}
+
+export function getActiveDesktopNavGroup(
+  pathname: string,
+  items: AppNavItem[],
+) {
+  return (
+    items.find(
+      (item) => item.children && isDesktopNavItemActive(pathname, item),
+    )?.label ?? null
+  );
+}
+
+export function getNextExpandedNavGroup(
+  currentGroup: string | null,
+  selectedGroup: string,
+) {
+  return currentGroup === selectedGroup ? null : selectedGroup;
 }
 
 export function isMobilePrimaryActive(pathname: string, item: AppNavItem) {

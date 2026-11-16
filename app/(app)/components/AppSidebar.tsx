@@ -1,19 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAppPermissions } from "./AppPermissionProvider";
+import AppNavigationMenu from "./AppNavigationMenu";
 import {
   getRoleLabel,
   getVisibleDesktopNavItems,
-  isDesktopNavItemActive,
-  isNavHrefActive,
 } from "./navigation";
-
-function isChildActive(pathname: string, href: string) {
-  return isNavHrefActive(pathname, { label: "", href });
-}
 
 export default function AppSidebar() {
   const pathname = usePathname();
@@ -32,8 +26,8 @@ export default function AppSidebar() {
   }
 
   return (
-    <aside className="hidden w-full flex-col border-b border-zinc-800 bg-[var(--falcon-charcoal)] p-6 text-white lg:flex lg:min-h-screen lg:w-72 lg:border-b-0 lg:border-r">
-      <div>
+    <aside className="hidden w-full flex-col border-b border-zinc-800 bg-[var(--falcon-charcoal)] p-6 text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-72 lg:border-b-0 lg:border-r">
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="flex items-center gap-3">
           <div className="flex h-[88px] w-[76px] items-center justify-center">
             <Image
@@ -51,55 +45,13 @@ export default function AppSidebar() {
           </div>
         </div>
 
-        <nav className="mt-7 space-y-1">
-          {visibleSidebarItems.map((item) => {
-            const isActive = isDesktopNavItemActive(pathname, item);
-
-            return (
-              <div key={item.label}>
-                <Link
-                  href={item.href}
-                  className={`flex w-full items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-medium transition ${
-                    isActive
-                      ? "border border-[rgba(184,146,74,0.34)] bg-zinc-900 text-white shadow-sm"
-                      : "border border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900/70 hover:text-white"
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  {isActive ? (
-                    <span className="h-2 w-2 rounded-full bg-[var(--falcon-gold)]" aria-hidden />
-                  ) : null}
-                </Link>
-                {item.children ? (
-                  <div className="ml-4 mt-1 space-y-1">
-                    {item.children.map((child) => {
-                      const isActiveChild = isChildActive(pathname, child.href);
-
-                      return (
-                        <Link
-                          key={child.label}
-                          href={child.href}
-                          className={`flex rounded-xl px-3 py-2 text-sm transition ${
-                            isActiveChild
-                              ? "border border-[rgba(184,146,74,0.28)] bg-zinc-900 font-medium text-white"
-                              : "border border-transparent text-zinc-500 hover:border-zinc-800 hover:bg-zinc-900/70 hover:text-zinc-200"
-                          }`}
-                        >
-                          <span>{child.label}</span>
-                          {child.badgeCount ? (
-                            <span className="ml-auto rounded-full bg-[var(--falcon-gold)] px-2 py-0.5 text-xs font-semibold text-zinc-950">
-                              {child.badgeCount}
-                            </span>
-                          ) : null}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </nav>
+        <div className="mt-7">
+          <AppNavigationMenu
+            key={pathname}
+            items={visibleSidebarItems}
+            pathname={pathname}
+          />
+        </div>
       </div>
 
       <div className="mt-auto pt-6">
