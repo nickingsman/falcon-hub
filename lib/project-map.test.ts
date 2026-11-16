@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import {
+  canPlaceProjectMapDraft,
   filterProjectMapProjects,
   hasVerifiedProjectCoordinates,
   isProjectMapConstructionStatus,
@@ -48,14 +49,48 @@ test("uses only canonical map construction statuses and approved colors", () => 
   assert.equal(isProjectMapConstructionStatus("under_construction"), true);
   assert.equal(isProjectMapConstructionStatus("completed"), true);
   assert.equal(isProjectMapConstructionStatus("Active"), false);
-  assert.equal(projectMapStatusPresentation.under_construction.color, "#16a34a");
-  assert.equal(projectMapStatusPresentation.completed.color, "#2563eb");
+  assert.equal(projectMapStatusPresentation.under_construction.color, "#C65A16");
+  assert.equal(projectMapStatusPresentation.completed.color, "#2563EB");
 });
 
 test("validates map coordinates without treating zero as missing", () => {
   assert.equal(hasVerifiedProjectCoordinates({ latitude: 0, longitude: 0 }), true);
   assert.equal(hasVerifiedProjectCoordinates({ latitude: null, longitude: 101 }), false);
   assert.equal(hasVerifiedProjectCoordinates({ latitude: 91, longitude: 101 }), false);
+});
+
+test("manual draft placement requires map edit access and a selected project", () => {
+  assert.equal(canPlaceProjectMapDraft(true, "project-1"), true);
+  assert.equal(canPlaceProjectMapDraft(false, "project-1"), false);
+  assert.equal(canPlaceProjectMapDraft(true, null), false);
+});
+
+test("manual map placement updates local draft only and blocks marker bubbling", () => {
+  const page = readFileSync(
+    new URL("../app/(app)/property-map/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const handlerStart = page.indexOf("const handleMapClick");
+  const listenerStart = page.indexOf(
+    'leafletMap.on("click", handleMapClick)',
+    handlerStart,
+  );
+  const handlerBody = page.slice(handlerStart, listenerStart);
+
+  assert.ok(handlerStart >= 0);
+  assert.ok(listenerStart > handlerStart);
+  assert.match(
+    page,
+    /canPlaceProjectMapDraft\(canEdit, selected\)/,
+  );
+  assert.match(handlerBody, /setDraft\(\{ lat: point\.lat, lng: point\.lng \}\)/);
+  assert.doesNotMatch(handlerBody, /saveLocation|fetch\(/);
+  assert.match(page, /leafletMap\.off\("click", handleMapClick\)/);
+  assert.match(page, /bubblingMouseEvents: false/g);
+  assert.match(
+    page,
+    /Click an empty area of the map or find the address/,
+  );
 });
 
 test("searches by project, developer, and location", () => {

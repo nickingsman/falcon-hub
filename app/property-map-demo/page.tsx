@@ -23,7 +23,7 @@ const places: Place[] = [
   { id: 6, name: "Setapak — Demo", area: "Kuala Lumpur", lat: 3.2049, lng: 101.7213, category: "completed" },
 ];
 const categoryName: Record<Category, string> = { construction: "Under Construction", completed: "Completed" };
-const categoryColor: Record<Category, string> = { construction: "#16a34a", completed: "#2563eb" };
+const categoryColor: Record<Category, string> = { construction: "#C65A16", completed: "#2563EB" };
 
 export default function PropertyMapDemoPage() {
   const [query, setQuery] = useState("");

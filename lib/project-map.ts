@@ -21,11 +21,11 @@ export const projectMapStatusPresentation: Record<
 > = {
   under_construction: {
     label: "Under Construction",
-    color: "#16a34a",
+    color: "#C65A16",
   },
   completed: {
     label: "Completed",
-    color: "#2563eb",
+    color: "#2563EB",
   },
 };
 
@@ -48,6 +48,13 @@ export function hasVerifiedProjectCoordinates(
     Math.abs(project.latitude) <= 90 &&
     Math.abs(project.longitude) <= 180
   );
+}
+
+export function canPlaceProjectMapDraft(
+  canEditMap: boolean,
+  selectedProjectId: string | null,
+) {
+  return canEditMap && selectedProjectId !== null;
 }
 
 export function filterProjectMapProjects<T extends ProjectMapListItem>(
