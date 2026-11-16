@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import {
+  canPlaceProjectMapDraft,
   filterProjectMapProjects,
   hasVerifiedProjectCoordinates,
   projectMapConstructionStatuses,
@@ -27,6 +28,12 @@ type Project = ProjectMapListItem & {
 };
 
 type Point = { lat: number; lng: number };
+
+type LeafletMouseEvent = {
+  latlng?: Point;
+  originalEvent?: MouseEvent;
+  target?: { getLatLng(): Point };
+};
 
 type LeafletMarker = {
   remove(): void;
@@ -48,6 +55,17 @@ type LeafletMap = {
     coords: [number, number][],
     options?: { padding?: [number, number]; maxZoom?: number },
   ): void;
+};
+
+type ClickableLeafletMap = LeafletMap & {
+  on(
+    event: "click",
+    handler: (event?: LeafletMouseEvent) => void,
+  ): ClickableLeafletMap;
+  off(
+    event: "click",
+    handler: (event?: LeafletMouseEvent) => void,
+  ): ClickableLeafletMap;
 };
 
 type LeafletApi = {
@@ -356,15 +374,17 @@ export default function ProjectMapPage() {
     markers.current.forEach((marker) => marker.remove());
     markers.current = mappedVisible.map((project) => {
       const presentation = getStatusPresentation(project);
+      const markerOptions = {
+        radius: 10,
+        color: "#fff",
+        fillColor: presentation.color,
+        fillOpacity: 1,
+        weight: 3,
+        bubblingMouseEvents: false,
+      };
       const marker = window.L!.circleMarker(
         [project.latitude!, project.longitude!],
-        {
-          radius: 10,
-          color: "#fff",
-          fillColor: presentation.color,
-          fillOpacity: 1,
-          weight: 3,
-        },
+        markerOptions,
       ).addTo(map.current!);
 
       marker.bindPopup(
@@ -378,8 +398,12 @@ export default function ProjectMapPage() {
     });
 
     if (draft && selected && canEdit) {
+      const draftMarkerOptions = {
+        draggable: true,
+        bubblingMouseEvents: false,
+      };
       const marker = window.L
-        .marker([draft.lat, draft.lng], { draggable: true })
+        .marker([draft.lat, draft.lng], draftMarkerOptions)
         .addTo(map.current);
       marker.bindPopup("Drag to verify the exact project position");
       marker.on("dragend", (event) => {
@@ -389,6 +413,41 @@ export default function ProjectMapPage() {
       markers.current.push(marker);
     }
   }, [canEdit, chooseProject, draft, mapReady, mappedVisible, selected]);
+
+  useEffect(() => {
+    const leafletMap = map.current as ClickableLeafletMap | null;
+    if (
+      !leafletMap ||
+      !mapReady ||
+      !canPlaceProjectMapDraft(canEdit, selected)
+    ) {
+      return;
+    }
+
+    const handleMapClick = (event?: LeafletMouseEvent) => {
+      const point = event?.latlng;
+      if (
+        !point ||
+        !Number.isFinite(point.lat) ||
+        !Number.isFinite(point.lng) ||
+        Math.abs(point.lat) > 90 ||
+        Math.abs(point.lng) > 180
+      ) {
+        return;
+      }
+
+      setDraft({ lat: point.lat, lng: point.lng });
+      setError("");
+      setNotice(
+        "Draft pin placed. Drag it to verify the exact location, then save.",
+      );
+    };
+
+    leafletMap.on("click", handleMapClick);
+    return () => {
+      leafletMap.off("click", handleMapClick);
+    };
+  }, [canEdit, mapReady, selected]);
 
   useEffect(() => {
     if (!map.current || !mapReady) return;
@@ -644,7 +703,7 @@ export default function ProjectMapPage() {
                     <div>
                       <h3 className="text-sm font-semibold text-zinc-950">Verify project pin</h3>
                       <p className="mt-0.5 text-xs leading-5 text-zinc-500">
-                        Find the address, drag the pin to the exact building, then save.
+                        Click an empty area of the map or find the address, then drag the pin to the exact building and save.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -692,7 +751,7 @@ export default function ProjectMapPage() {
                       </p>
                     ) : (
                       <p className="text-xs font-medium text-amber-800">
-                        Location Pending — find an address before saving.
+                        Location Pending — click the map or find an address before saving.
                       </p>
                     )}
                     <button
