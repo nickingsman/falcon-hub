@@ -1,14 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAppPermissions } from "../components/AppPermissionProvider";
-import { getMoreNavSections, getRoleLabel } from "../components/navigation";
+import AppNavigationMenu from "../components/AppNavigationMenu";
+import {
+  getRoleLabel,
+  getVisibleDesktopNavItems,
+} from "../components/navigation";
 
 export default function MorePage() {
   const router = useRouter();
+  const pathname = usePathname();
   const permissions = useAppPermissions();
-  const sections = getMoreNavSections(permissions);
+  const navigationItems = getVisibleDesktopNavItems(permissions);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", {
@@ -34,36 +38,14 @@ export default function MorePage() {
           </p>
         </section>
 
-        {sections.map((section) => (
-          <section
-            key={section.title}
-            className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5"
-          >
-            <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              {section.title}
-            </h2>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {section.items.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="group flex min-h-14 items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:border-zinc-300 hover:bg-white focus:outline-none focus:ring-2 focus:ring-zinc-300"
-                >
-                  <span className="flex items-center gap-2">
-                    {item.label}
-                    {item.badgeCount ? <span className="rounded-full bg-[var(--falcon-gold)] px-2 py-0.5 text-xs text-zinc-950">{item.badgeCount}</span> : null}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="text-lg leading-none text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-zinc-700"
-                  >
-                    →
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </section>
-        ))}
+        <section className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
+          <AppNavigationMenu
+            key={pathname}
+            items={navigationItems}
+            pathname={pathname}
+            variant="mobile"
+          />
+        </section>
 
         <section className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
           <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
