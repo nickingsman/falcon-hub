@@ -18,7 +18,7 @@ import {
   verifyFrozenImportEnvelope,
 } from "./historical-sales-import-runner";
 
-function record(year: 2024 | 2025, row: number, unitNo = `A-${row}`): FrozenImportRecord {
+function record(year: 2024 | 2025 | 2026, row: number, unitNo = `A-${row}`): FrozenImportRecord {
   return {
     sourceType: `historical_${year}_case_report`, worksheet: `${year} CASE REPORT`, excelRow: row,
     fingerprint: `${year}-${row}`, projectId: "project-1", sourceProjectName: "Project One",
@@ -94,6 +94,13 @@ test("2025 cannot be resumed before the complete 2024 checkpoint", () => {
   assert.throws(() => buildResumePlan([first, second, nextYear], [existing(first), existing(nextYear)]), /2025 imports exist/);
 });
 
+test("2026 cannot be resumed before the complete 2025 checkpoint", () => {
+  const complete2024 = record(2024, 1);
+  const pending2025 = record(2025, 2);
+  const nextYear = record(2026, 3);
+  assert.throws(() => buildResumePlan([complete2024, pending2025, nextYear], [existing(complete2024), existing(nextYear)]), /2026 imports exist/);
+});
+
 test("a 2024-only execution can never invoke a 2025 record", async () => {
   const plan = {
     pending2024: [record(2024, 1), record(2024, 2)],
@@ -112,6 +119,12 @@ test("a 2024-only execution can never invoke a 2025 record", async () => {
 test("a 2025 execution is refused until the 2024 checkpoint is complete", () => {
   assert.throws(() => selectImportYear({ pending2024: [record(2024, 1)], pending2025: [record(2025, 2)] }, 2025), /2024 checkpoint/);
   assert.deepEqual(selectImportYear({ pending2024: [], pending2025: [record(2025, 2)] }, 2025).map((item) => item.fingerprint), ["2025-2"]);
+});
+
+test("a 2026 execution is refused until the 2024 and 2025 checkpoints are complete", () => {
+  assert.throws(() => selectImportYear({ pending2024: [record(2024, 1)], pending2025: [], pending2026: [record(2026, 2)] }, 2026), /2024 and 2025 checkpoints/);
+  assert.throws(() => selectImportYear({ pending2024: [], pending2025: [record(2025, 1)], pending2026: [record(2026, 2)] }, 2026), /2024 and 2025 checkpoints/);
+  assert.deepEqual(selectImportYear({ pending2024: [], pending2025: [], pending2026: [record(2026, 2)] }, 2026).map((item) => item.fingerprint), ["2026-2"]);
 });
 
 test("three-decimal Nett Prices reconcile exactly without Number rounding", () => {

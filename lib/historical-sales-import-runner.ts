@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
+export type HistoricalImportYear = 2024 | 2025 | 2026;
+export type HistoricalImportSourceType = `historical_${HistoricalImportYear}_case_report`;
+
 export type FrozenImportRecord = {
-  sourceType: "historical_2024_case_report" | "historical_2025_case_report";
+  sourceType: HistoricalImportSourceType;
   worksheet: string;
   excelRow: number;
   fingerprint: string;
@@ -237,12 +240,18 @@ export function buildResumePlan(records: FrozenImportRecord[], existing: Existin
   }
   const completed2024 = records.filter((record) => record.sourceType === "historical_2024_case_report" && existingByFingerprint.has(record.fingerprint));
   const completed2025 = records.filter((record) => record.sourceType === "historical_2025_case_report" && existingByFingerprint.has(record.fingerprint));
+  const completed2026 = records.filter((record) => record.sourceType === "historical_2026_case_report" && existingByFingerprint.has(record.fingerprint));
   const all2024 = records.filter((record) => record.sourceType === "historical_2024_case_report");
+  const all2025 = records.filter((record) => record.sourceType === "historical_2025_case_report");
+
   if (completed2025.length && completed2024.length !== all2024.length) throw new Error("2025 imports exist before the 2024 checkpoint is complete");
+  if (completed2026.length && completed2025.length !== all2025.length) throw new Error("2026 imports exist before the 2025 checkpoint is complete");
+
   return {
-    completed: [...completed2024, ...completed2025],
+    completed: [...completed2024, ...completed2025, ...completed2026],
     pending2024: all2024.filter((record) => !existingByFingerprint.has(record.fingerprint)),
     pending2025: records.filter((record) => record.sourceType === "historical_2025_case_report" && !existingByFingerprint.has(record.fingerprint)),
+    pending2026: records.filter((record) => record.sourceType === "historical_2026_case_report" && !existingByFingerprint.has(record.fingerprint)),
   };
 }
 
@@ -263,12 +272,20 @@ export function assertBaseline(actual: { salesCount: number; contributorCount: n
 }
 
 export function selectImportYear(
-  plan: { pending2024: FrozenImportRecord[]; pending2025: FrozenImportRecord[] },
-  year: 2024 | 2025,
+  plan: { pending2024: FrozenImportRecord[]; pending2025: FrozenImportRecord[]; pending2026?: FrozenImportRecord[] },
+  year: HistoricalImportYear,
 ) {
+  const pending2026 = plan.pending2026 ?? [];
+
   if (year === 2024) return plan.pending2024;
-  if (plan.pending2024.length) throw new Error("2024 checkpoint must be complete before 2025 can execute");
-  return plan.pending2025;
+  if (year === 2025) {
+    if (plan.pending2024.length) throw new Error("2024 checkpoint must be complete before 2025 can execute");
+    return plan.pending2025;
+  }
+  if (plan.pending2024.length || plan.pending2025.length) {
+    throw new Error("2024 and 2025 checkpoints must be complete before 2026 can execute");
+  }
+  return pending2026;
 }
 
 export async function runImportPlan<T>(input: {
