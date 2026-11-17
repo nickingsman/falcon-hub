@@ -145,6 +145,13 @@ test("Case H: presets change only capital and rental growth assumptions", () => 
   assert.equal(applyInvestmentScenario(baseInvestment, "optimistic").capitalAppreciationPercent, 4);
 });
 
+test("selected holding period defines the projection horizon instead of forcing a 20-year minimum", () => {
+  const result = requireSimulation({ ...baseInvestment, holdingPeriodYears: 5 });
+  assert.equal(result.years.length, 5);
+  assert.equal(result.selectedYear.year, 5);
+  assert.equal(result.years[4]?.year, 5);
+});
+
 test("financing remains available independently of entry capital and rental assumptions", () => {
   const financing = calculateInvestmentFinancing({
     spaPrice: 500_000,

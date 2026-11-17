@@ -198,7 +198,7 @@ export function calculateInvestmentSimulation(
   let cumulativePositiveOperatingCashFlow = 0;
   let cumulativeNegativeOperatingCashFlow = 0;
 
-  const projectionYears = Math.max(input.holdingPeriodYears, 20);
+  const projectionYears = input.holdingPeriodYears;
 
   for (let year = 1; year <= projectionYears; year += 1) {
     const monthlyRental =
