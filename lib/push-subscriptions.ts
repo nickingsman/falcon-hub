@@ -25,6 +25,41 @@ export function getPushSubscriptionAccessFailure(input: {
 
 const base64UrlPattern = /^[A-Za-z0-9_-]+$/;
 
+// Browser PushManager subscriptions currently used by FalconHub resolve to one
+// of these production services. Chromium browsers (including Android Chrome,
+// Edge, and Opera) use FCM; android.googleapis.com is retained for existing
+// legacy Chromium subscriptions. Firefox and Apple Safari/iOS use their own
+// production services. Keep this exact-host allowlist deliberately small:
+// accepting arbitrary HTTPS endpoints would let a subscription become an SSRF
+// target when the server later delivers a notification.
+const trustedPushServiceHosts = new Set([
+  "fcm.googleapis.com",
+  "android.googleapis.com",
+  "updates.push.services.mozilla.com",
+  "web.push.apple.com",
+]);
+
+export function isTrustedPushServiceEndpoint(endpoint: string) {
+  if (endpoint.length > 4096) return false;
+
+  try {
+    const parsed = new URL(endpoint);
+
+    return (
+      parsed.protocol === "https:" &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.port === "" &&
+      parsed.search === "" &&
+      parsed.hash === "" &&
+      parsed.pathname.length > 1 &&
+      trustedPushServiceHosts.has(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isValidBase64Url(value: unknown, minLength: number, maxLength: number) {
   return (
     typeof value === "string" &&
@@ -44,8 +79,7 @@ export function validatePushSubscriptionPayload(
 
   if (
     typeof candidate.endpoint !== "string" ||
-    !candidate.endpoint.startsWith("https://") ||
-    candidate.endpoint.length > 4096 ||
+    !isTrustedPushServiceEndpoint(candidate.endpoint) ||
     (expirationTime !== null &&
       (!Number.isFinite(expirationTime) || expirationTime <= Date.now())) ||
     !candidate.keys ||
@@ -56,7 +90,7 @@ export function validatePushSubscriptionPayload(
   }
 
   return {
-    endpoint: candidate.endpoint,
+    endpoint: new URL(candidate.endpoint).href,
     expirationTime,
     keys: {
       p256dh: candidate.keys.p256dh,

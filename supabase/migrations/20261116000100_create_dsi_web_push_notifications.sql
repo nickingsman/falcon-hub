@@ -31,7 +31,10 @@ create table public.push_subscriptions (
   last_seen_at timestamptz not null default now(),
   constraint push_subscriptions_endpoint_unique unique (endpoint),
   constraint push_subscriptions_endpoint_check
-    check (endpoint ~ '^https://' and char_length(endpoint) <= 4096),
+    check (
+      endpoint ~ '^https://(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com)/'
+      and char_length(endpoint) <= 4096
+    ),
   constraint push_subscriptions_p256dh_check
     check (p256dh ~ '^[A-Za-z0-9_-]+$' and char_length(p256dh) between 16 and 512),
   constraint push_subscriptions_auth_key_check

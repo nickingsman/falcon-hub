@@ -1,5 +1,8 @@
 import { getMalaysiaTodayDateString } from "./malaysia-date";
-import { isExpiredPushSubscriptionStatus } from "./push-subscriptions";
+import {
+  isExpiredPushSubscriptionStatus,
+  isTrustedPushServiceEndpoint,
+} from "./push-subscriptions";
 
 export const dsiReminderSlots = ["22:00", "23:00", "23:30"] as const;
 export type DsiReminderSlot = (typeof dsiReminderSlots)[number];
@@ -82,12 +85,15 @@ export function areDsiPushRemindersEnabled(value: string | undefined) {
   return value === "true";
 }
 
-export function buildDsiReminderPayload(activityDate: string) {
+export function buildDsiReminderPayload(
+  activityDate: string,
+  reminderSlot: DsiReminderSlot,
+) {
   return JSON.stringify({
     title: "DSI reminder",
     body: "Your DSI for today has not been submitted yet.",
     url: "/dsi",
-    tag: `dsi-reminder-${activityDate}`,
+    tag: `dsi-reminder-${activityDate}-${reminderSlot.replace(":", "-")}`,
   });
 }
 
@@ -132,7 +138,7 @@ export async function runDsiReminderSlot(input: {
     failedSubscriptions: 0,
     expiredSubscriptions: 0,
   };
-  const payload = buildDsiReminderPayload(activityDate);
+  const payload = buildDsiReminderPayload(activityDate, input.slot);
 
   for (const user of users) {
     if (await input.dependencies.hasSubmitted(user.memberId, activityDate)) {
@@ -179,6 +185,15 @@ export async function runDsiReminderSlot(input: {
     let lastErrorCode: string | null = null;
 
     for (const subscription of user.subscriptions) {
+      // Stored subscriptions are untrusted input. Revalidate immediately before
+      // the only outbound request so legacy or tampered rows cannot become SSRF
+      // targets.
+      if (!isTrustedPushServiceEndpoint(subscription.endpoint)) {
+        failedCount += 1;
+        lastErrorCode = "untrusted_push_endpoint";
+        continue;
+      }
+
       let result: PushDeliveryResult;
 
       try {

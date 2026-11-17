@@ -21,7 +21,7 @@ function createDependencies(overrides: Partial<DsiReminderDependencies> = {}) {
         subscriptions: [
           {
             id: "subscription-1",
-            endpoint: "https://push.example.test/1",
+            endpoint: "https://fcm.googleapis.com/fcm/send/subscription-1",
             p256dh: "p256dh",
             authKey: "auth",
             expirationTime: null,
@@ -78,7 +78,55 @@ test("uses the Malaysia calendar day across the UTC boundary", async () => {
   });
 
   assert.equal(summary.activityDate, "2026-11-17");
-  assert.equal(JSON.parse(buildDsiReminderPayload(summary.activityDate)).url, "/dsi");
+  assert.equal(JSON.parse(buildDsiReminderPayload(summary.activityDate, "22:00")).url, "/dsi");
+});
+
+test("each reminder slot has a distinct stable notification tag", () => {
+  const activityDate = "2026-11-17";
+  const tags = (["22:00", "23:00", "23:30"] as const).map(
+    (slot) => JSON.parse(buildDsiReminderPayload(activityDate, slot)).tag,
+  );
+
+  assert.deepEqual(tags, [
+    "dsi-reminder-2026-11-17-22-00",
+    "dsi-reminder-2026-11-17-23-00",
+    "dsi-reminder-2026-11-17-23-30",
+  ]);
+  assert.equal(
+    JSON.parse(buildDsiReminderPayload(activityDate, "22:00")).tag,
+    tags[0],
+  );
+  assert.equal(new Set(tags).size, 3);
+});
+
+test("an untrusted stored endpoint is rejected immediately before delivery", async () => {
+  let sends = 0;
+  const { dependencies, completions } = createDependencies({
+    listEligibleUsers: async () => [
+      {
+        authUserId: "auth-1",
+        memberId: "member-1",
+        subscriptions: [
+          {
+            id: "subscription-1",
+            endpoint: "https://127.0.0.1/internal",
+            p256dh: "p256dh",
+            authKey: "auth",
+            expirationTime: null,
+          },
+        ],
+      },
+    ],
+    sendNotification: async () => {
+      sends += 1;
+      return {};
+    },
+  });
+
+  const summary = await runDsiReminderSlot({ slot: "22:00", dependencies });
+  assert.equal(sends, 0);
+  assert.equal(summary.failedSubscriptions, 1);
+  assert.equal(completions[0]?.lastErrorCode, "untrusted_push_endpoint");
 });
 
 test("submitted DSI prevents claiming or sending", async () => {
@@ -211,14 +259,14 @@ test("multiple devices receive one delivery each under one user-slot claim", asy
         subscriptions: [
           {
             id: "subscription-1",
-            endpoint: "https://push.example.test/1",
+            endpoint: "https://fcm.googleapis.com/fcm/send/subscription-1",
             p256dh: "p256dh-1",
             authKey: "auth-1",
             expirationTime: null,
           },
           {
             id: "subscription-2",
-            endpoint: "https://push.example.test/2",
+            endpoint: "https://web.push.apple.com/QH8subscription-2",
             p256dh: "p256dh-2",
             authKey: "auth-2",
             expirationTime: null,

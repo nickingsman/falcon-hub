@@ -55,6 +55,20 @@ test("server candidate query excludes inactive, deleted and mismatched accounts"
   assert.match(source, /row\.member_id !== memberId/);
 });
 
+test("push endpoints are allowlisted on creation and immediately before delivery", () => {
+  const subscriptionSource = read("lib/push-subscriptions.ts");
+  const reminderSource = read("lib/dsi-push-reminders.ts");
+  const serverSource = read("lib/dsi-push-reminders-server.ts");
+
+  assert.match(subscriptionSource, /trustedPushServiceHosts/);
+  assert.match(subscriptionSource, /isTrustedPushServiceEndpoint\(candidate\.endpoint\)/);
+  assert.match(reminderSource, /isTrustedPushServiceEndpoint\(subscription\.endpoint\)/);
+  assert.match(reminderSource, /untrusted_push_endpoint/);
+  assert.match(serverSource, /does not follow redirects/);
+  assert.doesNotMatch(reminderSource, /console\.(?:log|warn|error)/);
+  assert.doesNotMatch(serverSource, /console\.(?:log|warn|error)/);
+});
+
 test("migration enforces ownership, idempotency and service-only delivery audit", () => {
   const migration = read(
     "supabase/migrations/20261116000100_create_dsi_web_push_notifications.sql",
@@ -75,6 +89,8 @@ test("migration enforces ownership, idempotency and service-only delivery audit"
     /(?:update|delete from|alter table)\s+public\.daily_sales_index_entries/i,
   );
   assert.match(migration, /DSI Web Push target objects already exist/);
+  assert.match(migration, /fcm\\\.googleapis\\\.com/);
+  assert.match(migration, /web\\\.push\\\.apple\\\.com/);
   assert.doesNotMatch(
     migration,
     /create\s+or\s+replace\s+function\s+public\.set_push_subscription_updated_at/i,

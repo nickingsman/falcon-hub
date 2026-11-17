@@ -4,11 +4,12 @@ import {
   getPushSubscriptionAccessFailure,
   isEligibleDsiReminderAccount,
   isExpiredPushSubscriptionStatus,
+  isTrustedPushServiceEndpoint,
   validatePushSubscriptionPayload,
 } from "./push-subscriptions";
 
 const validSubscription = {
-  endpoint: "https://push.example.test/subscription/123",
+  endpoint: "https://fcm.googleapis.com/fcm/send/subscription-123",
   expirationTime: null,
   keys: {
     p256dh: "A_valid-p256dh_key_value",
@@ -18,6 +19,43 @@ const validSubscription = {
 
 test("accepts a valid browser push subscription", () => {
   assert.deepEqual(validatePushSubscriptionPayload(validSubscription), validSubscription);
+});
+
+test("accepts only explicitly supported browser push providers", () => {
+  for (const endpoint of [
+    "https://fcm.googleapis.com/fcm/send/chrome-token",
+    "https://android.googleapis.com/gcm/send/legacy-chrome-token",
+    "https://updates.push.services.mozilla.com/wpush/v2/firefox-token",
+    "https://web.push.apple.com/QH8safari-token",
+  ]) {
+    assert.equal(isTrustedPushServiceEndpoint(endpoint), true, endpoint);
+    assert.ok(validatePushSubscriptionPayload({ ...validSubscription, endpoint }));
+  }
+});
+
+test("rejects SSRF targets, deceptive hosts, credentials, unsafe ports, and query redirects", () => {
+  for (const endpoint of [
+    "https://localhost/push",
+    "https://127.0.0.1/push",
+    "https://[::1]/push",
+    "https://10.0.0.1/push",
+    "https://169.254.169.254/latest/meta-data",
+    "https://fcm.googleapis.com.evil.test/push",
+    "https://evil.test/fcm.googleapis.com/push",
+    "https://user:password@fcm.googleapis.com/push",
+    "https://fcm.googleapis.com:8443/push",
+    "https://fcm.googleapis.com/",
+    "https://fcm.googleapis.com/push?redirect=https://127.0.0.1",
+    "https://fcm.googleapis.com/push#redirect",
+    "not a URL",
+  ]) {
+    assert.equal(isTrustedPushServiceEndpoint(endpoint), false, endpoint);
+    assert.equal(
+      validatePushSubscriptionPayload({ ...validSubscription, endpoint }),
+      null,
+      endpoint,
+    );
+  }
 });
 
 test("subscription access rejects unauthenticated and inactive accounts", () => {

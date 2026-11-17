@@ -161,6 +161,9 @@ async function sendNotification(
   payload: string,
 ): Promise<PushDeliveryResult> {
   try {
+    // web-push 4.0.0 performs one HTTPS request and rejects every non-2xx
+    // response; it does not follow redirects. The version is pinned so a
+    // provider redirect can never silently become a request to another host.
     await webPush.sendNotification(
       {
         endpoint: subscription.endpoint,
