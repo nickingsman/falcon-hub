@@ -57,14 +57,14 @@ export function getInclusiveDayCount(from: string, to: string) {
   return Math.floor((toDate.getTime() - fromDate.getTime()) / millisecondsPerDay) + 1;
 }
 
-export function getMalaysiaTodayDateString() {
-  const { year, month, day } = getMalaysiaDateParts();
+export function getMalaysiaTodayDateString(date = new Date()) {
+  const { year, month, day } = getMalaysiaDateParts(date);
 
   return formatDateParts(year, month, day);
 }
 
-export function getMalaysiaYesterdayDateString() {
-  const { year, month, day } = getMalaysiaDateParts();
+export function getMalaysiaYesterdayDateString(date = new Date()) {
+  const { year, month, day } = getMalaysiaDateParts(date);
   const todayUtc = new Date(Date.UTC(year, month - 1, day));
   todayUtc.setUTCDate(todayUtc.getUTCDate() - 1);
 
@@ -83,10 +83,10 @@ export function isValidDateString(value: string) {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
-export function getMalaysiaThisWeekRange() {
-  const today = getMalaysiaTodayDateString();
-  const date = parseDateString(today);
-  const dayOfWeek = date.getUTCDay();
+export function getMalaysiaThisWeekRange(date = new Date()) {
+  const today = getMalaysiaTodayDateString(date);
+  const calendarDate = parseDateString(today);
+  const dayOfWeek = calendarDate.getUTCDay();
   const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
   const from = addCalendarDays(today, -daysFromMonday);
 
@@ -101,9 +101,9 @@ export function getMalaysiaLastWeekRange() {
   return { from, to };
 }
 
-export function getMalaysiaThisMonthRange() {
-  const today = getMalaysiaTodayDateString();
-  const { year, month } = getMalaysiaDateParts();
+export function getMalaysiaThisMonthRange(date = new Date()) {
+  const today = getMalaysiaTodayDateString(date);
+  const { year, month } = getMalaysiaDateParts(date);
 
   return {
     from: formatDateParts(year, month, 1),

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/dsi-reminders/22-00",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/dsi-reminders/23-00",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron/dsi-reminders/23-30",
+      "schedule": "30 15 * * *"
+    }
+  ]
+}
