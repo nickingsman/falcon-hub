@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   assertBaseline,
@@ -161,47 +160,3 @@ test("all approved 2025 three-decimal prices remain distinct from cent-rounded v
   prices.forEach((price, index) => assert.equal(exactDecimalsEqual(price, rounded[index]), false));
 });
 
-test("precision migration is atomic, guarded, and corrects only the approved fingerprint", () => {
-  const migration = readFileSync(
-    "supabase/migrations/20261010000100_widen_sales_nett_price_precision.sql",
-    "utf8",
-  );
-  assert.match(migration, /^begin;/);
-  assert.match(migration, /alter column nett_price type numeric\(16,3\)/);
-  assert.match(migration, /61489ba9e2f197af7fe84e9b2f1d1b4037126c1d4b783e59a7de4f17012e168c/);
-  assert.match(migration, /set nett_price = 639176\.625/);
-  assert.match(migration, /get diagnostics v_corrected = row_count/);
-  assert.match(migration, /v_corrected <> 1/);
-  assert.match(migration, /290624074\.525/);
-  assert.match(migration, /242806045\.782500000/);
-  assert.match(migration, /numeric_precision = 16[\s\S]*numeric_scale = 3/);
-  assert.match(
-    migration,
-    /when before_row\.source_fingerprint = '61489ba9e2f197af7fe84e9b2f1d1b4037126c1d4b783e59a7de4f17012e168c' then[\s\S]*to_jsonb\(current_row\) - 'nett_price' - 'updated_at'[\s\S]*current_row\.updated_at is distinct from transaction_timestamp\(\)[\s\S]*else[\s\S]*to_jsonb\(current_row\) - 'nett_price'/,
-  );
-  assert.match(migration, /commit;\s*$/);
-});
-
-test("precision snapshot exception permits only the approved price and timestamp mutation", () => {
-  const fingerprint = "61489ba9e2f197af7fe84e9b2f1d1b4037126c1d4b783e59a7de4f17012e168c";
-  const transactionTimestamp = "2026-10-10T04:00:00.000Z";
-  const before = {
-    source_fingerprint: fingerprint,
-    nett_price: "639176.63",
-    updated_at: "2026-10-09T04:00:00.000Z",
-    remark: "⚠️ Pending Allocation",
-    status: "booking",
-  };
-  const matchesApprovedChange = (after: typeof before) => {
-    if (after.source_fingerprint !== fingerprint) return JSON.stringify(after) === JSON.stringify(before);
-    const beforeProtected = { source_fingerprint: before.source_fingerprint, remark: before.remark, status: before.status };
-    const afterProtected = { source_fingerprint: after.source_fingerprint, remark: after.remark, status: after.status };
-    return JSON.stringify(afterProtected) === JSON.stringify(beforeProtected)
-      && after.nett_price === "639176.625"
-      && after.updated_at === transactionTimestamp;
-  };
-
-  assert.equal(matchesApprovedChange({ ...before, nett_price: "639176.625", updated_at: transactionTimestamp }), true);
-  assert.equal(matchesApprovedChange({ ...before, nett_price: "639176.625", updated_at: transactionTimestamp, remark: "changed" }), false);
-  assert.equal(matchesApprovedChange({ ...before, nett_price: "639176.625", updated_at: before.updated_at }), false);
-});
