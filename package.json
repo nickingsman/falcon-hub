@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "historical-sales:runner": "node --experimental-strip-types --loader ./scripts/typescript-loader.mjs ./scripts/historical-sales-import-runner.mjs",
+    "test:historical-sales-runner": "node --experimental-strip-types --loader ./scripts/typescript-loader.mjs --test ./lib/historical-sales-import-runner.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

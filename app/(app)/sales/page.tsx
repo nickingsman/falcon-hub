@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, EmptyState, PageHeader, StatusBadge } from "../components/ui";
 import { SearchCombobox } from "../components/SearchCombobox";
 import { ProjectContributionReport } from "./ProjectContributionReport";
 import { formatMemberCode } from "@/lib/member-display";
 import { parseSalesPercentage, salesStatusLabels, type SalesCase, type SalesPeriod, type SalesStatus } from "@/lib/sales";
 import { buildSalesContributorOptions } from "@/lib/sales-contributor-edit";
+import { areSalesResultsCurrent, createLatestSalesRequestSequence, createSalesSearchScheduler } from "@/lib/sales-search";
 
 type Period = SalesPeriod;
 type Option = { id: string; project_name?: string; full_name?: string; display_name?: string | null; member_code?: number | null; position?: string | null };
@@ -131,21 +132,57 @@ export default function SalesPage() {
   const [customFrom, setCustomFrom] = useState(""); const [customTo, setCustomTo] = useState("");
   const [projectId, setProjectId] = useState(""); const [status, setStatus] = useState("");
   const [allocation, setAllocation] = useState("");
-  const [memberId, setMemberId] = useState(""); const [search, setSearch] = useState("");
+  const [memberId, setMemberId] = useState(""); const [searchInput, setSearchInput] = useState(""); const [search, setSearch] = useState("");
   const [performanceProjectId, setPerformanceProjectId] = useState("");
   const [data, setData] = useState<SalesResponse | null>(null); const [loadError, setLoadError] = useState("");
+  const [resolvedSearch, setResolvedSearch] = useState<string | null>(null); const [resolvedQuery, setResolvedQuery] = useState<string | null>(null);
   const [loading, setLoading] = useState(true); const [modalOpen, setModalOpen] = useState(false);
   const [editingCase, setEditingCase] = useState<SalesCase | null>(null); const [form, setForm] = useState<CaseForm>(emptyForm);
   const [saving, setSaving] = useState(false); const [saveError, setSaveError] = useState("");
   const [reviewingAllocation, setReviewingAllocation] = useState<SalesCase | null>(null);
+  const activeRequest = useRef<AbortController | null>(null);
+  const requestSequence = useRef(createLatestSalesRequestSequence());
+  const searchScheduler = useMemo(() => createSalesSearchScheduler(setSearch, { delayMs: 300 }), []);
 
   const query = useMemo(() => { const params = new URLSearchParams({ period }); if (period === "custom") { params.set("from", customFrom); params.set("to", customTo); } if (projectId) params.set("projectId", projectId); if (status) params.set("status", status); if (allocation) params.set("allocation", allocation); if (memberId) params.set("memberId", memberId); if (search) params.set("search", search); return params.toString(); }, [period, customFrom, customTo, projectId, status, allocation, memberId, search]);
-  const load = useCallback(async () => { if (period === "custom" && (!customFrom || !customTo)) return; setLoading(true); setLoadError(""); try { const response = await fetch(`/api/sales?${query}`, { cache: "no-store" }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Unable to load Sales"); setData(payload); } catch (error) { setLoadError(error instanceof Error ? error.message : "Unable to load Sales"); } finally { setLoading(false); } }, [query, period, customFrom, customTo]);
+  const load = useCallback(async () => {
+    const request = requestSequence.current.begin();
+    activeRequest.current?.abort();
+    if (period === "custom" && (!customFrom || !customTo)) {
+      if (requestSequence.current.isLatest(request)) setLoading(false);
+      return;
+    }
+    const controller = typeof AbortController === "undefined" ? null : new AbortController();
+    activeRequest.current = controller;
+    setLoading(true);
+    setLoadError("");
+    try {
+      const response = await fetch(`/api/sales?${query}`, { cache: "no-store", signal: controller?.signal });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Unable to load Sales");
+      if (requestSequence.current.isLatest(request)) {
+        setData(payload);
+        setResolvedSearch(search);
+        setResolvedQuery(query);
+      }
+    } catch (error) {
+      if (requestSequence.current.isLatest(request) && !(error instanceof Error && error.name === "AbortError")) {
+        setLoadError(error instanceof Error ? error.message : "Unable to load Sales");
+      }
+    } finally {
+      if (requestSequence.current.isLatest(request)) {
+        if (activeRequest.current === controller) activeRequest.current = null;
+        setLoading(false);
+      }
+    }
+  }, [query, search, period, customFrom, customTo]);
   useEffect(() => {
     // Loading is the external synchronization performed by this effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
+    return () => activeRequest.current?.abort();
   }, [load]);
+  useEffect(() => () => searchScheduler.cancel(), [searchScheduler]);
 
   function openCreate() { setEditingCase(null); setForm({ ...emptyForm, contributors: [{ memberId: "", portion: "100" }] }); setSaveError(""); setModalOpen(true); }
   function openEdit(item: SalesCase) { setEditingCase(item); setForm(formFromCase(item)); setSaveError(""); setModalOpen(true); }
@@ -166,6 +203,24 @@ export default function SalesPage() {
   })], [data?.members]);
   const performanceProjectOptions = useMemo(() => [{ id: "", label: "All Projects" }, ...(analytics?.projects ?? []).map((project) => ({ id: project.projectId, label: project.projectName }))], [analytics?.projects]);
   const performanceProjects = useMemo(() => (analytics?.projects ?? []).filter((project) => !performanceProjectId || project.projectId === performanceProjectId), [analytics?.projects, performanceProjectId]);
+  const hasCompleteDateRange = period !== "custom" || Boolean(customFrom && customTo);
+  const resultsCurrent = areSalesResultsCurrent({
+    searchInput,
+    submittedSearch: search,
+    resolvedSearch,
+    currentQuery: query,
+    resolvedQuery,
+    loading,
+  });
+
+  function submitSearch() {
+    searchScheduler.submit(searchInput);
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    searchScheduler.clear();
+  }
 
   return <main className="space-y-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
     <PageHeader eyebrow="Falcon Hub Sales" title="Sales" description="Internal closing intelligence, conversion tracking and credited GDV performance." actions={data?.canManage ? <Button onClick={openCreate}>+ Add Case</Button> : null} />
@@ -179,8 +234,8 @@ export default function SalesPage() {
       <section className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-5 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><h2 className="text-lg font-semibold">Project Performance</h2><div className="w-full sm:w-56"><SearchCombobox value={performanceProjectId} options={performanceProjectOptions} placeholder="Search project..." emptyLabel="No projects found." onChange={setPerformanceProjectId} /></div></div><div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs uppercase tracking-wide text-zinc-500"><tr><th className="pb-3">Project</th><th className="pb-3 text-right">Closing</th><th className="pb-3 text-right">Convert</th><th className="pb-3 text-right">GDV</th></tr></thead><tbody className="divide-y divide-zinc-100">{performanceProjects.map((item) => <tr key={item.projectId}><td className="py-3 font-medium">{item.projectName}</td><td className="py-3 text-right">{number.format(item.closingFigure)}</td><td className="py-3 text-right">{number.format(item.convertFigure)}</td><td className="py-3 text-right">{money.format(item.creditedGdv)}</td></tr>)}</tbody></table>{!performanceProjects.length ? <p className="py-8 text-center text-sm text-zinc-500">No project performance yet.</p> : null}</div></section></div>
       <ProjectContributionReport period={period} customFrom={customFrom} customTo={customTo} />
     </div> : null}
-    {tab === "records" && data ? <div className="space-y-4"><section className="grid gap-3 rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-5"><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search project or unit" className={inputClass} /><SearchCombobox value={projectId} options={[{ id: "", label: "All projects" }, ...data.recordProjects.flatMap((item) => item.project_name ? [{ id: item.id, label: item.project_name }] : [])]} placeholder="Search project..." emptyLabel="No projects found." onChange={setProjectId} /><select value={status} onChange={(e) => setStatus(e.target.value)} className={inputClass}><option value="">All statuses</option>{Object.entries(salesStatusLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select><select value={allocation} onChange={(event) => setAllocation(event.target.value)} className={inputClass}><option value="">All allocations</option><option value="pending">Pending Allocation</option></select>{data.canManage ? <SearchCombobox value={memberId} options={contributorOptions} placeholder="Search contributor..." emptyLabel="No contributors found." onChange={setMemberId} /> : <div className="flex items-center px-3 text-sm text-zinc-500">Showing your authorized Sales scope</div>}</section>
-      {!data.records.length ? <EmptyState title="No sales records found" description="Try another period or filter." /> : <><div className="hidden overflow-x-auto rounded-[24px] border border-[var(--falcon-soft-border)] bg-white shadow-sm lg:block"><table className="w-full min-w-[1000px] text-left text-sm"><thead className="border-b border-zinc-100 bg-[#faf9f5] text-xs uppercase tracking-wide text-zinc-500"><tr>{["Booking Date","Project","Unit","Nett Price","Falcon Portion","Contributors","Status","Falcon Credited GDV",...(data.canManage ? ["Actions"] : [])].map((label) => <th key={label} className={`px-4 py-3 ${label === "Actions" ? "sticky right-0 z-20 bg-[#faf9f5] shadow-[-8px_0_12px_-12px_rgba(24,24,27,0.35)]" : ""}`}>{label}</th>)}</tr></thead><tbody className="divide-y divide-zinc-100">{data.records.map((item) => <tr key={item.id}><td className="px-4 py-4 whitespace-nowrap">{formatDate(item.bookingDate)}</td><td className="px-4 py-4 font-semibold">{item.projectName}</td><td className="px-4 py-4 whitespace-nowrap"><span className="inline-flex items-center gap-1.5 whitespace-nowrap">{item.unitNo}{item.remark?.trim() ? <span role="img" aria-label="Special remarks" title="Special remarks">⚠️</span> : null}</span></td><td className="px-4 py-4 whitespace-nowrap">{money.format(item.nettPrice)}</td><td className="px-4 py-4">{number.format(item.falconPortion)}%</td><td className="px-4 py-4"><div className="space-y-1">{item.allocationStatus === "pending" ? <p className="whitespace-nowrap font-semibold text-amber-800">⚠️ Pending Allocation</p> : null}{item.contributors.map((contributor, index) => <p key={`${contributor.memberId ?? contributor.sourceMemberName}-${index}`} className="whitespace-nowrap">{contributor.memberName}{contributor.portion === null ? " · pending" : ` · ${number.format(contributor.portion)}%`}</p>)}</div></td><td className="px-4 py-4"><StatusBadge variant={statusVariant(item.status)}>{salesStatusLabels[item.status]}</StatusBadge></td><td className="px-4 py-4 whitespace-nowrap font-semibold">{money.format(item.nettPrice * item.falconPortion / 100)}</td>{data.canManage ? <td className="sticky right-0 z-10 bg-white px-4 py-4 shadow-[-8px_0_12px_-12px_rgba(24,24,27,0.35)]">{item.allocationStatus === "pending" ? <button type="button" onClick={() => { setSaveError(""); setReviewingAllocation(item); }} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900">Review Allocation</button> : <button type="button" aria-label={`Edit ${item.projectName}, unit ${item.unitNo}`} onClick={() => openEdit(item)} className="rounded-full border border-[#d8c48e] bg-[#fbf8ef] px-3 py-1.5 text-xs font-semibold text-[var(--falcon-gold-dark)] transition hover:bg-[#f4eddb]">Edit</button>}</td> : null}</tr>)}</tbody></table></div>
+    {tab === "records" && data ? <div className="space-y-4"><section className="grid gap-3 rounded-[24px] border border-[var(--falcon-soft-border)] bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-5"><div className="flex min-w-0 gap-2"><div className="relative min-w-0 flex-1"><input value={searchInput} onChange={(event) => { const value = event.target.value; setSearchInput(value); searchScheduler.schedule(value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submitSearch(); } }} placeholder="Search project or unit" aria-label="Search Sales Records" className={`${inputClass} pr-9`} />{searchInput ? <button type="button" onClick={clearSearch} aria-label="Clear Sales search" className="absolute inset-y-0 right-0 px-3 text-zinc-400 transition hover:text-zinc-700">×</button> : null}</div><button type="button" onClick={submitSearch} className="min-h-11 shrink-0 rounded-2xl bg-zinc-950 px-4 text-sm font-semibold text-white transition hover:bg-zinc-800">Search</button></div><SearchCombobox value={projectId} options={[{ id: "", label: "All projects" }, ...data.recordProjects.flatMap((item) => item.project_name ? [{ id: item.id, label: item.project_name }] : [])]} placeholder="Search project..." emptyLabel="No projects found." onChange={setProjectId} /><select value={status} onChange={(e) => setStatus(e.target.value)} className={inputClass}><option value="">All statuses</option>{Object.entries(salesStatusLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select><select value={allocation} onChange={(event) => setAllocation(event.target.value)} className={inputClass}><option value="">All allocations</option><option value="pending">Pending Allocation</option></select>{data.canManage ? <SearchCombobox value={memberId} options={contributorOptions} placeholder="Search contributor..." emptyLabel="No contributors found." onChange={setMemberId} /> : <div className="flex items-center px-3 text-sm text-zinc-500">Showing your authorized Sales scope</div>}</section>
+      {!hasCompleteDateRange ? <div className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-white px-4 py-10 text-center text-sm text-zinc-500 shadow-sm">Select both dates to view Sales Records.</div> : !resultsCurrent ? <div className="rounded-[24px] border border-[var(--falcon-soft-border)] bg-white px-4 py-10 text-center text-sm text-zinc-500 shadow-sm">{loadError && !loading ? "Sales results are unavailable." : "Searching Sales…"}</div> : !data.records.length ? <EmptyState title="No sales records found" description="Try another period or filter." /> : <><div className="hidden overflow-x-auto rounded-[24px] border border-[var(--falcon-soft-border)] bg-white shadow-sm lg:block"><table className="w-full min-w-[1000px] text-left text-sm"><thead className="border-b border-zinc-100 bg-[#faf9f5] text-xs uppercase tracking-wide text-zinc-500"><tr>{["Booking Date","Project","Unit","Nett Price","Falcon Portion","Contributors","Status","Falcon Credited GDV",...(data.canManage ? ["Actions"] : [])].map((label) => <th key={label} className={`px-4 py-3 ${label === "Actions" ? "sticky right-0 z-20 bg-[#faf9f5] shadow-[-8px_0_12px_-12px_rgba(24,24,27,0.35)]" : ""}`}>{label}</th>)}</tr></thead><tbody className="divide-y divide-zinc-100">{data.records.map((item) => <tr key={item.id}><td className="px-4 py-4 whitespace-nowrap">{formatDate(item.bookingDate)}</td><td className="px-4 py-4 font-semibold">{item.projectName}</td><td className="px-4 py-4 whitespace-nowrap"><span className="inline-flex items-center gap-1.5 whitespace-nowrap">{item.unitNo}{item.remark?.trim() ? <span role="img" aria-label="Special remarks" title="Special remarks">⚠️</span> : null}</span></td><td className="px-4 py-4 whitespace-nowrap">{money.format(item.nettPrice)}</td><td className="px-4 py-4">{number.format(item.falconPortion)}%</td><td className="px-4 py-4"><div className="space-y-1">{item.allocationStatus === "pending" ? <p className="whitespace-nowrap font-semibold text-amber-800">⚠️ Pending Allocation</p> : null}{item.contributors.map((contributor, index) => <p key={`${contributor.memberId ?? contributor.sourceMemberName}-${index}`} className="whitespace-nowrap">{contributor.memberName}{contributor.portion === null ? " · pending" : ` · ${number.format(contributor.portion)}%`}</p>)}</div></td><td className="px-4 py-4"><StatusBadge variant={statusVariant(item.status)}>{salesStatusLabels[item.status]}</StatusBadge></td><td className="px-4 py-4 whitespace-nowrap font-semibold">{money.format(item.nettPrice * item.falconPortion / 100)}</td>{data.canManage ? <td className="sticky right-0 z-10 bg-white px-4 py-4 shadow-[-8px_0_12px_-12px_rgba(24,24,27,0.35)]">{item.allocationStatus === "pending" ? <button type="button" onClick={() => { setSaveError(""); setReviewingAllocation(item); }} className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900">Review Allocation</button> : <button type="button" aria-label={`Edit ${item.projectName}, unit ${item.unitNo}`} onClick={() => openEdit(item)} className="rounded-full border border-[#d8c48e] bg-[#fbf8ef] px-3 py-1.5 text-xs font-semibold text-[var(--falcon-gold-dark)] transition hover:bg-[#f4eddb]">Edit</button>}</td> : null}</tr>)}</tbody></table></div>
       <div className="space-y-3 lg:hidden">{data.records.map((item) => <article key={item.id} className="rounded-[22px] border border-[var(--falcon-soft-border)] bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-zinc-950">{item.projectName}</p><p className="mt-1 text-sm text-zinc-500">Unit {item.unitNo}{item.remark?.trim() ? <span className="ml-1.5" role="img" aria-label="Special remarks" title="Special remarks">⚠️</span> : null} · {formatDate(item.bookingDate)}</p></div><StatusBadge variant={statusVariant(item.status)}>{salesStatusLabels[item.status]}</StatusBadge></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-zinc-500">Nett Price</p><p className="mt-1 font-semibold">{money.format(item.nettPrice)}</p></div><div><p className="text-xs text-zinc-500">Falcon Credited GDV</p><p className="mt-1 font-semibold">{money.format(item.nettPrice * item.falconPortion / 100)}</p></div></div><div className="mt-4 border-t border-zinc-100 pt-3 text-sm">{item.allocationStatus === "pending" ? <p className="font-semibold text-amber-800">⚠️ Pending Allocation</p> : null}{item.contributors.map((contributor, index) => <p key={`${contributor.memberId ?? contributor.sourceMemberName}-${index}`}>{contributor.memberName}{contributor.portion === null ? " · pending" : ` · ${number.format(contributor.portion)}%`}</p>)}</div>{data.canManage ? item.allocationStatus === "pending" ? <button type="button" onClick={() => { setSaveError(""); setReviewingAllocation(item); }} className="mt-4 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-900">Review Allocation</button> : <button type="button" aria-label={`Edit ${item.projectName}, unit ${item.unitNo}`} onClick={() => openEdit(item)} className="mt-4 rounded-full border border-[#d8c48e] bg-[#fbf8ef] px-3 py-1.5 text-sm font-semibold text-[var(--falcon-gold-dark)] transition hover:bg-[#f4eddb]">Edit Case</button> : null}</article>)}</div></>}</div> : null}
     {modalOpen && data ? <CaseModal form={form} setForm={setForm} members={data.members} projects={data.projects} editingCase={editingCase} saving={saving} error={saveError} onClose={() => setModalOpen(false)} onSave={() => void save()} onCorrectSpa={(restoredStatus, note) => void correctSpa(restoredStatus, note)} /> : null}
     {reviewingAllocation && data ? <AllocationReviewModal salesCase={reviewingAllocation} members={data.members} saving={saving} error={saveError} onClose={() => setReviewingAllocation(null)} onVerify={(contributors) => void verifyAllocation(contributors)} /> : null}
