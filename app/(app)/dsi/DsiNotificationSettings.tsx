@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getExistingBrowserPushSubscription } from "@/lib/push-subscription-client";
 
 type SetupState =
   | "loading"
@@ -8,6 +9,7 @@ type SetupState =
   | "disabled"
   | "denied"
   | "enabled"
+  | "conflict"
   | "working"
   | "error";
 
@@ -52,17 +54,26 @@ export default function DsiNotificationSettings() {
       }
 
       try {
-        const response = await fetch("/api/push-subscriptions", { cache: "no-store" });
-        const result = (await response.json()) as { vapidPublicKey?: string; error?: string };
+        const subscription = await getExistingBrowserPushSubscription();
+        const endpointQuery = subscription
+          ? `?endpoint=${encodeURIComponent(subscription.endpoint)}`
+          : "";
+        const response = await fetch(`/api/push-subscriptions${endpointQuery}`, {
+          cache: "no-store",
+        });
+        const result = (await response.json()) as {
+          vapidPublicKey?: string;
+          enabledForCurrentDevice?: boolean;
+          error?: string;
+        };
         if (!response.ok || !result.vapidPublicKey) {
           throw new Error(result.error || "Notifications are not configured");
         }
 
-        const subscription = await getCurrentSubscription();
         if (cancelled) return;
 
         setPublicKey(result.vapidPublicKey);
-        setState(subscription ? "enabled" : "disabled");
+        setState(subscription && result.enabledForCurrentDevice ? "enabled" : "disabled");
       } catch (error) {
         if (cancelled) return;
         setMessage(error instanceof Error ? error.message : "Unable to load notification settings");
@@ -103,6 +114,13 @@ export default function DsiNotificationSettings() {
       const result = (await response.json()) as { error?: string };
 
       if (!response.ok) {
+        if (response.status === 409 && existing) {
+          setState("conflict");
+          setMessage(
+            "This device has a notification subscription from another account. Reset it before enabling reminders for this account.",
+          );
+          return;
+        }
         if (!existing) await subscription.unsubscribe();
         throw new Error(result.error || "Unable to enable notifications");
       }
@@ -112,6 +130,21 @@ export default function DsiNotificationSettings() {
     } catch (error) {
       setState("error");
       setMessage(error instanceof Error ? error.message : "Unable to enable notifications");
+    }
+  }
+
+  async function resetNotificationsForThisAccount() {
+    setState("working");
+    setMessage("");
+
+    try {
+      const subscription = await getExistingBrowserPushSubscription();
+      if (subscription) await subscription.unsubscribe();
+      setState("disabled");
+      setMessage("The previous account subscription was reset. You may now enable notifications.");
+    } catch {
+      setState("conflict");
+      setMessage("Unable to reset this device subscription. Please try again.");
     }
   }
 
@@ -167,7 +200,16 @@ export default function DsiNotificationSettings() {
         </div>
 
         <div className="shrink-0">
-          {state === "enabled" ? (
+          {state === "conflict" ? (
+            <button
+              type="button"
+              onClick={resetNotificationsForThisAccount}
+              disabled={isWorking}
+              className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+            >
+              Reset this device
+            </button>
+          ) : state === "enabled" ? (
             <button
               type="button"
               onClick={disableNotifications}

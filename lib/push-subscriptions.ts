@@ -60,6 +60,13 @@ export function isTrustedPushServiceEndpoint(endpoint: string) {
   }
 }
 
+export function canUpdateExistingPushSubscription(
+  existingAuthUserId: string | null,
+  currentAuthUserId: string,
+) {
+  return existingAuthUserId === null || existingAuthUserId === currentAuthUserId;
+}
+
 function isValidBase64Url(value: unknown, minLength: number, maxLength: number) {
   return (
     typeof value === "string" &&

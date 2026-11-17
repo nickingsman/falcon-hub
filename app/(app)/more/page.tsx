@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { logoutWithPushCleanup } from "@/lib/push-subscription-client";
 import { useAppPermissions } from "../components/AppPermissionProvider";
 import AppNavigationMenu from "../components/AppNavigationMenu";
 import {
@@ -13,14 +15,21 @@ export default function MorePage() {
   const pathname = usePathname();
   const permissions = useAppPermissions();
   const navigationItems = getVisibleDesktopNavItems(permissions);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-    });
+    try {
+      setIsLoggingOut(true);
+      setLogoutError("");
+      await logoutWithPushCleanup();
 
-    router.replace("/login");
-    router.refresh();
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Unable to sign out safely");
+      setIsLoggingOut(false);
+    }
   }
 
   return (
@@ -61,10 +70,16 @@ export default function MorePage() {
             <button
               type="button"
               onClick={handleLogout}
+              disabled={isLoggingOut}
               className="mt-4 min-h-11 rounded-full border border-zinc-300 bg-white px-5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-300"
             >
-              Logout
+              {isLoggingOut ? "Signing out..." : "Logout"}
             </button>
+            {logoutError ? (
+              <p role="alert" className="mt-2 text-sm text-red-700">
+                {logoutError}
+              </p>
+            ) : null}
           </div>
         </section>
       </div>

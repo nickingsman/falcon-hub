@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canUpdateExistingPushSubscription,
   getPushSubscriptionAccessFailure,
   isEligibleDsiReminderAccount,
   isExpiredPushSubscriptionStatus,
@@ -19,6 +20,12 @@ const validSubscription = {
 
 test("accepts a valid browser push subscription", () => {
   assert.deepEqual(validatePushSubscriptionPayload(validSubscription), validSubscription);
+});
+
+test("an existing endpoint can only be updated by its current auth user", () => {
+  assert.equal(canUpdateExistingPushSubscription(null, "auth-1"), true);
+  assert.equal(canUpdateExistingPushSubscription("auth-1", "auth-1"), true);
+  assert.equal(canUpdateExistingPushSubscription("auth-2", "auth-1"), false);
 });
 
 test("accepts only explicitly supported browser push providers", () => {

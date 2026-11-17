@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import {
+  canUpdateExistingPushSubscription,
   getPushSubscriptionAccessFailure,
+  isTrustedPushServiceEndpoint,
   validatePushSubscriptionPayload,
 } from "@/lib/push-subscriptions";
 import { createSupabaseAdminClient } from "@/lib/supabase-server";
@@ -63,12 +65,17 @@ async function requirePushAccess(): Promise<
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const authorization = await requirePushAccess();
   if (!authorization.authorized) return authorization.response;
 
   const publicKey = process.env.VAPID_PUBLIC_KEY;
   if (!publicKey) return jsonError("Push notifications are not configured", 503);
+
+  const endpoint = request.nextUrl.searchParams.get("endpoint");
+  if (endpoint && !isTrustedPushServiceEndpoint(endpoint)) {
+    return jsonError("Invalid subscription endpoint", 400);
+  }
 
   const supabase = createSupabaseAdminClient();
   const { count, error } = await supabase
@@ -79,9 +86,23 @@ export async function GET() {
 
   if (error) return jsonError("Unable to load notification settings", 500);
 
+  let enabledForCurrentDevice = false;
+  if (endpoint) {
+    const { count: deviceCount, error: deviceError } = await supabase
+      .from("push_subscriptions")
+      .select("id", { count: "exact", head: true })
+      .eq("auth_user_id", authorization.context.authUserId)
+      .eq("member_id", authorization.context.memberId)
+      .eq("endpoint", endpoint);
+
+    if (deviceError) return jsonError("Unable to load notification settings", 500);
+    enabledForCurrentDevice = (deviceCount ?? 0) > 0;
+  }
+
   return NextResponse.json({
     vapidPublicKey: publicKey,
     subscriptionCount: count ?? 0,
+    enabledForCurrentDevice,
   });
 }
 
@@ -103,16 +124,17 @@ export async function POST(request: NextRequest) {
   const userAgent = request.headers.get("user-agent")?.slice(0, 512) ?? null;
   const { data: existing, error: existingError } = await supabase
     .from("push_subscriptions")
-    .select("id, auth_user_id, p256dh, auth_key")
+    .select("id, auth_user_id")
     .eq("endpoint", subscription.endpoint)
     .maybeSingle();
 
   if (existingError) return jsonError("Unable to verify notification ownership", 500);
 
   if (
-    existing &&
-    existing.auth_user_id !== authorization.context.authUserId &&
-    (existing.p256dh !== subscription.keys.p256dh || existing.auth_key !== subscription.keys.auth)
+    !canUpdateExistingPushSubscription(
+      existing?.auth_user_id ?? null,
+      authorization.context.authUserId,
+    )
   ) {
     return jsonError("This notification endpoint belongs to another device", 409);
   }
@@ -129,10 +151,21 @@ export async function POST(request: NextRequest) {
     user_agent: userAgent,
     last_seen_at: new Date().toISOString(),
   };
-  const mutation = existing
-    ? supabase.from("push_subscriptions").update(values).eq("id", existing.id)
-    : supabase.from("push_subscriptions").insert(values);
-  const { error } = await mutation;
+  if (existing) {
+    const { data: updated, error } = await supabase
+      .from("push_subscriptions")
+      .update(values)
+      .eq("id", existing.id)
+      .eq("auth_user_id", authorization.context.authUserId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) return jsonError("Unable to enable notifications", 500);
+    if (!updated) return jsonError("Notification ownership changed; please try again", 409);
+    return NextResponse.json({ enabled: true });
+  }
+
+  const { error } = await supabase.from("push_subscriptions").insert(values);
 
   if (error?.code === "23505") {
     return jsonError("Notification ownership changed; please try again", 409);

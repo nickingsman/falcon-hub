@@ -16,9 +16,41 @@ test("subscription API requires active authenticated ownership for every method"
   assert.match(source, /export async function GET/);
   assert.match(source, /export async function POST/);
   assert.match(source, /export async function DELETE/);
-  assert.match(source, /existing\.auth_user_id !== authorization\.context\.authUserId/);
-  assert.match(source, /existing\.p256dh !== subscription\.keys\.p256dh/);
+  assert.match(source, /canUpdateExistingPushSubscription/);
+  assert.doesNotMatch(source, /existing\.p256dh !== subscription\.keys\.p256dh/);
+  assert.match(source, /\.eq\("auth_user_id", authorization\.context\.authUserId\)/);
+  assert.match(source, /Notification ownership changed; please try again/);
   assert.doesNotMatch(source, /\.upsert\(/);
+});
+
+test("logout removes the current device owner record before ending the session", () => {
+  const route = read("app/api/auth/logout/route.ts");
+  const client = read("lib/push-subscription-client.ts");
+  const sidebar = read("app/(app)/components/AppSidebar.tsx");
+  const more = read("app/(app)/more/page.tsx");
+  const deleteIndex = route.indexOf('.from("push_subscriptions")');
+  const signOutIndex = route.indexOf("supabase.auth.signOut()");
+
+  assert.ok(deleteIndex >= 0 && signOutIndex > deleteIndex);
+  assert.match(route, /\.eq\("auth_user_id", userData\.user\.id\)/);
+  assert.match(route, /Unable to safely disable notifications before logout/);
+  assert.match(client, /pushSubscriptionEndpoint: subscription\?\.endpoint \?\? null/);
+  assert.match(client, /subscription\.unsubscribe\(\)/);
+  assert.match(sidebar, /logoutWithPushCleanup/);
+  assert.match(more, /logoutWithPushCleanup/);
+});
+
+test("shared-device account switching invalidates stale subscriptions without transferring them", () => {
+  const guard = read("app/(app)/components/PushSubscriptionAccountGuard.tsx");
+  const layout = read("app/(app)/layout.tsx");
+  const settings = read("app/(app)/dsi/DsiNotificationSettings.tsx");
+
+  assert.match(guard, /enabledForCurrentDevice === false/);
+  assert.match(guard, /subscription\.unsubscribe\(\)/);
+  assert.match(layout, /<PushSubscriptionAccountGuard \/>/);
+  assert.match(settings, /Reset this device/);
+  assert.match(settings, /resetNotificationsForThisAccount/);
+  assert.doesNotMatch(guard, /requestPermission/);
 });
 
 test("cron endpoint requires CRON_SECRET before invoking delivery", () => {
