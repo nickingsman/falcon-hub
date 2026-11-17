@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
-import { getExistingBrowserPushSubscription } from "@/lib/push-subscription-client";
+import {
+  getExistingBrowserPushSubscription,
+  withPushOperationTimeout,
+} from "@/lib/push-subscription-client";
 
 export default function PushSubscriptionAccountGuard() {
   useEffect(() => {
@@ -28,7 +31,10 @@ export default function PushSubscriptionAccountGuard() {
           // This endpoint is not owned by the signed-in account. Invalidating it
           // prevents a stale shared-device subscription from receiving another
           // account's reminders. The new account must explicitly opt in.
-          await subscription.unsubscribe();
+          await withPushOperationTimeout(
+            subscription.unsubscribe(),
+            "Falcon Hub could not reset the previous account's notification subscription.",
+          );
         }
       } catch {
         // A transient status check must not alter a valid subscription. The

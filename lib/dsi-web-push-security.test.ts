@@ -132,13 +132,23 @@ test("migration enforces ownership, idempotency and service-only delivery audit"
 test("service worker opens DSI and the UI never prompts on initial load", () => {
   const worker = read("public/sw.js");
   const settings = read("app/(app)/dsi/DsiNotificationSettings.tsx");
+  const client = read("lib/push-subscription-client.ts");
   const effectBody = settings.slice(settings.indexOf("useEffect"), settings.indexOf("async function enableNotifications"));
 
   assert.match(worker, /notificationclick/);
   assert.match(worker, /new URL\("\/dsi", self\.location\.origin\)/);
   assert.doesNotMatch(effectBody, /requestPermission/);
   assert.match(settings, /async function enableNotifications/);
-  assert.match(settings, /Notification\.requestPermission\(\)/);
+  assert.match(settings, /requestPushNotificationPermission\(\)/);
+  assert.match(client, /Notification\.requestPermission\(\)/);
+  assert.match(client, /serviceWorkers\.register\("\/sw\.js", \{ scope: "\/" \}\)/);
+  assert.ok(client.indexOf("serviceWorkers.register") < client.indexOf("serviceWorkers.ready"));
+  assert.match(client, /withPushOperationTimeout/);
+  assert.match(client, /AbortController/);
+  assert.match(settings, /Requesting permission\.\.\./);
+  assert.match(settings, /Registering app\.\.\./);
+  assert.match(settings, /Subscribing device\.\.\./);
+  assert.match(settings, /Saving subscription\.\.\./);
   assert.doesNotMatch(settings, /VAPID_PRIVATE_KEY|CRON_SECRET/);
   assert.doesNotMatch(worker, /VAPID_PRIVATE_KEY|CRON_SECRET/);
 });

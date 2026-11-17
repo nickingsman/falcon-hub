@@ -1,16 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getExistingBrowserPushSubscription } from "@/lib/push-subscription-client";
+import {
+  ensurePushServiceWorkerRegistration,
+  fetchPushSubscriptionApi,
+  getExistingBrowserPushSubscription,
+  getPushSubscription,
+  requestPushNotificationPermission,
+  subscribeToPushNotifications,
+  withPushOperationTimeout,
+} from "@/lib/push-subscription-client";
 
 type SetupState =
-  | "loading"
+  | "checking"
   | "unsupported"
   | "disabled"
   | "denied"
   | "enabled"
   | "conflict"
-  | "working"
+  | "requesting-permission"
+  | "registering"
+  | "subscribing"
+  | "saving"
+  | "disabling"
+  | "resetting"
   | "error";
 
 function decodeVapidPublicKey(value: string) {
@@ -28,21 +41,18 @@ function supportsWebPush() {
   );
 }
 
-async function getCurrentSubscription() {
-  const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  await navigator.serviceWorker.ready;
-  return registration.pushManager.getSubscription();
-}
-
 export default function DsiNotificationSettings() {
-  const [state, setState] = useState<SetupState>("loading");
+  const [state, setState] = useState<SetupState>("checking");
   const [message, setMessage] = useState("");
   const [publicKey, setPublicKey] = useState("");
+  const [statusCheckAttempt, setStatusCheckAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadStatus() {
+      setMessage("");
+
       if (!supportsWebPush()) {
         if (!cancelled) setState("unsupported");
         return;
@@ -54,11 +64,16 @@ export default function DsiNotificationSettings() {
       }
 
       try {
-        const subscription = await getExistingBrowserPushSubscription();
+        if (!cancelled) setState("registering");
+        const registration = await ensurePushServiceWorkerRegistration();
+        if (cancelled) return;
+
+        setState("checking");
+        const subscription = await getPushSubscription(registration);
         const endpointQuery = subscription
           ? `?endpoint=${encodeURIComponent(subscription.endpoint)}`
           : "";
-        const response = await fetch(`/api/push-subscriptions${endpointQuery}`, {
+        const response = await fetchPushSubscriptionApi(`/api/push-subscriptions${endpointQuery}`, {
           cache: "no-store",
         });
         const result = (await response.json()) as {
@@ -85,28 +100,32 @@ export default function DsiNotificationSettings() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [statusCheckAttempt]);
 
   async function enableNotifications() {
     if (!supportsWebPush() || !publicKey) return;
 
-    setState("working");
     setMessage("");
 
     try {
-      const permission = await Notification.requestPermission();
+      setState("requesting-permission");
+      const permission = await requestPushNotificationPermission();
       if (permission !== "granted") {
         setState(permission === "denied" ? "denied" : "disabled");
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
-      const existing = await registration.pushManager.getSubscription();
-      const subscription = existing ?? await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: decodeVapidPublicKey(publicKey),
-      });
-      const response = await fetch("/api/push-subscriptions", {
+      setState("registering");
+      const registration = await ensurePushServiceWorkerRegistration();
+      setState("subscribing");
+      const existing = await getPushSubscription(registration);
+      const subscription = existing ?? await subscribeToPushNotifications(
+        registration,
+        decodeVapidPublicKey(publicKey),
+      );
+
+      setState("saving");
+      const response = await fetchPushSubscriptionApi("/api/push-subscriptions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(subscription.toJSON()),
@@ -121,7 +140,12 @@ export default function DsiNotificationSettings() {
           );
           return;
         }
-        if (!existing) await subscription.unsubscribe();
+        if (!existing) {
+          await withPushOperationTimeout(
+            subscription.unsubscribe(),
+            "This device took too long to clean up the incomplete subscription.",
+          ).catch(() => false);
+        }
         throw new Error(result.error || "Unable to enable notifications");
       }
 
@@ -134,12 +158,17 @@ export default function DsiNotificationSettings() {
   }
 
   async function resetNotificationsForThisAccount() {
-    setState("working");
+    setState("resetting");
     setMessage("");
 
     try {
       const subscription = await getExistingBrowserPushSubscription();
-      if (subscription) await subscription.unsubscribe();
+      if (subscription) {
+        await withPushOperationTimeout(
+          subscription.unsubscribe(),
+          "This device took too long to reset notifications. Please try again.",
+        );
+      }
       setState("disabled");
       setMessage("The previous account subscription was reset. You may now enable notifications.");
     } catch {
@@ -151,17 +180,18 @@ export default function DsiNotificationSettings() {
   async function disableNotifications() {
     if (!supportsWebPush()) return;
 
-    setState("working");
+    setState("disabling");
     setMessage("");
 
     try {
-      const subscription = await getCurrentSubscription();
+      const registration = await ensurePushServiceWorkerRegistration();
+      const subscription = await getPushSubscription(registration);
       if (!subscription) {
         setState("disabled");
         return;
       }
 
-      const response = await fetch("/api/push-subscriptions", {
+      const response = await fetchPushSubscriptionApi("/api/push-subscriptions", {
         method: "DELETE",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ endpoint: subscription.endpoint }),
@@ -169,7 +199,10 @@ export default function DsiNotificationSettings() {
       const result = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(result.error || "Unable to disable notifications");
 
-      await subscription.unsubscribe();
+      await withPushOperationTimeout(
+        subscription.unsubscribe(),
+        "This device took too long to disable notifications. Please try again.",
+      );
       setState("disabled");
       setMessage("DSI reminders are disabled on this device.");
     } catch (error) {
@@ -178,7 +211,26 @@ export default function DsiNotificationSettings() {
     }
   }
 
-  const isWorking = state === "loading" || state === "working";
+  const workingLabels: Partial<Record<SetupState, string>> = {
+    checking: "Checking...",
+    "requesting-permission": "Requesting permission...",
+    registering: "Registering app...",
+    subscribing: "Subscribing device...",
+    saving: "Saving subscription...",
+    disabling: "Disabling...",
+    resetting: "Resetting...",
+  };
+  const workingMessages: Partial<Record<SetupState, string>> = {
+    checking: "Checking this device's notification status...",
+    "requesting-permission": "Waiting for your notification permission choice...",
+    registering: "Preparing Falcon Hub notifications on this device...",
+    subscribing: "Creating this device's secure notification subscription...",
+    saving: "Saving this device's subscription to your Falcon Hub account...",
+    disabling: "Removing this device's notification subscription...",
+    resetting: "Resetting the previous account's subscription on this device...",
+  };
+  const isWorking = state in workingLabels;
+  const buttonLabel = workingLabels[state] ?? (state === "error" ? "Try Again" : "Enable Notifications");
 
   return (
     <section className="mt-4 rounded-[24px] border border-zinc-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)] sm:p-5">
@@ -221,11 +273,18 @@ export default function DsiNotificationSettings() {
           ) : (
             <button
               type="button"
-              onClick={enableNotifications}
-              disabled={isWorking || state === "unsupported" || state === "denied" || !publicKey}
+              onClick={state === "error"
+                ? () => setStatusCheckAttempt((attempt) => attempt + 1)
+                : enableNotifications}
+              disabled={
+                isWorking ||
+                state === "unsupported" ||
+                state === "denied" ||
+                (state !== "error" && !publicKey)
+              }
               className="rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
             >
-              {isWorking ? "Checking..." : "Enable Notifications"}
+              {buttonLabel}
             </button>
           )}
         </div>
@@ -245,6 +304,10 @@ export default function DsiNotificationSettings() {
           </p>
         ) : state === "disabled" ? (
           <p className="text-zinc-500">Not enabled on this device.</p>
+        ) : workingMessages[state] ? (
+          <p aria-live="polite" className="text-zinc-500">
+            {workingMessages[state]}
+          </p>
         ) : null}
         {message ? (
           <p className={`mt-1 ${state === "error" ? "text-red-700" : "text-zinc-600"}`}>
