@@ -16,6 +16,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-server";
 import { AppPermissionProvider } from "./components/AppPermissionProvider";
 import AppSidebar from "./components/AppSidebar";
 import MobileBottomNav from "./components/MobileBottomNav";
+import PushSubscriptionAccountGuard from "./components/PushSubscriptionAccountGuard";
 import { getMemberDisplayName } from "@/lib/member-display";
 
 export const dynamic = "force-dynamic";
@@ -109,6 +110,7 @@ export default async function AppLayout({
     <div className="min-h-screen bg-[#f7f7f3] text-zinc-900">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
         <AppPermissionProvider permissions={permissions}>
+          <PushSubscriptionAccountGuard />
           <AppSidebar />
           <div className="min-w-0 flex-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-0">
             {children}

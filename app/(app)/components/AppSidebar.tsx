@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { logoutWithPushCleanup } from "@/lib/push-subscription-client";
 import { useAppPermissions } from "./AppPermissionProvider";
 import AppNavigationMenu from "./AppNavigationMenu";
 import {
@@ -15,14 +17,21 @@ export default function AppSidebar() {
   const permissions = useAppPermissions();
   const { displayName, role } = permissions;
   const visibleSidebarItems = getVisibleDesktopNavItems(permissions);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-    });
+    try {
+      setIsLoggingOut(true);
+      setLogoutError("");
+      await logoutWithPushCleanup();
 
-    router.replace("/login");
-    router.refresh();
+      router.replace("/login");
+      router.refresh();
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : "Unable to sign out safely");
+      setIsLoggingOut(false);
+    }
   }
 
   return (
@@ -72,10 +81,16 @@ export default function AppSidebar() {
           <button
             type="button"
             onClick={handleLogout}
+            disabled={isLoggingOut}
             className="mt-4 rounded-full border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:border-[var(--falcon-gold)] hover:bg-zinc-900 hover:text-white focus:outline-none focus:ring-2 focus:ring-[var(--falcon-gold)] focus:ring-offset-2 focus:ring-offset-[var(--falcon-charcoal)]"
           >
-            Logout
+            {isLoggingOut ? "Signing out..." : "Logout"}
           </button>
+          {logoutError ? (
+            <p role="alert" className="mt-2 text-xs leading-5 text-red-300">
+              {logoutError}
+            </p>
+          ) : null}
         </div>
       </div>
     </aside>

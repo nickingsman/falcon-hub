@@ -15,6 +15,7 @@ import {
   getMalaysiaYesterdayDateString,
 } from "@/lib/malaysia-date";
 import { useAppPermissions } from "../components/AppPermissionProvider";
+import DsiNotificationSettings from "./DsiNotificationSettings";
 
 type DsiView = "entry" | "history" | "team";
 type DsiDay = "today" | "yesterday";
@@ -658,6 +659,7 @@ export default function DsiPage() {
 
       {activeView === "entry" ? (
         <>
+      <DsiNotificationSettings />
       <section className="mt-4 space-y-3 pb-44 sm:pb-0">
         {activityGroups.map((group) => (
           <div
