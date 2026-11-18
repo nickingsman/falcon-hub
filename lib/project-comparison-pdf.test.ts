@@ -47,6 +47,33 @@ test("a failed project refresh, mismatched project, or unavailable selected medi
   assert.deepEqual(images, options.map(() => ({ cover: null, layout: null })));
 });
 
+test("a project request that never settles falls back at the deadline while other columns keep their media", { timeout: 1_000 }, async () => {
+  const options = ["stalled", "ready"].map((id) => ({
+    project: { id },
+    unitType: { id: "unit" },
+    layoutPlan: { id: "unit:unit-layout" },
+  }));
+  let stalledSignal: AbortSignal | undefined;
+
+  const images = await refreshComparisonPdfImages(options, async (id, signal) => {
+    if (id === "stalled") {
+      stalledSignal = signal;
+      return new Promise<never>(() => {});
+    }
+
+    return {
+      project: { id, cover_media: { signed_url: "https://storage.example/cover" } },
+      unit_types: [{ id: "unit", layout: { signed_url: "https://storage.example/layout" } }],
+    };
+  }, 20);
+
+  assert.equal(stalledSignal?.aborted, true);
+  assert.deepEqual(images, [
+    { cover: null, layout: null },
+    { cover: "https://storage.example/cover", layout: "https://storage.example/layout" },
+  ]);
+});
+
 test("waits for decodable images and reveals only the failed or timed-out image's fallback", async () => {
   const removed: string[] = [];
   const fallbackShown: string[] = [];

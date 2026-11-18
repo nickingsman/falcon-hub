@@ -14,17 +14,28 @@ type ProjectMediaOptions = {
 export async function refreshComparisonPdfImages(
   options: SelectedOption[],
   fetchOptions: (projectId: string, signal: AbortSignal) => Promise<ProjectMediaOptions>,
+  timeoutMs = 15_000,
 ) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  const projects = new Map(
-    [...new Set(options.map(({ project }) => project.id))].map((id) => [
-      id,
-      fetchOptions(id, controller.signal).catch(() => null),
-    ]),
-  );
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timeout = setTimeout(() => {
+      resolve(null);
+      controller.abort();
+    }, timeoutMs);
+  });
 
   try {
+    const projects = new Map(
+      [...new Set(options.map(({ project }) => project.id))].map((id) => [
+        id,
+        Promise.race([
+          Promise.resolve().then(() => fetchOptions(id, controller.signal)).catch(() => null),
+          deadline,
+        ]),
+      ]),
+    );
+
     return await Promise.all(options.map(async ({ project, unitType, layoutPlan }) => {
       const fresh = await projects.get(project.id);
       if (fresh?.project.id !== project.id) return { cover: null, layout: null };
