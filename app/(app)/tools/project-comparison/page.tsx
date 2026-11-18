@@ -32,6 +32,11 @@ import {
   type PurchaseCostTreatment,
 } from "@/lib/project-comparison-options";
 import {
+  comparisonRecommendationParagraphs,
+  prepareComparisonPdfImages,
+  refreshComparisonPdfImages,
+} from "@/lib/project-comparison-pdf";
+import {
   projectComparisonSavedWorkSchemaVersion,
   validateProjectComparisonSavedWorkPayload,
   type ProjectComparisonSavedMediaSnapshotV1,
@@ -1668,6 +1673,7 @@ function formatConnectivityItemsText(items: ConnectivityPoint[]) {
 
 function buildComparisonProposalHtml({
   comparedOptions,
+  images,
   assumptions,
   activeConnectivityGroups,
   selectedSectionIds,
@@ -1676,6 +1682,7 @@ function buildComparisonProposalHtml({
   branding,
 }: {
   comparedOptions: ComparedOption[];
+  images: Awaited<ReturnType<typeof refreshComparisonPdfImages>>;
   assumptions: ComparisonAssumptions;
   activeConnectivityGroups: typeof connectivityGroups;
   selectedSectionIds: ExportSectionId[];
@@ -1719,7 +1726,9 @@ function buildComparisonProposalHtml({
     },
   ].filter((group) => group.leadingHtml.trim() || group.sections.length > 0);
   const generatedDate = formatGeneratedDate();
-  const trimmedAgentInsights = agentInsights.trim();
+  const recommendations = comparisonRecommendationParagraphs(
+    agentInsights.trim() || "No agent recommendation added.",
+  );
 
   return `<!doctype html>
     <html>
@@ -1747,11 +1756,6 @@ function buildComparisonProposalHtml({
 
           .proposal {
             width: 100%;
-          }
-
-          .opening-page {
-            break-after: page;
-            min-height: 270mm;
           }
 
           .proposal-header {
@@ -1816,7 +1820,6 @@ function buildComparisonProposalHtml({
             font-size: 10px;
             font-weight: 700;
             justify-content: center;
-            min-height: 86px;
             text-transform: uppercase;
           }
 
@@ -1910,42 +1913,19 @@ function buildComparisonProposalHtml({
             font-size: 10px;
             line-height: 1.5;
             white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            orphans: 3;
+            widows: 3;
           }
 
-          .insights-page-one-body {
-            max-height: 42mm;
-            overflow: hidden;
+          .insights h2,
+          .insights .keep-with-next {
+            break-after: avoid;
+            page-break-after: avoid;
           }
 
-          .insights-continuation {
-            break-after: page;
-            page-break-after: always;
-            padding-top: 0;
-          }
-
-          .insights-continuation[hidden] {
-            display: none;
-          }
-
-          .insights-continuation h2 {
-            border-bottom: 2px solid #0f766e;
-            padding-bottom: 8px;
-          }
-
-          .insights-continuation h2 span {
-            color: #71717a;
-            display: block;
-            font-size: 10px;
-            letter-spacing: 0.16em;
-            margin-top: 3px;
-          }
-
-          .insights-continuation p {
-            color: #3f3f46;
-            font-size: 11px;
-            line-height: 1.7;
-            margin-top: 12px;
-            white-space: pre-wrap;
+          [hidden] {
+            display: none !important;
           }
 
           .pdf-section {
@@ -2127,6 +2107,15 @@ function buildComparisonProposalHtml({
 
           ${getCustomerPdfBrandingStyles()}
 
+          @media print {
+            .insights {
+              /* Reserve space for the fixed footer on every fragment of a long recommendation. */
+              -webkit-box-decoration-break: clone;
+              box-decoration-break: clone;
+              padding-bottom: 10mm;
+            }
+          }
+
           @media screen {
             body {
               background: #f4f4f5;
@@ -2145,76 +2134,70 @@ function buildComparisonProposalHtml({
       </head>
       <body>
         ${renderCustomerPdfWatermark(branding)}
-        <template id="agent-insights-source">${escapeHtml(trimmedAgentInsights)}</template>
         <main class="proposal">
-          <div class="opening-page">
-            <header class="proposal-header">
-              <div>
-                <p class="eyebrow">Project Comparison</p>
-                <h1>Property Comparison Proposal</h1>
-              </div>
-              <p class="prepared-date">
-                Prepared on<br />
-                <strong>${escapeHtml(generatedDate)}</strong>
-              </p>
-            </header>
+          <header class="proposal-header">
+            <div>
+              <p class="eyebrow">Project Comparison</p>
+              <h1>Property Comparison Proposal</h1>
+            </div>
+            <p class="prepared-date">
+              Prepared on<br />
+              <strong>${escapeHtml(generatedDate)}</strong>
+            </p>
+          </header>
 
-            <section class="project-grid">
+          <section class="project-grid">
+            ${comparedOptions
+              .map(
+                (option, index) => {
+                  const { cover } = images[index];
+                  return `
+                  <article class="project-card">
+                    ${cover ? `<img class="project-cover" src="${escapeHtml(cover)}" alt="${escapeHtml(option.project.name)} cover" />` : ""}
+                    <div class="project-cover project-cover-placeholder"${cover ? " hidden" : ""}>No Cover</div>
+                    <div class="project-card-body">
+                      <p class="project-name">${escapeHtml(option.project.name)}</p>
+                      <p class="project-meta">${escapeHtml(formatText(option.project.location))}</p>
+                      <p class="project-meta">Unit Type: ${escapeHtml(getUnitTypeLabel(option.unitType))}</p>
+                      <p class="project-package">Sales Package: ${escapeHtml(option.commercialPackage?.package_name ?? "No Package")}</p>
+                    </div>
+                  </article>
+                `;
+                },
+              )
+              .join("")}
+          </section>
+
+          <section class="layout-section">
+            <div class="section-heading">
+              <h2>Selected Layout Plan</h2>
+              <p>Customer-visible layout selected for this comparison.</p>
+            </div>
+            <div class="layout-grid">
               ${comparedOptions
                 .map(
-                  (option) => `
-                    <article class="project-card">
-                      ${
-                        option.project.cover_media?.signed_url
-                          ? `<img class="project-cover" src="${escapeHtml(option.project.cover_media.signed_url)}" alt="${escapeHtml(option.project.name)} cover" />`
-                          : `<div class="project-cover project-cover-placeholder">No Cover</div>`
-                      }
-                      <div class="project-card-body">
-                        <p class="project-name">${escapeHtml(option.project.name)}</p>
-                        <p class="project-meta">${escapeHtml(formatText(option.project.location))}</p>
-                        <p class="project-meta">Unit Type: ${escapeHtml(getUnitTypeLabel(option.unitType))}</p>
-                        <p class="project-package">Sales Package: ${escapeHtml(option.commercialPackage?.package_name ?? "No Package")}</p>
+                  (option, index) => {
+                    const { layout } = images[index];
+                    return `
+                    <article class="layout-card">
+                      <p class="layout-name">${escapeHtml(option.project.name)}<br />${escapeHtml(option.layoutPlan ? getLayoutPlanLabel(option.layoutPlan) : "No Layout Plan available")}</p>
+                      <div class="layout-image-frame">
+                        ${layout ? `<img class="layout-image" src="${escapeHtml(layout)}" alt="${escapeHtml(option.project.name)} selected layout plan" />` : ""}
+                        <div class="layout-placeholder"${layout ? " hidden" : ""}>No Layout Plan available</div>
                       </div>
                     </article>
-                  `,
+                  `;
+                  },
                 )
                 .join("")}
-            </section>
+            </div>
+          </section>
 
-            <section class="layout-section">
-              <div class="section-heading">
-                <h2>Selected Layout Plan</h2>
-                <p>Customer-visible layout selected for this comparison.</p>
-              </div>
-              <div class="layout-grid">
-                ${comparedOptions
-                  .map(
-                    (option) => `
-                      <article class="layout-card">
-                        <p class="layout-name">${escapeHtml(option.project.name)}<br />${escapeHtml(option.layoutPlan ? getLayoutPlanLabel(option.layoutPlan) : "No Layout Plan available")}</p>
-                        <div class="layout-image-frame">
-                          ${
-                            option.layoutPlan?.media.signed_url
-                              ? `<img class="layout-image" src="${escapeHtml(option.layoutPlan.media.signed_url)}" alt="${escapeHtml(option.project.name)} selected layout plan" />`
-                              : `<div class="layout-placeholder">No Layout Plan available</div>`
-                          }
-                        </div>
-                      </article>
-                    `,
-                  )
-                  .join("")}
-              </div>
-            </section>
-
-            <section class="insights">
-              <h2>Agent Insights &amp; Recommendation</h2>
-              <p id="agent-insights-page-one" class="insights-page-one-body"></p>
-            </section>
-          </div>
-
-          <section id="agent-insights-continuation" class="insights-continuation" hidden>
-            <h2>Agent Insights &amp; Recommendation <span>Continued</span></h2>
-            <p id="agent-insights-continuation-body"></p>
+          <section class="insights">
+            <h2>Agent Insights &amp; Recommendation</h2>
+            ${recommendations.map(({ text, keepWithNext }) =>
+              `<p${keepWithNext ? ' class="keep-with-next"' : ""}>${escapeHtml(text)}</p>`,
+            ).join("")}
           </section>
 
           ${sectionGroups
@@ -2230,107 +2213,8 @@ function buildComparisonProposalHtml({
 
           ${renderCustomerPdfBranding(branding)}
         </main>
-        <script>
-          (() => {
-            const source = document.getElementById("agent-insights-source");
-            const pageOneBody = document.getElementById("agent-insights-page-one");
-            const continuation = document.getElementById("agent-insights-continuation");
-            const continuationBody = document.getElementById("agent-insights-continuation-body");
-
-            if (!source || !pageOneBody || !continuation || !continuationBody) return;
-
-            const fullText = source.content.textContent || "";
-
-            if (!fullText.trim()) {
-              pageOneBody.textContent = "No agent recommendation added.";
-              continuation.hidden = true;
-              return;
-            }
-
-            pageOneBody.textContent = fullText;
-
-            if (pageOneBody.scrollHeight <= pageOneBody.clientHeight + 1) {
-              continuation.hidden = true;
-              return;
-            }
-
-            let low = 0;
-            let high = fullText.length;
-            let best = 0;
-
-            while (low <= high) {
-              const mid = Math.floor((low + high) / 2);
-
-              pageOneBody.textContent = fullText.slice(0, mid).trimEnd();
-
-              if (pageOneBody.scrollHeight <= pageOneBody.clientHeight + 1) {
-                best = mid;
-                low = mid + 1;
-              } else {
-                high = mid - 1;
-              }
-            }
-
-            const firstCandidate = fullText.slice(0, best);
-            const whitespaceSplit = Math.max(
-              firstCandidate.lastIndexOf(" "),
-              firstCandidate.lastIndexOf("\\n"),
-              firstCandidate.lastIndexOf("\\t"),
-            );
-            const splitIndex =
-              whitespaceSplit > Math.max(20, best - 120) ? whitespaceSplit : best;
-            const pageOneText = fullText.slice(0, splitIndex).trimEnd();
-            const continuationText = fullText.slice(splitIndex).trimStart();
-
-            pageOneBody.textContent = pageOneText || fullText.slice(0, best).trimEnd();
-            continuationBody.textContent = pageOneText
-              ? continuationText
-              : fullText.slice(best).trimStart();
-            continuation.hidden = continuationBody.textContent.trim().length === 0;
-          })();
-        </script>
       </body>
     </html>`;
-}
-
-function printComparisonWhenImagesAreReady(proposalWindow: Window) {
-  const images = Array.from(proposalWindow.document.images);
-
-  if (images.length === 0) {
-    proposalWindow.print();
-    return;
-  }
-
-  let pendingImages = images.filter((image) => !image.complete).length;
-
-  if (pendingImages === 0) {
-    proposalWindow.print();
-    return;
-  }
-
-  let hasPrinted = false;
-  const printOnce = () => {
-    if (hasPrinted) return;
-
-    hasPrinted = true;
-    proposalWindow.print();
-  };
-  const markImageDone = () => {
-    pendingImages -= 1;
-
-    if (pendingImages <= 0) {
-      printOnce();
-    }
-  };
-
-  for (const image of images) {
-    if (image.complete) continue;
-
-    image.addEventListener("load", markImageDone, { once: true });
-    image.addEventListener("error", markImageDone, { once: true });
-  }
-
-  window.setTimeout(printOnce, 5000);
 }
 
 type ComparisonRow = {
@@ -2557,9 +2441,10 @@ function attachFreshCustomerSafeMedia(savedOptions: ProjectOptions, freshOptions
   } satisfies ProjectOptions;
 }
 
-async function fetchProjectOptions(projectId: string) {
+async function fetchProjectOptions(projectId: string, signal?: AbortSignal) {
   const response = await fetch(`/api/tools/project-comparison/projects/${projectId}/options`, {
     cache: "no-store",
+    signal,
   });
 
   if (!response.ok) {
@@ -3493,7 +3378,7 @@ export default function ProjectComparisonPage() {
     );
   }
 
-  function handleGenerateComparisonPdf() {
+  async function handleGenerateComparisonPdf() {
     if (selectedExportSections.length === 0 || comparedOptions.length === 0) return;
 
     const shouldInstallStandaloneRecovery = isIosStandalonePwa(
@@ -3506,10 +3391,18 @@ export default function ProjectComparisonPage() {
       return;
     }
 
+    proposalWindow.document.title = "Project Comparison Proposal";
+    proposalWindow.document.body.textContent = "Preparing proposal…";
+    setIsExportModalOpen(false);
+
+    const images = await refreshComparisonPdfImages(comparedOptions, fetchProjectOptions);
+    if (proposalWindow.closed) return;
+
     proposalWindow.document.open();
     proposalWindow.document.write(
       buildComparisonProposalHtml({
         comparedOptions,
+        images,
         assumptions,
         activeConnectivityGroups,
         selectedSectionIds: selectedExportSections,
@@ -3532,10 +3425,10 @@ export default function ProjectComparisonPage() {
       });
     }
 
+    await prepareComparisonPdfImages(proposalWindow.document.images);
+    if (proposalWindow.closed) return;
     proposalWindow.focus();
-    setIsExportModalOpen(false);
-
-    printComparisonWhenImagesAreReady(proposalWindow);
+    proposalWindow.print();
   }
 
   const activeConnectivityGroups = hasCompared
