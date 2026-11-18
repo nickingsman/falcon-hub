@@ -1322,22 +1322,6 @@ function renderPdfObjectiveInsights(insights: ProjectComparisonInsight[]) {
   `;
 }
 
-function renderPdfSectionGroup(
-  sections: PdfTableSection[],
-  comparedOptions: ComparedOption[],
-  startsNewPage: boolean,
-  leadingHtml = "",
-) {
-  if (sections.length === 0 && !leadingHtml.trim()) return "";
-
-  return `
-    <div class="pdf-section-group${startsNewPage ? " pdf-section-group-new-page" : ""}">
-      ${leadingHtml}
-      ${sections.map((section) => renderPdfTable(section, comparedOptions)).join("")}
-    </div>
-  `;
-}
-
 function buildComparisonPdfSections({
   comparedOptions,
   assumptions,
@@ -1699,32 +1683,11 @@ function buildComparisonProposalHtml({
   const objectiveInsightsHtml = selectedSectionIds.includes("objective")
     ? renderPdfObjectiveInsights(objectiveInsights)
     : "";
-  const sectionGroups = [
-    {
-      leadingHtml: objectiveInsightsHtml,
-      sections: ["quick", "investment"]
-        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
-        .filter((section): section is PdfTableSection => Boolean(section)),
-    },
-    {
-      leadingHtml: "",
-      sections: ["ownership"]
-        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
-        .filter((section): section is PdfTableSection => Boolean(section)),
-    },
-    {
-      leadingHtml: "",
-      sections: ["overview", "unit"]
-        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
-        .filter((section): section is PdfTableSection => Boolean(section)),
-    },
-    {
-      leadingHtml: "",
-      sections: ["connectivity"]
-        .map((sectionId) => sectionById.get(sectionId as ExportSectionId))
-        .filter((section): section is PdfTableSection => Boolean(section)),
-    },
-  ].filter((group) => group.leadingHtml.trim() || group.sections.length > 0);
+  const tableHtml = (["quick", "investment", "ownership", "overview", "unit", "connectivity"] as const)
+    .map((id) => sectionById.get(id))
+    .filter((section): section is PdfTableSection => Boolean(section))
+    .map((section) => renderPdfTable(section, comparedOptions))
+    .join("");
   const generatedDate = formatGeneratedDate();
   const recommendations = comparisonRecommendationParagraphs(
     agentInsights.trim() || "No agent recommendation added.",
@@ -1934,14 +1897,15 @@ function buildComparisonProposalHtml({
             margin-top: 12px;
           }
 
-          .pdf-section-group {
-            break-inside: auto;
-            page-break-inside: auto;
+          .pdf-section > .section-heading,
+          .pdf-insight-group h3,
+          thead {
+            break-after: avoid;
+            page-break-after: avoid;
           }
 
-          .pdf-section-group-new-page {
-            break-before: page;
-            page-break-before: always;
+          thead {
+            display: table-header-group;
           }
 
           .pdf-objective-insights {
@@ -2108,6 +2072,13 @@ function buildComparisonProposalHtml({
           ${getCustomerPdfBrandingStyles()}
 
           @media print {
+            .comparison-sections {
+              /* Leave clearance above the repeating footer on each page. */
+              -webkit-box-decoration-break: clone;
+              box-decoration-break: clone;
+              padding-bottom: 10mm;
+            }
+
             .insights {
               /* Reserve space for the fixed footer on every fragment of a long recommendation. */
               -webkit-box-decoration-break: clone;
@@ -2200,16 +2171,9 @@ function buildComparisonProposalHtml({
             ).join("")}
           </section>
 
-          ${sectionGroups
-            .map((group, index) =>
-              renderPdfSectionGroup(
-                group.sections,
-                comparedOptions,
-                index > 0,
-                group.leadingHtml,
-              ),
-            )
-            .join("")}
+          ${objectiveInsightsHtml || tableHtml
+            ? `<div class="comparison-sections">${objectiveInsightsHtml}${tableHtml}</div>`
+            : ""}
 
           ${renderCustomerPdfBranding(branding)}
         </main>
