@@ -26,6 +26,7 @@ test("legacy ROI Saved Work defaults to Malaysian / PR with RM0 consent", () => 
   assert.equal(validated.payload.foreignerConsent, 0);
   assert.equal(validated.payload.purchaseMethod, "loan");
   assert.equal(validated.payload.form.maintenanceFeeType, "");
+  assert.equal(validated.payload.form.showMaintenanceFee, true);
   assert.equal(validated.payload.form.landSizeSqft, "");
 });
 
@@ -107,4 +108,17 @@ test("cash purchase method round-trips while financing assumptions remain stored
   assert.equal(validated.payload.form.loanMarginPercent, "90");
   assert.equal(validated.payload.form.annualInterestRatePercent, "3.7");
   assert.equal(validated.payload.form.loanTenureYears, "35");
+});
+
+test("hidden maintenance round-trips without clearing the entered rate", () => {
+  const validated = validateRoiSavedWorkPayload({
+    ...legacyPayload,
+    form: { showMaintenanceFee: false, unitSizeSqft: "1000", maintenanceRatePerSqft: "0.35" },
+  });
+
+  assert.equal(validated.valid, true);
+  if (!validated.valid) return;
+  assert.equal(validated.payload.form.showMaintenanceFee, false);
+  assert.equal(validated.payload.form.maintenanceRatePerSqft, "0.35");
+  assert.deepEqual(validateRoiSavedWorkPayload(validated.payload), validated);
 });

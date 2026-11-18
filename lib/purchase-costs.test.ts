@@ -213,3 +213,25 @@ test("cash foreigner purchase keeps MOT and consent while excluding loan costs",
   assert.equal(result.loanAmount, 0);
   assert.equal(result.estimatedTotalCashRequired, 1_085_000);
 });
+
+test("built-up maintenance is a monthly cost outside financing and upfront cash", () => {
+  const input = {
+    spaPrice: 500_000,
+    packageItems: [],
+    loanMarginPercent: 90,
+    annualInterestRatePercent: 3.7,
+    loanTenureYears: 35,
+    unitSizeSqft: 1_200,
+    landSizeSqft: 2_000,
+    expectedMonthlyRental: 3_000,
+    otherUpfrontCosts: 5_000,
+  };
+
+  const withoutMaintenance = calculateRoi({ ...input, maintenanceRatePerSqft: 0 });
+  const withMaintenance = calculateRoi({ ...input, maintenanceRatePerSqft: 0.35 });
+
+  assert.equal(withMaintenance.monthlyMaintenance, 420);
+  assert.equal(withMaintenance.estimatedMonthlyInstalment, withoutMaintenance.estimatedMonthlyInstalment);
+  assert.equal(withMaintenance.upfrontCashBeforeOtherCosts, withoutMaintenance.upfrontCashBeforeOtherCosts);
+  assert.equal(withMaintenance.estimatedTotalCashRequired, withoutMaintenance.estimatedTotalCashRequired);
+});

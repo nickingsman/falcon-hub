@@ -40,6 +40,7 @@ export type RoiSavedWorkFormV1 = {
   annualInterestRatePercent: string;
   loanTenureYears: string;
   expectedMonthlyRental: string;
+  showMaintenanceFee: boolean;
   maintenanceRatePerSqft: string;
   maintenanceFeeType: "per_sqft" | "fixed" | "";
   maintenanceCalculationBasis: "built_up" | "land_size" | "";
@@ -274,6 +275,7 @@ export function validateRoiSavedWorkPayload(value: unknown):
     annualInterestRatePercent: stringValue(value.form.annualInterestRatePercent),
     loanTenureYears: stringValue(value.form.loanTenureYears),
     expectedMonthlyRental: stringValue(value.form.expectedMonthlyRental),
+    showMaintenanceFee: value.form.showMaintenanceFee !== false,
     maintenanceRatePerSqft: stringValue(value.form.maintenanceRatePerSqft),
     maintenanceFeeType:
       value.form.maintenanceFeeType === "fixed" || value.form.maintenanceFeeType === "per_sqft"
