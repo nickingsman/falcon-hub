@@ -69,6 +69,7 @@ type CalculatorForm = {
   annualInterestRatePercent: string;
   loanTenureYears: string;
   expectedMonthlyRental: string;
+  showMaintenanceFee: boolean;
   maintenanceRatePerSqft: string;
   maintenanceFeeType: MaintenanceFeeType | "";
   maintenanceCalculationBasis: MaintenanceCalculationBasis | "";
@@ -1216,6 +1217,7 @@ function buildRoiProposalHtml({
   packageItems: EditablePackageItem[];
   salesPackageName: string;
 }) {
+  const { showMaintenanceFee } = form;
   const projectName = form.projectName.trim() || "Unit Calculation Proposal";
   const renderUnitPresentation = shouldRenderUnitPresentation(
     unitPresentation,
@@ -2232,7 +2234,12 @@ function buildRoiProposalHtml({
             ${proposalRow("Loan Amount", formatCurrency(result.loanAmount))}
             ${proposalRow("Estimated Monthly Loan Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment))}
           ` : `<p class="row-note">Cash Purchase · No financing calculation required.</p>`}
+          ${showMaintenanceFee && purchaseMethod === "loan" ? proposalRow("Estimated Monthly Maintenance Fee", formatCurrencyDetailed(result.monthlyMaintenance)) : ""}
         </div>
+        ${showMaintenanceFee && purchaseMethod === "cash" ? `<div class="section">
+          <h2>Monthly Ownership Costs</h2>
+          ${proposalRow("Estimated Monthly Maintenance Fee", formatCurrencyDetailed(result.monthlyMaintenance))}
+        </div>` : ""}
         <div class="section">
           <h2>Cash Required</h2>
           ${proposalRow("Upfront Cash Required", formatCurrency(result.upfrontCashBeforeOtherCosts))}
@@ -2262,10 +2269,9 @@ function buildRoiProposalHtml({
                 <h2>Rental / Operating Figures</h2>
                 ${proposalRow("Expected Monthly Rental", formatCurrencyDetailed(numericInput.expectedMonthlyRental))}
                 ${purchaseMethod === "loan" ? proposalRow("Estimated Monthly Loan Instalment", formatCurrencyDetailed(result.estimatedMonthlyInstalment)) : ""}
-                ${proposalRow("Monthly Maintenance", formatCurrencyDetailed(result.monthlyMaintenance))}
-                ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow), false, monthlyCashFlowBreakdown)}
+                ${proposalRow("Estimated Monthly Cash Flow", formatCurrencyDetailed(result.monthlyCashFlow), false, showMaintenanceFee ? monthlyCashFlowBreakdown : [])}
                 ${proposalRow("Estimated Annual Cash Flow", formatCurrencyDetailed(result.annualCashFlow), false, [annualCashFlowExplanation])}
-                ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent), false, ["Based on estimated annual net rental after maintenance."])}
+                ${proposalRow("Net Rental Yield", formatPercent(result.netRentalYieldPercent), false, showMaintenanceFee ? ["Based on estimated annual net rental after maintenance."] : [])}
               </div>`
             : ""
         }
@@ -2483,6 +2489,7 @@ export default function RoiCalculatorPage() {
     annualInterestRatePercent: "3.7",
     loanTenureYears: "35",
     expectedMonthlyRental: "",
+    showMaintenanceFee: true,
     maintenanceRatePerSqft: "",
     maintenanceFeeType: "",
     maintenanceCalculationBasis: "",
@@ -2635,13 +2642,14 @@ export default function RoiCalculatorPage() {
       messages.push("Built-Up Size cannot be negative.");
     }
 
-    if (form.maintenanceCalculationBasis === "land_size" && (!Number.isFinite(numericInput.landSizeSqft) || numericInput.landSizeSqft <= 0)) {
+    if (form.showMaintenanceFee && form.maintenanceCalculationBasis === "land_size" && (!Number.isFinite(numericInput.landSizeSqft) || numericInput.landSizeSqft <= 0)) {
       messages.push("Land Size is required for land-size maintenance.");
     }
 
     if (
-      !Number.isFinite(numericInput.maintenanceRatePerSqft) ||
-      numericInput.maintenanceRatePerSqft < 0
+      form.showMaintenanceFee &&
+      (!Number.isFinite(numericInput.maintenanceRatePerSqft) ||
+        numericInput.maintenanceRatePerSqft < 0)
     ) {
       messages.push("Maintenance Rate cannot be negative.");
     }
@@ -2713,7 +2721,7 @@ export default function RoiCalculatorPage() {
     }
 
     return messages;
-  }, [applicablePurchaseCosts, buyerType, form.maintenanceCalculationBasis, numericInput, packageItems, purchaseMethod, purchasePurpose]);
+  }, [applicablePurchaseCosts, buyerType, form.maintenanceCalculationBasis, form.showMaintenanceFee, numericInput, packageItems, purchaseMethod, purchasePurpose]);
   const applicableForeignerConsent = getApplicableForeignerConsent(
     buyerType,
     numericInput.foreignerConsent,
@@ -2747,7 +2755,7 @@ export default function RoiCalculatorPage() {
       ? `${formatCurrencyDetailed(result.monthlyCashFlow)} × 12 = ${formatCurrencyDetailed(result.annualCashFlow)}`
       : "Monthly Cash Flow × 12";
 
-  function updateField(field: keyof CalculatorForm, value: string) {
+  function updateField<Field extends keyof CalculatorForm>(field: Field, value: CalculatorForm[Field]) {
     setForm((current) => ({
       ...current,
       [field]: value,
@@ -4419,31 +4427,66 @@ export default function RoiCalculatorPage() {
                       />
                   </label>
                 ) : null}
-                {form.maintenanceFeeType !== "fixed" ? <label className="block text-sm text-zinc-600">
-                  <span className="mb-1 block font-medium text-zinc-900">
-                    Maintenance Rate {form.maintenanceCalculationBasis === "land_size" ? "(Land Size)" : "(Built-Up Size)"}
-                  </span>
-                  <div className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.maintenanceRatePerSqft.trim(), hasEnteredValue(form.maintenanceRatePerSqft) && (!Number.isFinite(numericInput.maintenanceRatePerSqft) || numericInput.maintenanceRatePerSqft < 0))}`}>
-                    <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">
-                      RM
-                    </span>
-                    <input
-                      inputMode="decimal"
-                      value={form.maintenanceRatePerSqft}
-                      onChange={(event) =>
-                        updateField("maintenanceRatePerSqft", event.target.value)
-                      }
-                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
-                      placeholder="0.35"
-                    />
-                    <span className="border-l border-zinc-200 px-3 py-2.5 text-zinc-500">
-                      /psf
-                    </span>
+                <div className="min-w-0 text-sm text-zinc-600">
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <label
+                      id="maintenance-fee-label"
+                      htmlFor={form.showMaintenanceFee ? "maintenance-fee" : undefined}
+                      className="font-medium text-zinc-900"
+                    >
+                      {form.maintenanceFeeType === "fixed"
+                        ? "Fixed Monthly Maintenance"
+                        : `Maintenance Rate (${form.maintenanceCalculationBasis === "land_size" ? "Land Size" : "Built-Up Size"})`}
+                    </label>
+                    <div
+                      role="group"
+                      aria-labelledby="maintenance-fee-label"
+                      className="inline-flex shrink-0 rounded-full border border-[var(--falcon-soft-border)] bg-[var(--falcon-warm-background)] p-1"
+                    >
+                      {([true, false] as const).map((show) => (
+                        <button
+                          key={show ? "show" : "hide"}
+                          type="button"
+                          aria-pressed={form.showMaintenanceFee === show}
+                          onClick={() => updateField("showMaintenanceFee", show)}
+                          className={`min-h-9 rounded-full px-3 text-xs font-semibold transition ${form.showMaintenanceFee === show ? "bg-[var(--falcon-charcoal)] text-white shadow-sm" : "text-zinc-600 hover:bg-white"}`}
+                        >
+                          {show ? "Show" : "Hide"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <span className="mt-1 block text-xs text-zinc-500">
-                    Including sinking fund
-                  </span>
-                </label> : <label className="block text-sm text-zinc-600"><span className="mb-1 block font-medium text-zinc-900">Fixed Monthly Maintenance</span><div className="flex rounded-2xl border border-[var(--falcon-soft-border)]"><span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">RM</span><input inputMode="decimal" value={form.fixedMonthlyMaintenance} onChange={(event) => updateField("fixedMonthlyMaintenance", event.target.value)} className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none" /></div></label>}
+                  {form.showMaintenanceFee && (
+                    form.maintenanceFeeType === "fixed" ? (
+                      <div className="flex rounded-2xl border border-[var(--falcon-soft-border)]">
+                        <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">RM</span>
+                        <input
+                          id="maintenance-fee"
+                          inputMode="decimal"
+                          value={form.fixedMonthlyMaintenance}
+                          onChange={(event) => updateField("fixedMonthlyMaintenance", event.target.value)}
+                          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className={`flex rounded-2xl border transition focus-within:border-[var(--falcon-gold-dark)] ${getPendingInputClass(!form.maintenanceRatePerSqft.trim(), hasEnteredValue(form.maintenanceRatePerSqft) && (!Number.isFinite(numericInput.maintenanceRatePerSqft) || numericInput.maintenanceRatePerSqft < 0))}`}>
+                          <span className="border-r border-zinc-200 px-3 py-2.5 text-zinc-500">RM</span>
+                          <input
+                            id="maintenance-fee"
+                            inputMode="decimal"
+                            value={form.maintenanceRatePerSqft}
+                            onChange={(event) => updateField("maintenanceRatePerSqft", event.target.value)}
+                            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 outline-none"
+                            placeholder="0.35"
+                          />
+                          <span className="border-l border-zinc-200 px-3 py-2.5 text-zinc-500">/psf</span>
+                        </div>
+                        <span className="mt-1 block text-xs text-zinc-500">Including sinking fund</span>
+                      </>
+                    )
+                  )}
+                </div>
                 <label className="block text-sm text-zinc-600">
                   <span className="mb-1 block font-medium text-zinc-900">
                     Other Upfront Costs
@@ -4478,9 +4521,11 @@ export default function RoiCalculatorPage() {
                 }`}>
                   {formatCurrencyDetailed(result.monthlyCashFlow)}
                 </p>
-                <p className="mt-2 text-sm text-zinc-600">
-                  {purchaseMethod === "cash" ? "Rental minus maintenance." : "Rental minus maintenance and estimated instalment."}
-                </p>
+                {form.showMaintenanceFee && (
+                  <p className="mt-2 text-sm text-zinc-600">
+                    {purchaseMethod === "cash" ? "Rental minus maintenance." : "Rental minus maintenance and estimated instalment."}
+                  </p>
+                )}
               </section>
             ) : (
               <section className="rounded-[26px] border border-emerald-200 bg-[#f1fbf8] p-5 shadow-sm sm:p-6">
@@ -4641,6 +4686,12 @@ export default function RoiCalculatorPage() {
                 ) : (
                   <p className="py-3 text-sm text-zinc-500">No financing calculation required.</p>
                 )}
+                {form.showMaintenanceFee && (
+                  <ResultRow
+                    label="Estimated Monthly Maintenance Fee"
+                    value={formatCurrencyDetailed(result.monthlyMaintenance)}
+                  />
+                )}
               </div>
             </section>
 
@@ -4695,18 +4746,16 @@ export default function RoiCalculatorPage() {
                   />
                 ) : null}
                 <ResultRow
-                  label="Monthly Maintenance"
-                  value={formatCurrencyDetailed(result.monthlyMaintenance)}
-                />
-                <ResultRow
                   label="Estimated Monthly Cash Flow"
                   value={formatCurrencyDetailed(result.monthlyCashFlow)}
                 >
-                  <div className="space-y-0.5 font-medium">
-                    {monthlyCashFlowBreakdown.map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
+                  {form.showMaintenanceFee && (
+                    <div className="space-y-0.5 font-medium">
+                      {monthlyCashFlowBreakdown.map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </div>
+                  )}
                 </ResultRow>
                 <ResultRow
                   label="Estimated Annual Cash Flow"
@@ -4718,7 +4767,7 @@ export default function RoiCalculatorPage() {
                   label="Net Rental Yield"
                   value={formatPercent(result.netRentalYieldPercent)}
                 >
-                  Based on estimated annual net rental after maintenance.
+                  {form.showMaintenanceFee && "Based on estimated annual net rental after maintenance."}
                 </ResultRow>
               </div>
             </section>
