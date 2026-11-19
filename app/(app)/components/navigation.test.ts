@@ -60,12 +60,14 @@ test("uses the approved top-level navigation structure without placeholders", ()
 });
 
 test("preserves Agent navigation visibility", () => {
-  const items = getVisibleDesktopNavItems(permissions({ role: "agent" }));
+  const items = getVisibleDesktopNavItems(
+    permissions({ role: "agent", canAccessCustomerBirthdays: true }),
+  );
 
   assert.equal(items.some((item) => item.label === "生涯运数"), false);
   assert.deepEqual(
     findGroup(items, "Daily Operations").children?.map((item) => item.label),
-    ["Check In", "DSI Update", "Calendar"],
+    ["Check In", "DSI Update", "Calendar", "Customer Birthday"],
   );
   assert.deepEqual(
     findGroup(items, "Team Management").children?.map((item) => item.label),
@@ -75,9 +77,10 @@ test("preserves Agent navigation visibility", () => {
 
 test("preserves Leader navigation visibility and explicit meeting access", () => {
   const items = getVisibleDesktopNavItems(
-    permissions({ role: "leader", canAccessLeaderMeetings: true }),
+    permissions({ role: "leader", canAccessLeaderMeetings: true, canAccessCustomerBirthdays: true }),
   );
 
+  assert.equal(getActiveDesktopNavGroup("/customer-birthdays", items), "Daily Operations");
   assert.deepEqual(
     findGroup(items, "Team Management").children?.map((item) => item.label),
     ["Members", "Leader Meeting", "Attendance"],
