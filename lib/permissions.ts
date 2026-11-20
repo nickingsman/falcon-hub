@@ -1,7 +1,6 @@
 import type { UserProfile, UserRole } from "@/lib/auth";
 import { getAuthenticatedUserProfile } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { isCustomerBirthdaysRoleAllowed } from "@/lib/customer-birthdays";
 import {
   canManageFeatureAccess,
   isFeatureGrantActive,
@@ -66,11 +65,7 @@ export function canManageSales(profile: UserProfile | null) {
 }
 
 export function canAccessCustomerBirthdays(profile: UserProfile | null) {
-  return Boolean(
-    profile &&
-      profile.status === "active" &&
-      isCustomerBirthdaysRoleAllowed(profile.role),
-  );
+  return canAccessAgentView(profile);
 }
 
 export function canManageLeaderMeetingsAccess(profile: UserProfile | null) {
@@ -117,7 +112,7 @@ export async function requireCustomerBirthdaysAccess() {
   const authContext = await getAuthenticatedUserProfile();
   if (!authContext) return { authorized: false, response: unauthorizedJson() } as const;
   if (!canAccessCustomerBirthdays(authContext.profile)) {
-    return { authorized: false, response: forbiddenJson("Super Admin access is required") } as const;
+    return { authorized: false, response: forbiddenJson() } as const;
   }
   return { authorized: true, ...authContext } as const;
 }

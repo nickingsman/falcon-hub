@@ -3,15 +3,28 @@ import test from "node:test";
 import {
   getDaysUntilBirthday,
   getMalaysiaDateParts,
-  isCustomerBirthdaysRoleAllowed,
   normalizeCustomerBirthday,
 } from "./customer-birthdays";
+import type { UserProfile } from "./auth";
+import { canAccessCustomerBirthdays } from "./permissions";
 
-test("Customer Birthdays preserves the existing Super Admin-only access rule", () => {
-  assert.equal(isCustomerBirthdaysRoleAllowed("super_admin"), true);
-  assert.equal(isCustomerBirthdaysRoleAllowed("admin"), false);
-  assert.equal(isCustomerBirthdaysRoleAllowed("leader"), false);
-  assert.equal(isCustomerBirthdaysRoleAllowed("agent"), false);
+test("Customer Birthdays requires an active profile at every agent role", () => {
+  const roles = ["super_admin", "admin", "leader", "agent"] as const;
+  for (const role of roles) {
+    const profile: UserProfile = {
+      auth_user_id: "test-user",
+      member_id: null,
+      role,
+      status: "active",
+      created_at: "",
+      updated_at: "",
+    };
+    assert.equal(canAccessCustomerBirthdays(profile), true, role);
+    for (const status of ["inactive", "pending_approval", "pending_profile", "rejected"] as const) {
+      assert.equal(canAccessCustomerBirthdays({ ...profile, status }), false, `${role}: ${status}`);
+    }
+  }
+  assert.equal(canAccessCustomerBirthdays(null), false);
 });
 
 test("a customer with only a name is valid", () => {
