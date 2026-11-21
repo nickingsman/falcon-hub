@@ -17,6 +17,7 @@ import {
   type ProjectMapConstructionStatus,
   type ProjectMapListItem,
 } from "@/lib/project-map";
+import styles from "./property-map.module.css";
 
 type Project = ProjectMapListItem & {
   id: string;
@@ -48,6 +49,13 @@ type LeafletMarker = {
   addTo(map: LeafletMap): LeafletMarker;
 };
 
+type LeafletTooltip = {
+  setContent(content: string): LeafletTooltip;
+  setLatLng(point: Point): LeafletTooltip;
+  addTo(map: LeafletMap): LeafletTooltip;
+  remove(): void;
+};
+
 type LeafletMap = {
   setView(coords: [number, number], zoom: number): LeafletMap;
   remove(): void;
@@ -70,6 +78,12 @@ type ClickableLeafletMap = LeafletMap & {
 
 type LeafletApi = {
   map(node: HTMLElement, options: { zoomControl: boolean }): LeafletMap;
+  tooltip(options: {
+    className: string;
+    direction: "top";
+    offset: [number, number];
+    opacity: number;
+  }): LeafletTooltip;
   tileLayer(
     url: string,
     options: { attribution: string; maxZoom: number },
@@ -83,17 +97,17 @@ type LeafletApi = {
       fillOpacity: number;
       weight: number;
     },
-  ): { addTo(map: LeafletMap): LeafletMarker };
+  ): {
+    addTo(map: LeafletMap): LeafletMarker & { getElement(): SVGElement };
+  };
   marker(
     coords: [number, number],
     options: { draggable: boolean },
   ): { addTo(map: LeafletMap): LeafletMarker };
 };
 
-declare global {
-  interface Window {
-    L?: LeafletApi;
-  }
+function getLeaflet(): LeafletApi | undefined {
+  return window.L as LeafletApi | undefined;
 }
 
 const pendingColor = "#a1a1aa";
@@ -330,12 +344,13 @@ export default function ProjectMapPage() {
     }
 
     const initialize = () => {
-      if (!active || !mapNode.current || !window.L || map.current) return;
+      const leaflet = getLeaflet();
+      if (!active || !mapNode.current || !leaflet || map.current) return;
 
-      map.current = window.L
+      map.current = leaflet
         .map(mapNode.current, { zoomControl: true })
         .setView([3.139, 101.687], 10);
-      window.L
+      leaflet
         .tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "&copy; OpenStreetMap contributors",
           maxZoom: 19,
@@ -344,7 +359,7 @@ export default function ProjectMapPage() {
       setMapReady(true);
     };
 
-    if (window.L) {
+    if (getLeaflet()) {
       initialize();
     } else {
       let script = document.getElementById(scriptId) as HTMLScriptElement | null;
@@ -369,7 +384,9 @@ export default function ProjectMapPage() {
   }, []);
 
   useEffect(() => {
-    if (!map.current || !window.L) return;
+    const leafletMap = map.current;
+    const leaflet = getLeaflet();
+    if (!leafletMap || !leaflet) return;
 
     markers.current.forEach((marker) => marker.remove());
     markers.current = mappedVisible.map((project) => {
@@ -382,13 +399,30 @@ export default function ProjectMapPage() {
         weight: 3,
         bubblingMouseEvents: false,
       };
-      const marker = window.L!.circleMarker(
+      const marker = leaflet.circleMarker(
         [project.latitude!, project.longitude!],
         markerOptions,
-      ).addTo(map.current!);
+      ).addTo(leafletMap);
+
+      const projectName = escapeHtml(project.project_name);
+      const tooltip = leaflet.tooltip({
+        className: styles.tooltip,
+        direction: "top",
+        offset: [0, -(markerOptions.radius + markerOptions.weight)],
+        opacity: 1,
+      }).setContent(projectName).setLatLng({
+        lat: project.latitude!,
+        lng: project.longitude!,
+      });
+      const markerElement = marker.getElement();
+      markerElement.addEventListener("pointerenter", (event) => {
+        if (event.pointerType === "mouse") tooltip.addTo(leafletMap);
+      });
+      markerElement.addEventListener("pointerleave", () => tooltip.remove());
+      marker.on("remove", () => tooltip.remove());
 
       marker.bindPopup(
-        `<strong>${escapeHtml(project.project_name)}</strong><br/>${escapeHtml(
+        `<strong>${projectName}</strong><br/>${escapeHtml(
           project.location ?? "Location not provided",
         )}<br/>${escapeHtml(presentation.label)}`,
       );
@@ -402,9 +436,9 @@ export default function ProjectMapPage() {
         draggable: true,
         bubblingMouseEvents: false,
       };
-      const marker = window.L
+      const marker = leaflet
         .marker([draft.lat, draft.lng], draftMarkerOptions)
-        .addTo(map.current);
+        .addTo(leafletMap);
       marker.bindPopup("Drag to verify the exact project position");
       marker.on("dragend", (event) => {
         const point = event?.target?.getLatLng();
