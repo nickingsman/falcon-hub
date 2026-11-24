@@ -14,6 +14,8 @@ import {
 } from "@/lib/pdf-preview-recovery";
 import {
   calculateBuyerPaymentSchedule,
+  getBuyerPaymentIncentiveAmountError,
+  type BuyerPaymentIncentiveInput,
   type BuyerPaymentIncentiveType,
   type BuyerPaymentScheduleResult,
   type BuyerPaymentScheduleStage,
@@ -43,7 +45,7 @@ type StageTiming = {
 type IncentiveDraft = {
   id: string;
   type: BuyerPaymentIncentiveType;
-  percentage: string;
+  amount: string;
   applicationStageId: ScheduleHStageId;
 };
 
@@ -89,13 +91,25 @@ function parseNumberInput(value: string) {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function parseIncentiveInput({ id, type, amount, applicationStageId }: IncentiveDraft): BuyerPaymentIncentiveInput {
+  const trimmedAmount = amount.trim();
+  const numericAmount = /^(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d*)?|\.\d+)$/.test(trimmedAmount)
+    ? parseNumberInput(trimmedAmount)
+    : Number.NaN;
+  const base = { id, applicationStageId };
+  return type === "rebate"
+    ? { ...base, type, percentage: numericAmount }
+    : { ...base, type, cashbackAmount: numericAmount };
+}
+
 function formatCurrency(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
 
   return new Intl.NumberFormat("en-MY", {
     style: "currency",
     currency: "MYR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -296,7 +310,7 @@ function buildBuyerPaymentScheduleProposalHtml({
     ? schedule.incentives.map((incentive) => `
         <tr>
           <td><strong>${incentive.type === "rebate" ? "Rebate" : "Cashback"}</strong></td>
-          <td>${escapeHtml(formatPercent(incentive.percentage))}</td>
+          <td>${incentive.percentage === undefined ? "&ndash;" : escapeHtml(formatPercent(incentive.percentage))}</td>
           <td>${escapeHtml(formatCurrency(incentive.amount))}</td>
           <td>${escapeHtml(incentive.applicationStageLabel)}</td>
           <td>${escapeHtml(getStageTimingLabel(incentive.applicationStageId, stageTimings))}</td>
@@ -666,7 +680,7 @@ function buildBuyerPaymentScheduleProposalHtml({
           <span>Amount and application timing</span>
         </div>
         <table>
-          <thead><tr><th>Type</th><th>%</th><th>Amount</th><th>Application Stage</th><th>Estimated Timing</th></tr></thead>
+          <thead><tr><th>Type</th><th>Rate (%)</th><th>Amount (RM)</th><th>Application Stage</th><th>Estimated Timing</th></tr></thead>
           <tbody>${incentiveRows}</tbody>
         </table>
       </section>
@@ -773,18 +787,16 @@ export default function BuyerPaymentSchedulePage() {
     [loanMarginPercent, spaPrice],
   );
 
+  const incentiveInputs = useMemo(() => incentives.map(parseIncentiveInput), [incentives]);
   const paymentSchedule = useMemo(
     () =>
       calculateBuyerPaymentSchedule({
         spaPrice: numericInput.spaPrice,
         purchaseMethod,
         loanMarginPercent: numericInput.loanMarginPercent,
-        incentives: incentives.map((incentive) => ({
-          ...incentive,
-          percentage: parseNumberInput(incentive.percentage),
-        })),
+        incentives: incentiveInputs,
       }),
-    [incentives, numericInput, purchaseMethod],
+    [incentiveInputs, numericInput, purchaseMethod],
   );
 
   const invalidSpaPrice =
@@ -795,16 +807,8 @@ export default function BuyerPaymentSchedulePage() {
     loanMarginPercent.trim() !== "" &&
     paymentSchedule.validationErrors.some((error) => error.startsWith("Loan margin"));
   const invalidIncentiveIds = new Set(
-    incentives
-      .filter((incentive) => {
-        const percentage = parseNumberInput(incentive.percentage);
-        return (
-          incentive.percentage.trim() === "" ||
-          !Number.isFinite(percentage) ||
-          percentage < 0 ||
-          percentage > 100
-        );
-      })
+    incentiveInputs
+      .filter(getBuyerPaymentIncentiveAmountError)
       .map((incentive) => incentive.id),
   );
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
@@ -830,13 +834,14 @@ export default function BuyerPaymentSchedulePage() {
       {
         id: crypto.randomUUID(),
         type: "rebate",
-        percentage: "0",
+        amount: "0",
         applicationStageId: "spa",
       },
     ]);
   }
 
   function updateIncentive(id: string, changes: Partial<IncentiveDraft>) {
+    setExportError("");
     setIncentives((current) =>
       current.map((incentive) =>
         incentive.id === id ? { ...incentive, ...changes } : incentive,
@@ -845,6 +850,7 @@ export default function BuyerPaymentSchedulePage() {
   }
 
   function removeIncentive(id: string) {
+    setExportError("");
     setIncentives((current) => current.filter((incentive) => incentive.id !== id));
   }
 
@@ -862,16 +868,7 @@ export default function BuyerPaymentSchedulePage() {
     setExportError("");
 
     if (!paymentSchedule.isValid) {
-      setExportError(
-        purchaseMethod === "loan"
-          ? "Complete valid SPA Price and Loan Margin before exporting the customer PDF."
-          : "Complete a valid SPA Price before exporting the customer PDF.",
-      );
-      return;
-    }
-
-    if (invalidIncentiveIds.size > 0) {
-      setExportError("Every rebate and cashback percentage must be between 0% and 100% before exporting.");
+      setExportError(paymentSchedule.validationErrors.join(" "));
       return;
     }
 
@@ -1085,7 +1082,7 @@ export default function BuyerPaymentSchedulePage() {
                         <span className="mb-1 block font-medium text-zinc-900">Type</span>
                         <select
                           value={incentive.type}
-                          onChange={(event) => updateIncentive(incentive.id, { type: event.target.value as BuyerPaymentIncentiveType })}
+                          onChange={(event) => updateIncentive(incentive.id, { type: event.target.value as BuyerPaymentIncentiveType, amount: "" })}
                           className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
                         >
                           <option value="rebate">Rebate</option>
@@ -1097,12 +1094,13 @@ export default function BuyerPaymentSchedulePage() {
                         <div className={`flex rounded-xl border ${getInputStateClass(invalidIncentiveIds.has(incentive.id))}`}>
                           <input
                             inputMode="decimal"
-                            value={incentive.percentage}
-                            onChange={(event) => updateIncentive(incentive.id, { percentage: event.target.value })}
-                            aria-label={`Incentive ${index + 1} percentage`}
+                            value={incentive.amount}
+                            onChange={(event) => updateIncentive(incentive.id, { amount: event.target.value })}
+                            aria-label={`Incentive ${index + 1} ${incentive.type === "rebate" ? "percentage" : "amount in RM"}`}
+                            aria-invalid={invalidIncentiveIds.has(incentive.id)}
                             className="min-w-0 flex-1 bg-transparent px-3 py-2 outline-none"
                           />
-                          <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">%</span>
+                          <span className="border-l border-zinc-200 px-3 py-2 text-zinc-500">{incentive.type === "rebate" ? "%" : "RM"}</span>
                         </div>
                       </label>
                       <label className="block text-sm text-zinc-600">
@@ -1133,7 +1131,7 @@ export default function BuyerPaymentSchedulePage() {
                 </div>
               </div>
 
-              {paymentSchedule.validationErrors.length || invalidIncentiveIds.size ? (
+              {paymentSchedule.validationErrors.length ? (
                 <div className="mt-5 rounded-2xl border border-amber-200 bg-[#FFF9E8] px-4 py-3 text-sm text-amber-800">
                   <p className="font-semibold">Check inputs</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
