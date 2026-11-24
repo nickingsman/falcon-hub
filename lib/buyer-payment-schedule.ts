@@ -10,10 +10,12 @@ export type BuyerPaymentIncentiveType = "rebate" | "cashback";
 
 export type BuyerPaymentIncentiveInput = {
   id: string;
-  type: BuyerPaymentIncentiveType;
-  percentage: number;
   applicationStageId: ScheduleHStageId;
-};
+} & (
+  // Legacy percentage-based cashback keeps its original SPA-based calculation.
+  | { type: BuyerPaymentIncentiveType; percentage: number; cashbackAmount?: never }
+  | { type: "cashback"; cashbackAmount: number; percentage?: never }
+);
 
 export type BuyerPaymentScheduleInput = {
   spaPrice: number;
@@ -80,6 +82,21 @@ export function getBuyerPaymentStageLabel(stageId: ScheduleHStageId) {
   return stage.id === "spa" ? "SPA Signing" : `${stage.code} ${stage.englishTitle}`;
 }
 
+export function getBuyerPaymentIncentiveAmountError(incentive: BuyerPaymentIncentiveInput) {
+  const { cashbackAmount, percentage } = incentive;
+  if (cashbackAmount !== undefined && (incentive.type !== "cashback" || percentage !== undefined)) {
+    return "amount must use the unit for the selected incentive type.";
+  }
+  if (incentive.type === "cashback" && percentage === undefined) {
+    return cashbackAmount !== undefined && Number.isFinite(cashbackAmount) && cashbackAmount >= 0
+      ? null
+      : "cashback amount must be a valid RM amount of 0 or more.";
+  }
+  return percentage !== undefined && Number.isFinite(percentage) && percentage >= 0 && percentage <= 100
+    ? null
+    : "percentage must be between 0% and 100%.";
+}
+
 function getValidationErrors(input: BuyerPaymentScheduleInput) {
   const validationErrors: string[] = [];
 
@@ -101,13 +118,8 @@ function getValidationErrors(input: BuyerPaymentScheduleInput) {
     if (incentive.type !== "rebate" && incentive.type !== "cashback") {
       validationErrors.push(`${label} type is invalid.`);
     }
-    if (
-      !Number.isFinite(incentive.percentage) ||
-      incentive.percentage < 0 ||
-      incentive.percentage > 100
-    ) {
-      validationErrors.push(`${label} percentage must be between 0% and 100%.`);
-    }
+    const amountError = getBuyerPaymentIncentiveAmountError(incentive);
+    if (amountError) validationErrors.push(`${label} ${amountError}`);
     if (!scheduleHStages.some((stage) => stage.id === incentive.applicationStageId)) {
       validationErrors.push(`${label} application stage is invalid.`);
     }
@@ -140,7 +152,9 @@ export function calculateBuyerPaymentSchedule(
   const grossBuyerPaymentObligation = grossBuyerEquity;
   const incentives: BuyerPaymentIncentiveResult[] = input.incentives.map((incentive) => ({
     ...incentive,
-    amount: isValid ? spaPrice * (incentive.percentage / 100) : 0,
+    amount: isValid
+      ? incentive.cashbackAmount ?? spaPrice * ((incentive.percentage ?? 0) / 100)
+      : 0,
     applicationStageLabel: getBuyerPaymentStageLabel(incentive.applicationStageId),
   }));
   const totalRebate = incentives

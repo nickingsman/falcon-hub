@@ -30,6 +30,14 @@ function calculate(overrides: Partial<BuyerPaymentScheduleInput> = {}) {
   return result;
 }
 
+function cashback(
+  id: string,
+  cashbackAmount: number,
+  applicationStageId: BuyerPaymentIncentiveInput["applicationStageId"],
+): BuyerPaymentIncentiveInput {
+  return { id, type: "cashback", cashbackAmount, applicationStageId };
+}
+
 function stage(result: ReturnType<typeof calculate>, stageId: string) {
   const value = result.stages.find((item) => item.stage.id === stageId);
   assert.ok(value);
@@ -77,7 +85,7 @@ test("rebate exceeding a stage carries forward only to later stages", () => {
   assert.equal(stage(result, "2a").rebateCarryForwardBalance, 0);
 });
 
-test("cashback at VP is a separate cash inflow at VP", () => {
+test("legacy percentage cashback still uses SPA Price and is received at VP", () => {
   const result = calculate({
     purchaseMethod: "cash",
     incentives: [incentive("cashback-1", "cashback", 10, "vp")],
@@ -179,7 +187,8 @@ test("multiple incentives at the same stage are summed by type", () => {
     incentives: [
       incentive("rebate-1", "rebate", 3, "2a"),
       incentive("rebate-2", "rebate", 2, "2a"),
-      incentive("cashback-1", "cashback", 1, "2a"),
+      cashback("cashback-1", 5_500, "2a"),
+      cashback("cashback-2", 500, "2a"),
     ],
   });
   const foundation = stage(result, "2a");
@@ -188,6 +197,40 @@ test("multiple incentives at the same stage are summed by type", () => {
   assert.equal(foundation.rebateApplied, 30_000);
   assert.equal(foundation.cashbackReceived, 6_000);
   assert.equal(foundation.netBuyerCashMovement, 24_000);
+});
+
+for (const purchaseMethod of ["loan", "cash"] as const) {
+  test(`10% rebate and RM30,000 cashback retain their amounts and timing for a ${purchaseMethod} purchase`, () => {
+    const result = calculate({
+      spaPrice: 716_000,
+      purchaseMethod,
+      incentives: [
+        incentive("rebate-1", "rebate", 10, "spa"),
+        cashback("cashback-1", 30_000, "vp"),
+      ],
+    });
+    assert.equal(result.totalRebate, 71_600);
+    assert.equal(result.totalRebateApplied, 71_600);
+    assert.equal(result.totalCashback, 30_000);
+    assert.equal(result.totalCashbackReceived, 30_000);
+    assert.equal(stage(result, "spa").rebateApplied, 71_600);
+    assert.equal(stage(result, "spa").cashbackReceived, 0);
+    assert.equal(stage(result, "vp").cashbackReceived, 30_000);
+    assert.equal(result.grossBuyerPayments, purchaseMethod === "loan" ? 0 : 644_400);
+    assert.equal(result.netBuyerOwnFunds, purchaseMethod === "loan" ? -30_000 : 614_400);
+  });
+}
+
+test("fixed cashback rejects negative and non-finite amounts", () => {
+  for (const amount of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const result = calculateBuyerPaymentSchedule({
+      ...baseInput,
+      incentives: [cashback("cashback-invalid", amount, "vp")],
+    });
+    assert.equal(result.isValid, false);
+    assert.match(result.validationErrors.join(" "), /cashback amount must be a valid RM amount/);
+    assert.equal(result.totalCashbackReceived, 0);
+  }
 });
 
 test("invalid incentive percentages are rejected", () => {
